@@ -89,6 +89,7 @@ Already have a Custom GPT on ChatGPT? Migrate it easily:
 ### Vercel (Recommended)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/SamurAIGPT/Open-Custom-GPT)
+[![Deploy to PandaStack](https://dashboard.pandastack.io/deploy-button.svg)](https://dashboard.pandastack.io/deploy?repo=SamurAIGPT/Open-Custom-GPT&type=static&buildCmd=npm+run+build&outputDir=dist)
 
 ### Docker
 
