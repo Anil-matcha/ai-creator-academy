@@ -14,6 +14,8 @@ Hermes Agent is built around a closed learning loop — it generates skills from
 
 This list tracks the ecosystem building around it.
 
+**See also:** [awesome-openclaw](https://github.com/SamurAIGPT/awesome-openclaw) — curated resources for OpenClaw (formerly Moltbot / Clawdbot), the predecessor agent with a native Hermes migration path.
+
 > Ecosystem snapshot (last reviewed: 2026-05-06)
 > - Hermes Agent: [v0.12.0 (v2026.4.30) — "The Curator release"](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.4.30)
 > - Core repo: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) (134k+ stars)
@@ -284,6 +286,12 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **Multi-agent execution layer** — Combine Hermes delegation with [hermes-agent-acp-skill](https://github.com/Rainhoole/hermes-agent-acp-skill) for Codex/Claude Code routing, [zouroboros-swarm-executors](https://github.com/marlandoj/zouroboros-swarm-executors) for local executor handoff, and [bigiron](https://github.com/supermodeltools/bigiron) for specialized agent roles.
 - **Migration and deployment hardening** — Keep [openclaw-to-hermes](https://github.com/0xNyk/openclaw-to-hermes) in the toolkit even if you prefer the native migration path. For repeatable deploys: [nix-hermes-agent](https://github.com/0xrsydn/nix-hermes-agent), [hermes-agent-docker](https://github.com/xmbshwll/hermes-agent-docker), or [evey-setup](https://github.com/42-evey/evey-setup) depending on how opinionated you want the stack.
 - **Paperclip-governed ops** — For teams running Hermes inside a governed company workflow, combine [hermes-paperclip-adapter](https://github.com/NousResearch/hermes-paperclip-adapter) with Hermes cron and one of the operator dashboards. That gives you task governance and operational continuity rather than a clever demo that forgets what it was doing.
+
+---
+
+## Related Lists
+
+- [awesome-openclaw](https://github.com/SamurAIGPT/awesome-openclaw) — Curated resources for OpenClaw (formerly Moltbot / Clawdbot), the predecessor agent that Hermes supports migrating from natively. Skills, plugins, UIs, deployment guides, and the broader OpenClaw ecosystem.
 
 ---
 
