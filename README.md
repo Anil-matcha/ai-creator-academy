@@ -126,6 +126,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **[production]** [open-design](https://github.com/nexu-io/open-design) by [nexu-io](https://github.com/nexu-io) — Local-first, open-source design alternative with 31 composable skills over 129 design systems, plus image, video, and audio generation. Integrates with Hermes via ACP/JSON-RPC. 28k+ stars.
 - **[beta]** [master-skill](https://github.com/voidborne-d/master-skill) by [voidborne-d](https://github.com/voidborne-d) — Distills an entire industry domain into a portable skill folder through a 5-phase research and synthesis pipeline. Works across Hermes, Claude Code, OpenClaw, and Codex. Ships 9 industries at v1.4.
 - **[beta]** [sequenzy-email-marketing](https://github.com/Sequenzy/skills/tree/main/skills/sequenzy-email-marketing) by [Sequenzy](https://github.com/Sequenzy) - Agent skill for operating Sequenzy lifecycle email marketing and transactional email workflows: subscribers, segments, campaigns, sequences, templates, and stats.
+- **[production]** [longbridge/skills](https://github.com/longbridge/skills) by [Longbridge](https://github.com/longbridge) — 13 consolidated agent skills for Longbridge Securities covering real-time quotes, K-line charts, fundamentals, portfolio analysis, technical analysis, options/warrants, watchlist, and earnings reports for HK/US/A-share/SG markets. Trilingual (Simplified Chinese / Traditional Chinese / English). Install: `npx skills add longbridge/skills -g`.
 
 ### Plugins
 
