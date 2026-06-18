@@ -254,6 +254,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **[beta]** [hermes-startup-architect](https://github.com/dlkakbs/hermes-startup-architect) by [dlkakbs](https://github.com/dlkakbs) — Generates investor-ready kits from startup ideas — market analysis, pitch deck, and financial projections.
 - **[beta]** [mercury](https://github.com/hxsteric/mercury) by [hxsteric](https://github.com/hxsteric) — Multi-chain blockchain cash flow analyzer with a WebGL dashboard. On-chain forensics and flow visualization.
 - **[experimental]** [hermes-research-agent](https://github.com/Aum08Desai/hermes-research-agent) by [Aum08Desai](https://github.com/Aum08Desai) — Autonomous LLM research agent. Handles literature review, hypothesis generation, and experiment design end-to-end.
+- **[beta]** [erpclaw](https://github.com/avansaber/erpclaw) by [AvanSaber](https://github.com/avansaber) — AI-native open-source ERP and accounting you self-host and run in plain English. Invoicing, inventory, general ledger, payroll, and multi-company books in one shared database.
 
 <br>
 
