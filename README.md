@@ -8,6 +8,10 @@
 
 [![Awesome](https://awesome.re/badge.svg)](https://awesome.re)
 
+> **[📚 Looking for in-depth production guides?](https://github.com/CorpusIQ/corpusiq-docs/tree/main/hermes)** — Memory architecture, MCP integration, 38-cron reference, multi-machine deployment, and everything the official docs don't cover.
+>
+> This list is the **curated ecosystem map**. The [CorpusIQ Hermes Community Hub](https://github.com/CorpusIQ/corpusiq-docs/tree/main/hermes) is the **production field manual**.
+
 > A hand-picked collection of skills, plugins, tools, integrations, and community resources for [Hermes Agent](https://github.com/NousResearch/hermes-agent) — the self-evolving AI agent from [Nous Research](https://nousresearch.com).
 
 Hermes Agent is built around a closed learning loop — it generates skills from real experience, improves them while working, and starting from v0.12.0 runs an autonomous Curator that scores, merges, and prunes the skill library on a weekly cron cycle. It builds a growing model of who you are across sessions and retains that context persistently. You can host it on a $5 VPS, a GPU cluster, or one of seven serverless backends (Vercel Sandbox, Daytona, Modal, and more). Access it through any of 18 built-in messaging platforms — Telegram, Discord, Slack, WhatsApp, Signal, Feishu/Lark, WeCom, QQBot, Yuanbao, and others — plus Microsoft Teams through a plugin.
