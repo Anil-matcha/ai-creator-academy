@@ -310,6 +310,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 ## Related Lists
 
 - [awesome-openclaw](https://github.com/SamurAIGPT/awesome-openclaw) — Curated resources for OpenClaw (formerly Moltbot / Clawdbot), the predecessor agent that Hermes supports migrating from natively. Skills, plugins, UIs, deployment guides, and the broader OpenClaw ecosystem.
+- **[Context Kit](https://github.com/JDDavenport/context-kit)** — Personal Context Artifacts: 4 Markdown templates + 5 Claude Code skills for giving AI agents deep personal context. MIT, one-command install.
 
 ---
 
