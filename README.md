@@ -135,6 +135,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 
 ### Plugins
 
+- **[production]** [Agora](https://github.com/yzy806806/agora) by [yzy806806](https://github.com/yzy806806) — Multi-agent AI team plugin. Workers with SOUL.md identities, event-driven discussions with voting, heartbeat-driven self-driving project management, kanban task dispatch, and dashboard UI. 17 tools, 3 hooks, 8 role templates. Production-validated with 99k-line project.
 - **[beta]** [plur](https://github.com/plur-ai/plur) by [plur-ai](https://github.com/plur-ai) — Shared memory layer for AI agents using an open engram format (YAML). Useful for persistent learning patterns across Hermes sessions.
 - **[experimental]** [hermes-payguard](https://github.com/nativ3ai/hermes-payguard) by [nativ3ai](https://github.com/nativ3ai) — USDC and x402 payment plugin. Lets Hermes send and receive payments with configurable spending limits and approval flows.
 - **[beta]** [hermes-web-search-plus](https://github.com/robbyczgw-cla/hermes-web-search-plus) by [robbyczgw-cla](https://github.com/robbyczgw-cla) — Multi-provider web search that intelligently routes across Serper, Tavily, Exa, and more. Better result quality and source diversity than the built-in search.
@@ -235,6 +236,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 
 > Frameworks and tools for running multiple Hermes agents, or Hermes alongside other agents.
 
+- **[production]** [Agora](https://github.com/yzy806806/agora) by [yzy806806](https://github.com/yzy806806) — Self-driving multi-agent team plugin for Hermes. Workers with SOUL.md identities discuss, vote, and code autonomously. Heartbeat-driven project management, event-driven discussions with chair/speaker/vote flow, kanban task dispatch, and AGENTS.md as shared context. 17 tools, 3 hooks, 8 role templates, Dashboard UI. Production-validated: built a 99k-line document management system (docmind) with 2262 tests, zero human-written code.
 - **[experimental]** [Ankh.md](https://github.com/Abruptive/Ankh.md) by [Abruptive](https://github.com/Abruptive) — TAW Agent x Hermes multi-agent swarm framework. Coordinates multiple agents toward shared goals with distributed task execution.
 - **[experimental]** [gladiator](https://github.com/runtimenoteslabs/gladiator) by [runtimenoteslabs](https://github.com/runtimenoteslabs) — Two autonomous AI companies compete for GitHub stars. A hackathon project exploring agent competition dynamics.
 - **[beta]** [bigiron](https://github.com/supermodeltools/bigiron) by [supermodeltools](https://github.com/supermodeltools) — AI-native SDLC with Hermes and Supermodel code graph. Full software development lifecycle run by coordinated agents.
