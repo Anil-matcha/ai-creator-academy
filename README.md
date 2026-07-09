@@ -258,6 +258,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **[beta]** [mercury](https://github.com/hxsteric/mercury) by [hxsteric](https://github.com/hxsteric) — Multi-chain blockchain cash flow analyzer with a WebGL dashboard. On-chain forensics and flow visualization.
 - **[experimental]** [hermes-research-agent](https://github.com/Aum08Desai/hermes-research-agent) by [Aum08Desai](https://github.com/Aum08Desai) — Autonomous LLM research agent. Handles literature review, hypothesis generation, and experiment design end-to-end.
 - **[beta]** [erpclaw](https://github.com/avansaber/erpclaw) by [AvanSaber](https://github.com/avansaber) — AI-native open-source ERP and accounting you self-host and run in plain English. Invoicing, inventory, general ledger, payroll, and multi-company books in one shared database.
+- **[production]** [Violin](https://github.com/Strategic-Automation/violin) by [Strategic-Automation](https://github.com/Strategic-Automation) — Supervised, agentic Hermes pentest profile: 31 methodology playbooks (OWASP Top 10, API Top 10, LLM Top 10), interactive scoping + approval gates, optional `violin-guard` plugin. Installs with `hermes profile install https://github.com/Strategic-Automation/violin`. Hermes-native, no extra API keys.
 
 <br>
 
@@ -291,6 +292,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **Configure session timeout and expiry early** — Use the [configuration docs](https://hermes-agent.nousresearch.com/docs/user-guide/configuration/) to tune session retention for slower-moving threads before you need it.
 - **Side-by-side OpenClaw migration** — Keep both systems running during migration using [openclaw-to-hermes](https://github.com/0xNyk/openclaw-to-hermes) and native Hermes migration paths. Cut over once cron and routing behavior match.
 - **Treat USER.md and MEMORY.md as infrastructure** — Keep entries concise, durable, and preference-focused rather than raw notes. High signal beats high volume.
+- **Supervised agentic pentesting** — Install [Violin](https://github.com/Strategic-Automation/violin) (`hermes profile install https://github.com/Strategic-Automation/violin`) for authorised recon → exploit validation → reporting. 31 skill-based playbooks with interactive scoping, scope validation, and approval gates so every target-touching command is confirmed before execution.
 
 ---
 
