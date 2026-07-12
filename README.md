@@ -87,7 +87,8 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 
 ### Community Skills
 
-- **[beta]** [hermes-plugins](https://github.com/42-evey/hermes-plugins) by [42-evey](https://github.com/42-evey) — Four plugins covering the most common operational needs: goal management, inter-agent bridging, model selection, and cost control. The inter-agent bridge is useful when running multiple Hermes instances side by side.
+- **[beta]** [news-api-kills](https://github.com/currentslab/news-api-skills) by [currentslab](https://github.com/currentslab) — Cross-platform AgentSkills-compatible skills for the News API, with installable packages for Hermes and other agent runtimes.
+- - **[beta]** [hermes-plugins](https://github.com/42-evey/hermes-plugins) by [42-evey](https://github.com/42-evey) — Four plugins covering the most common operational needs: goal management, inter-agent bridging, model selection, and cost control. The inter-agent bridge is useful when running multiple Hermes instances side by side.
 - **[beta]** [hermes-skill-factory](https://github.com/Romanescu11/hermes-skill-factory) by [Romanescu11](https://github.com/Romanescu11) — Meta-skill that auto-generates reusable skills from your workflows. Aim it at a repetitive task and it creates a skill for it.
 - **[beta]** [litprog-skill](https://github.com/tlehman/litprog-skill) by [tlehman](https://github.com/tlehman) — Literate programming skill that works across Claude Code, OpenCode, and Hermes. Combines code and prose into documented, executable notebooks.
 - **[experimental]** [Wizards-of-the-Ghosts](https://github.com/Hmbown/Wizards-of-the-Ghosts) by [Hmbown](https://github.com/Hmbown) — Fantasy spell-themed skill pack. Wraps real development operations (refactoring, linting, testing) in a tabletop RPG interface.
