@@ -185,6 +185,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **[production]** [Clarvia](https://github.com/clarvia-project/scanner) by [clarvia-project](https://github.com/clarvia-project) — AEO (Agent Experience Optimization) scoring for MCP tools. Analyzes 15,400+ indexed MCP servers for agent-friendliness. REST API + MCP server so agents can evaluate tools from inside their own loop.
 - **[beta]** [agenttrace](https://github.com/luoyuctl/agenttrace) by [luoyuctl](https://github.com/luoyuctl) — Local-first TUI/CLI for post-run session audits covering cost and token spikes, tool failures, retry loops, latency gaps, health scores, anomaly detection, and session diffs. No upload, no cloud, MIT. Ships a companion SKILL.md for in-agent audit runs.
 - **[beta]** [llmtrim](https://github.com/fkiene/llmtrim) by [fkiene](https://github.com/fkiene) — Local proxy in front of the model Hermes calls; compresses resent tool schemas, history, and MCP tool output before each request is sent. Quality-gated, so it never increases your bill. -31% input / -74% output tokens. Also an MCP server, CLI, and library (Rust, Python, Ruby, Swift, Kotlin, JS/WASM). MPL-2.0.
+- **[beta]** [Agent37 Starter Kit](https://github.com/agent37-platform/starter-kit) by [Agent37](https://github.com/agent37-platform) — Fork-and-rebrand multi-tenant web app for running Hermes agents: auth, chat, files, fleet management (Supabase; needs an Agent37 Cloud key)
 
 ### Deployment
 
@@ -220,6 +221,7 @@ Once you're comfortable with the basics, explore the full list below. Every reso
 - **[production]** [MeiGen-AI-Design-MCP](https://github.com/jau123/MeiGen-AI-Design-MCP) by [jau123](https://github.com/jau123) — Stdio MCP server for AI image and video generation across 9 leading models plus local ComfyUI. Three backend modes: MeiGen cloud, any OpenAI-compatible API (BYOK), or fully offline ComfyUI. README ships a tested Hermes `mcp_servers` YAML with the timeout overrides needed for video generation workflows. 1k+ stars.
 - **[production]** [The Stall](https://github.com/thebrierfox/the-stall) by [IntuiTek¹](https://intuitek.ai) — 209 pay-per-call data capabilities via x402 MCP: stocks, crypto, DeFi, on-chain analytics, geopolitical signals, and Polymarket intelligence. USDC micropayments on Base — no API keys or accounts required.
 - **[production]** [screenpipe](https://github.com/screenpipe/screenpipe) by [screenpipe](https://github.com/screenpipe) — Local-first screen and audio capture that gives Hermes long-term memory of what you've seen, said, and heard. Connects over MCP (`npx -y screenpipe-mcp`, stdio or HTTP) with tools for search, activity summaries, and meeting detection. Fully on-device.
+- **[beta]** [Agent37 Gateway](https://github.com/agent37-platform/gateway) by [Agent37](https://github.com/agent37-platform) — Single Responses-style HTTP/SSE API that routes chat turns to a local Hermes worker or an OpenClaw backend, with reconnectable stream replay
 
 <br>
 
