@@ -29,6 +29,24 @@ Varying all three per ad would make every ad different in every way, making it i
 5. **Batch-produce voice and avatar generation** — since script/character are locked, this step is mostly repetition with different script text, which is where API-based generation earns its keep over one-by-one manual tools.
 6. **Deliver with a simple test plan** — label each ad by which axis it varies, so the client (or you) can actually read the results afterward.
 
+## Worked Example
+
+Continuing the GripMount ad (Module 1) with the consistent "creator" from Module 2. Here's a real 5-ad test batch matrix:
+
+| Ad # | Hook | Angle | Constant |
+|---|---|---|---|
+| 1 | "I did not expect this to hold through a pothole." | Durability/surprise | Same product demo, same CTA |
+| 2 | "My old mount fell off literally every drive." | Problem-first (names the pain point) | Same product demo, same CTA |
+| 3 | "POV: you're driving and your phone doesn't fall for once." | Relatable/POV format | Same product demo, same CTA |
+| 4 | "This $28 thing fixed a problem I didn't know had a fix." | Price/value framing | Same product demo, same CTA |
+| 5 | "Two weeks, every pothole, still holding." | Proof-first (leads with the result, not the hook question) | Same product demo, same CTA |
+
+Only the hook and opening angle change — product demo, proof section, and CTA stay identical across all 5, so if one ad wins, you know it's the hook, not some other variable.
+
+**How to actually read the test** once these are running as paid social ads: check **hook rate** first (the % of viewers who watch past the first 2-3 seconds) — an ad with a weak hook rate is dead regardless of anything downstream, so don't bother comparing CPA on it yet. Only compare cost-per-result (CPA/ROAS) across ads that already have a decent hook rate; a low CPA on very little spend is noise, not a signal. A common rule of thumb: run each variant long enough to clear a few thousand impressions (roughly 3-4 days at a modest daily budget per variant) before calling a winner — long enough to get past the platform's initial learning phase, short enough not to waste spend on an obvious loser.
+
+**Labeling for the client:** deliver the batch with each ad tagged by which single thing it varies ("Ad 2 = problem-first hook") so whoever's running the media buy can read the result back to a specific creative decision, not just "ad 2 did better."
+
 ## Compare Tools
 
 | Path | Throughput for a 10-ad batch | Best for |

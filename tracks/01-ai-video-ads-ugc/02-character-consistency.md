@@ -29,6 +29,22 @@ A fixed **seed** (the random-number starting point for generation) also helps wi
 3. **Check for drift** — generate 3-5 variations and compare: same facial structure, same apparent age, consistent identifying features (freckles, specific hairstyle). If it's drifting, tighten the prompt to describe only what should change (outfit, background) and rely on the reference image for everything about the face.
 4. **For heavy repeat use** (a recurring ad character, an influencer, a channel host), consider training a dedicated identity model (LoRA-style) — one-time setup cost, then near-perfect consistency across unlimited future generations.
 
+## Worked Example
+
+Say you generated an anchor image for a recurring "creator" — a woman in her late-20s, front-facing, neutral lighting, brown hair, freckles across her nose — to front your GripMount ads (Module 1) across a whole batch.
+
+<p align="center"><img src="outputs/examples/character-anchor.jpg" alt="AI-generated anchor character portrait: woman, late 20s, brown hair, freckles, neutral studio lighting" width="360"></p>
+
+<p align="center"><i>This is an actual anchor image — generated once, then reused as the reference for every subsequent shot instead of re-describing the character in text.</i></p>
+
+**Without a reference image (prompt-only):** re-typing "woman, late 20s, brown hair, freckles" for each new shot produces a *different* woman each time — same rough description, but the model fills in face shape, exact hair length, and freckle placement differently every generation. Across 5 shots you'd likely get 5 recognizably different people.
+
+**With reference-image conditioning:** pass the anchor image alongside each new prompt ("same woman, now in a car, holding a phone" — describing only what changes). Face shape, freckles, and apparent age stay locked because the model is conditioning on the actual image, not re-guessing from text. This is the default that would work for a one-off GripMount client ad.
+
+**Drift-check in practice:** generate the anchor woman in 3 settings — car interior, kitchen counter, walking outside — using reference-image conditioning. Line up the 3 results side by side and check: same face shape? Same freckle pattern? If shot 3 (outside, different lighting) shows a noticeably rounder face or the freckles have vanished, that's drift — tighten the prompt to describe *only* the setting and lighting, and let the reference image carry every detail about the face itself.
+
+**When it's worth training a LoRA instead:** if this same "creator" is going to front dozens of ads over months (not just one GripMount batch), a one-time LoRA training pass on 15-20 photos of her locks the identity so tightly that drift stops being a per-shot risk at all — worth the setup once reuse, not one-off work, is the plan.
+
 ## Compare Tools
 
 | Path | Consistency strength | Setup effort | Best for |

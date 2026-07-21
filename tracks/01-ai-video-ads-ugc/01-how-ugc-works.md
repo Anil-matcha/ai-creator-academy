@@ -36,6 +36,24 @@ The reason this pipeline matters more than any single "best model" is that each 
 4. **Add b-roll.** Cut in product shots or screen recordings during the pitch/proof section — this also hides any short imperfect stretches in the avatar footage.
 5. **Caption and export.** Auto-generate captions, burn them in, and export at 9:16 for short-form platforms.
 
+## Worked Example
+
+Product: a $28 magnetic phone car mount ("GripMount").
+
+**Script** (hook/pitch/proof/CTA, ~28 seconds spoken):
+
+> "Okay, I did not expect this to actually hold my phone through a pothole. [holds up phone, taps mount] I used to have one of those suction ones that fell off literally every drive — this one's magnetic, snaps on in like two seconds. [demo: slaps phone onto mount] It's held through every drive for the last two weeks, potholes included. It's $28, link's below — honestly just get it before your next road trip."
+
+Mapped to the structure:
+- **Hook (0-2s):** "Okay, I did not expect this to actually hold my phone through a pothole." — a surprised, specific claim, not generic ("this product is great").
+- **Problem/Pitch (2-15s):** names the actual competing product's failure (suction mount falling off) — this is what makes it sound like a real person, not ad copy.
+- **Proof/Demo (15-25s):** a visual demo (slapping the phone on) plus a concrete duration ("two weeks, potholes included") — specific numbers read as more credible than "it works great."
+- **CTA (25-28s):** price stated plainly, one action ("link's below"), urgency tied to a real use case (road trip) instead of a generic "buy now."
+
+**Why this script would survive production:** it's short enough to keep energy up on one take, the demo moment (slapping the phone on) gives the avatar something to *do* with its hands instead of just talking — which also hides minor avatar imperfections — and it never says "AI" or sounds scripted.
+
+**Common first-attempt mistake:** writing the pitch section like copy ("Introducing GripMount, the revolutionary new way to...") instead of like speech. Read your script out loud before producing anything — if you wouldn't say it to a friend, rewrite it.
+
 ## Compare Tools
 
 | Path | Cost per ad | Setup effort | Consistency | Best for |

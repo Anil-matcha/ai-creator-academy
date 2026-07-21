@@ -28,6 +28,24 @@ The natural progression is gig → project → retainer, using each stage's outp
 4. **Write an outreach message** that leads with the finished result (attach or link a sample ad for the prospect's actual product/category) rather than explaining your process.
 5. **Once you have 2-3 completed projects**, pitch a retainer: "ongoing batch production, X ads/month, for $Y/month" — this is where the $1,500-$3,000/month range documented for this work comes in.
 
+## Worked Example
+
+**Gig-stage listing** (Fiverr-style):
+> "I'll create a UGC-style AI ad for your product — $35. Includes: script, AI creator/voice, captions, 1 revision. Delivered in 9:16, ready to run. Turnaround: 3 days."
+Priced mid-range ($35) rather than the floor ($10) or the ceiling ($55) because there's no portfolio yet to justify top-of-range pricing — cheap enough to get first buyers, not so cheap it signals low quality.
+
+**Cold outreach to a DTC brand** (after 2-3 gig deliveries, targeting project work):
+> Subject: a UGC-style ad concept for [Brand]
+> Hi [Name] — noticed [Brand] is running paid social ads for [specific product]. I put together a quick AI-generated UGC-style ad using the same product [attach/link the actual sample ad] — thought it might be a useful new angle to test against your current creative. If it's a fit, I can turn around a full batch of variants (different hooks/angles) for testing. Happy to share more examples if useful.
+
+This works because it leads with a finished, product-specific sample — not a pitch about the AI process — and the brand can watch the ad before reading anything else.
+
+**Retainer pitch** (after 2-3 completed projects):
+> "Ongoing batch production: 8 ad variants/month across 2 batches, $2,000/month. Includes scripting, production, 2 revision rounds per batch, and a one-page test-plan write-up per batch tying results back to which hook/angle won." 
+Priced in the middle of the documented $1,500-$3,000/month range — justified by pointing at the 2-3 prior projects' actual delivered ads, not a generic capability claim.
+
+**The progression in numbers:** $35/ad gig work (occasional) → $200/batch project work (a few times) → $2,000/month retainer (ongoing) — each stage's finished output becomes the proof that justifies pitching the next stage, rather than restarting the sales pitch from zero each time.
+
 ## Compare Tools
 
 Not applicable in the tool sense — this module is business skills, not a production technique. The tool comparison from Modules 1-3 still determines your cost basis: API-based production keeps your cost-per-ad low and predictable for gig/project pricing; local production only changes the math once you're at retainer-level volume where the setup cost amortizes.
