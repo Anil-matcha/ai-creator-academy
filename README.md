@@ -41,7 +41,7 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 | 5 | [AI Avatars & Influencers](tracks/05-ai-avatars-and-influencers/) | A consistent AI character as a business | 5 | ✅ Live |
 | 6 | [AI Audio & Music](tracks/06-ai-audio-and-music/) | Voice cloning, dubbing, podcasts, music | 5 | ✅ Live |
 | 7 | [AI Product Photography](tracks/07-ai-product-photography/) | Studio-quality product shots, no photographer | 4 | ✅ Live |
-| 8 | [AI Fashion & Virtual Try-On](tracks/08-ai-fashion-and-virtual-tryon/) | Garment try-on for fashion e-commerce | 4 | ⬜ Coming soon |
+| 8 | [AI Fashion & Virtual Try-On](tracks/08-ai-fashion-and-virtual-tryon/) | Garment try-on for fashion e-commerce | 4 | ✅ Live |
 | 9 | [AI Real Estate Staging](tracks/09-ai-real-estate-staging/) | Empty room → staged listing photo | 3 | ⬜ Coming soon |
 | 10 | [AI Headshots & Portraits](tracks/10-ai-headshots-and-portraits/) | Consistent professional headshots | 2 | ⬜ Coming soon |
 | 11 | [AI Print-on-Demand & Merch](tracks/11-ai-print-on-demand-and-merch/) | Sellable AI art on merch, no client needed | 4 | ⬜ Coming soon |

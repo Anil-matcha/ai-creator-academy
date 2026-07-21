@@ -74,14 +74,14 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 3 | Selling as a Productized Service | ✅ |
 | 4 | Batch Workflows for Catalogs | ✅ |
 
-## Track 8 — AI Fashion & Virtual Try-On ⬜
+## Track 8 — AI Fashion & Virtual Try-On ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Virtual Try-On Basics (garment on model/customer photo) | ⬜ |
-| 2 | Consistent Model/Body Representation | ⬜ |
-| 3 | Selling to Fashion E-commerce Brands | ⬜ |
-| 4 | Beauty Content (makeup/hair try-on) as an Adjacent Service | ⬜ |
+| 1 | Garment Try-on for Fashion E-commerce | ✅ |
+| 2 | High-converting Studio Lookbooks | ✅ |
+| 3 | Sizing & Layout Consistency | ✅ |
+| 4 | Before/After Conversion Cases | ✅ |
 
 ## Track 9 — AI Real Estate (Virtual Staging) ⬜
 
