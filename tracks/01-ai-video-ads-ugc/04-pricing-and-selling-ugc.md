@@ -46,11 +46,9 @@ Priced in the middle of the documented $1,500-$3,000/month range — justified b
 
 **The progression in numbers:** $35/ad gig work (occasional) → $200/batch project work (a few times) → $2,000/month retainer (ongoing) — each stage's finished output becomes the proof that justifies pitching the next stage, rather than restarting the sales pitch from zero each time.
 
-## Compare Tools
-
-Not applicable in the tool sense — this module is business skills, not a production technique. The tool comparison from Modules 1-3 still determines your cost basis: API-based production keeps your cost-per-ad low and predictable for gig/project pricing; local production only changes the math once you're at retainer-level volume where the setup cost amortizes.
-
 ## Launch It
+
+This module is business skills, not a production technique — the tool comparison from Modules 1-3 still determines your cost basis: API-based production keeps your cost-per-ad low and predictable for gig/project pricing; local production only changes the math once you're at retainer-level volume where the setup cost amortizes.
 
 **How to price it:** Anchor to real ranges, don't invent your own from scratch — gig ads $10-$55, project batches $150-$300, retainers $1,500-$3,000/month. Price toward the top of each range once you have proof of quality (portfolio, testimonials), not before.
 
@@ -70,8 +68,8 @@ Not applicable in the tool sense — this module is business skills, not a produ
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 
-- [`outputs/outreach-template.md`](outputs/outreach-template.md) — cold outreach message template for pitching project-based work.
-- [`outputs/retainer-proposal-template.md`](outputs/retainer-proposal-template.md) — a fill-in retainer pitch structure.
+- [`templates/outreach-template.md`](templates/outreach-template.md) — cold outreach message template for pitching project-based work.
+- [`templates/retainer-proposal-template.md`](templates/retainer-proposal-template.md) — a fill-in retainer pitch structure.
 
 ---
 

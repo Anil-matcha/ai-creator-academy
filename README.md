@@ -119,7 +119,7 @@ Problem → Concept → Do It → Compare Tools → Launch It → Exercises
 - **Do It** — the actual step-by-step workflow.
 - **Compare Tools** — the honest tradeoff between API-based generation, other paid tools, and local/self-hosted models — never just "APIs are easier."
 - **Launch It** — pricing, positioning, and where to find your first client. This is the part most tutorials skip, and the reason this curriculum exists.
-- **Outputs** — a reusable artifact (a script template, a pricing sheet, an outreach message) saved in the module's own `outputs/` folder.
+- **Outputs** — a reusable artifact (a script template, a pricing sheet, an outreach message) saved in the module's own `templates/` folder.
 
 See [LESSON_TEMPLATE.md](LESSON_TEMPLATE.md) for the full template used to write every module.
 

@@ -1,6 +1,6 @@
 # Module Template
 
-Every module is one `<NN>-<module-slug>.md` file directly inside `tracks/<NN>-<track-slug>/` — no per-module subfolder, so browsing a track shows every module's content one click away. Each track has one shared `apps.json` (keyed by module slug) instead of a file per module, and any reusable artifacts go in the track's shared `outputs/` folder. Copy this file's shape when writing a new one.
+Every module is one `<NN>-<module-slug>.md` file directly inside `tracks/<NN>-<track-slug>/` — no per-module subfolder, so browsing a track shows every module's content one click away. Each track has one shared `apps.json` (keyed by module slug) instead of a file per module, and any reusable artifacts go in the track's shared `templates/` folder. Copy this file's shape when writing a new one.
 
 ```markdown
 # [Module Title]
@@ -54,13 +54,13 @@ checkable.]
 ## Outputs
 
 [List the reusable artifacts this module produces, saved in this module's
-`outputs/` folder — e.g. a prompt template, a pricing sheet, an outreach
+`templates/` folder — e.g. a prompt template, a pricing sheet, an outreach
 script, a checklist.]
 ```
 
 ## Rules for every module
 
-- Follow the six beats in order: Problem → Concept → Do It → Compare Tools → Launch It → Exercises. Don't skip "Compare Tools" or "Launch It" — they're what differentiates this from a typical "how it works" tutorial.
+- Follow the beats in order: Problem → Concept → Do It → Compare Tools (if applicable) → Launch It → Exercises. "Launch It" is never optional — it's what differentiates this from a typical "how it works" tutorial. "Compare Tools" applies only to modules teaching a production technique; for pure business/analysis-skill modules (pricing, sales, teardown/analysis) with no real tool comparison, omit the section entirely rather than writing "Not applicable" — fold any genuinely useful carry-over point (e.g. "your cost basis is still set by the tool choice from an earlier module") into Launch It instead.
 - **Never name specific competitor course platforms, creators, or "gurus"** as sources, even when they're the actual demand evidence — cite the pattern ("X-style income claims"), not the source.
 - **Show your real numbers** wherever a monetization claim is made — cite a verifiable source or mark it as an estimate, never state an unverifiable income figure as fact.
 - Every module that teaches a production technique (something an app could plausibly demonstrate) gets an entry in the track's `apps.json` (`status: "existing"` with a `repo_link`, or `status: "needed"`) — never duplicate app code inline. Skip the entry entirely for business/analysis-skill modules whose "Compare Tools" section is "Not applicable" (pricing, sales, teardown/analysis, etc.) — an app pointer for a module that isn't about a tool doesn't mean anything.

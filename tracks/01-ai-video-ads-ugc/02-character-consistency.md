@@ -33,7 +33,7 @@ A fixed **seed** (the random-number starting point for generation) also helps wi
 
 Say you generated an anchor image for a recurring "creator" — a woman in her late-20s, front-facing, neutral lighting, brown hair, freckles across her nose — to front your GripMount ads (Module 1) across a whole batch.
 
-<p align="center"><img src="outputs/examples/character-anchor.jpg" alt="AI-generated anchor character portrait: woman, late 20s, brown hair, freckles, neutral studio lighting" width="360"></p>
+<p align="center"><img src="templates/examples/character-anchor.jpg" alt="AI-generated anchor character portrait: woman, late 20s, brown hair, freckles, neutral studio lighting" width="360"></p>
 
 <p align="center"><i>This is an actual anchor image — generated once, then reused as the reference for every subsequent shot instead of re-describing the character in text.</i></p>
 
@@ -44,9 +44,9 @@ Say you generated an anchor image for a recurring "creator" — a woman in her l
 **Drift-check, actually run** — the anchor woman generated in 3 real settings (car interior, kitchen counter, walking outside), using the anchor image as a reference input to an *edit*-capable image model rather than a plain text prompt:
 
 <p align="center">
-<img src="outputs/examples/character-drift-car.jpg" alt="Same character, car interior" width="160">
-<img src="outputs/examples/character-drift-kitchen.jpg" alt="Same character, kitchen counter" width="160">
-<img src="outputs/examples/character-drift-outside.jpg" alt="Same character, walking outside" width="160">
+<img src="templates/examples/character-drift-car.jpg" alt="Same character, car interior" width="160">
+<img src="templates/examples/character-drift-kitchen.jpg" alt="Same character, kitchen counter" width="160">
+<img src="templates/examples/character-drift-outside.jpg" alt="Same character, walking outside" width="160">
 </p>
 <p align="center"><sub>Same reference image fed into 3 separate generations — only the setting/prompt changed.</sub></p>
 
@@ -86,7 +86,7 @@ Be honest with yourself about how many times you'll reuse this character. Refere
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 
-- [`outputs/character-consistency-checklist.md`](outputs/character-consistency-checklist.md) — what to check for drift before delivering a batch to a client.
+- [`templates/character-consistency-checklist.md`](templates/character-consistency-checklist.md) — what to check for drift before delivering a batch to a client.
 
 ---
 

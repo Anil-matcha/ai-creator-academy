@@ -10,5 +10,9 @@
   "03-building-an-ad-batch": {
     "status": "needed",
     "repo_link": null
+  },
+  "05-case-study-teardown": {
+    "status": "needed",
+    "repo_link": null
   }
 }

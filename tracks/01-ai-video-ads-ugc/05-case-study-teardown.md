@@ -47,7 +47,26 @@ Say you're prospecting a skincare-serum brand and want a teardown to open the co
 
 ## Compare Tools
 
-Not applicable — this module is an analysis skill, not a production technique.
+Teardown is mostly a manual skill (Do It above), but a video-understanding model can do a first-pass breakdown for you — worth knowing about even though the manual version is what actually builds your judgment.
+
+**Real test:** ran Module 1's GripMount clip through **`gemini-video-vision`** (muapi, $0.004/call — a video-in, text-out model) with the prompt "break this into hook/pitch/proof/CTA, and comment on lip-sync quality and video structure." Actual output:
+
+> **Hook:** "...her immediate, palpable surprise and excitement are very engaging... 'Okay, I did not expect this...' creates immediate curiosity."
+> **CTA: Missing.** "There is no explicit or implied call to action in this short clip. It ends abruptly... A full ad would typically follow up with 'Shop now'..."
+> **Lip-sync:** "Excellent... flawless and perfectly aligned with the audio."
+> **Structure:** "Talking-head. ...there is no b-roll footage."
+
+That's a genuinely correct read — the clip really is just the hook with no CTA, and it caught that.
+
+**Manual vs. AI-assisted, honestly:**
+
+| | Manual teardown (Do It above) | AI-assisted (`gemini-video-vision`) |
+|---|---|---|
+| What it's good for | Building your own judgment — you have to notice *why* a hook works, not just that it exists | A fast first pass, or a check against your own read when you're not sure |
+| Speed | Slower — you're watching and thinking | Seconds, and $0.004/call |
+| Where it can mislead | Doesn't apply — it's your own read | Can miss context a human would catch (brand history, category norms, why *this* audience specifically) — treat it as a draft, not a verdict |
+
+Use it as a learning aid (compare its read to your own to check your instincts) or as a time-saver when you're doing a batch of teardowns and can't manually watch every candidate ad — not as a replacement for actually doing the manual version enough times to build the skill yourself.
 
 ## Launch It
 
@@ -67,7 +86,7 @@ Not applicable — this module is an analysis skill, not a production technique.
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 
-- [`outputs/teardown-worksheet.md`](outputs/teardown-worksheet.md) — the five-layer teardown structure as a fill-in worksheet.
+- [`templates/teardown-worksheet.md`](templates/teardown-worksheet.md) — the five-layer teardown structure as a fill-in worksheet.
 
 ---
 

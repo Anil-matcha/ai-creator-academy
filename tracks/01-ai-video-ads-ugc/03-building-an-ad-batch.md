@@ -46,11 +46,11 @@ Only the hook and opening angle change — product demo, proof section, and CTA 
 **Ad 1 (Module 1) vs. Ad 2 and Ad 3, actually generated** — same anchor character (Module 2), same product, only the opening line changes. This is what "batching" looks like in practice, not just a table of hooks:
 
 <p align="center">
-<img src="outputs/examples/gripmount-hook-clip.gif" alt="Ad 1: durability/surprise hook" width="180">
-<img src="outputs/examples/gripmount-ad2-problem-first.gif" alt="Ad 2: problem-first hook" width="180">
-<img src="outputs/examples/gripmount-ad3-pov.gif" alt="Ad 3: POV format hook" width="180">
+<img src="templates/examples/gripmount-hook-clip.gif" alt="Ad 1: durability/surprise hook" width="180">
+<img src="templates/examples/gripmount-ad2-problem-first.gif" alt="Ad 2: problem-first hook" width="180">
+<img src="templates/examples/gripmount-ad3-pov.gif" alt="Ad 3: POV format hook" width="180">
 </p>
-<p align="center"><sub>Ad 1: <a href="outputs/examples/gripmount-hook-clip.mp4">mp4</a> · Ad 2: <a href="outputs/examples/gripmount-ad2-problem-first.mp4">mp4</a> · Ad 3: <a href="outputs/examples/gripmount-ad3-pov.mp4">mp4</a> (with audio; GIFs above are silent previews)</sub></p>
+<p align="center"><sub>Ad 1: <a href="templates/examples/gripmount-hook-clip.mp4">mp4</a> · Ad 2: <a href="templates/examples/gripmount-ad2-problem-first.mp4">mp4</a> · Ad 3: <a href="templates/examples/gripmount-ad3-pov.mp4">mp4</a> (with audio; GIFs above are silent previews)</sub></p>
 
 Producing these 3 took re-using the same uploaded anchor image across 3 separate `seedance-2-image-to-video-fast` calls, changing only the prompt's dialogue line each time (~$0.75/clip) — this is exactly what "batch-produce voice and avatar generation" in Do It, step 5 means: the character and product stay fixed, only the script text changes per call.
 
@@ -86,7 +86,7 @@ Producing these 3 took re-using the same uploaded anchor image across 3 separate
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 
-- [`outputs/batch-matrix-template.md`](outputs/batch-matrix-template.md) — a fill-in template for planning hook × angle combinations before production.
+- [`templates/batch-matrix-template.md`](templates/batch-matrix-template.md) — a fill-in template for planning hook × angle combinations before production.
 
 ---
 
