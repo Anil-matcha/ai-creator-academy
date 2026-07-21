@@ -24,15 +24,15 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 4 | Assembling a Short Film | ✅ |
 | 5 | Selling Short-Form Films (festivals, sponsors, licensing) | ✅ |
 
-## Track 3 — Faceless AI Channels ⬜
+## Track 3 — Faceless AI Channels ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Niche Selection & Script Pipeline | ⬜ |
-| 2 | Duration-Matched Narration & Pacing | ⬜ |
-| 3 | Honest RPM & Earnings Math | ⬜ |
-| 4 | Scaling to Multiple Channels | ⬜ |
-| 5 | Monetization Ladder | ⬜ |
+| 1 | Niche Selection & Script Pipeline | ✅ |
+| 2 | Duration-Matched Narration & Pacing | ✅ |
+| 3 | Honest RPM & Earnings Math | ✅ |
+| 4 | Scaling to Multiple Channels | ✅ |
+| 5 | Monetization Ladder | ✅ |
 
 ## Track 4 — AI Content Factories ⬜
 
