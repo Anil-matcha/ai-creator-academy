@@ -7,7 +7,7 @@
 
 <h1 align="center">AI Creator Academy</h1>
 
-<p align="center"><b>Free, open-source curriculum for making money with generative AI image, video, and audio — for creators and agencies, not developers.</b></p>
+<p align="center"><b>Free, open-source curriculum for making money with generative AI image, video, and audio — for creators and agencies.</b></p>
 
 ---
 
@@ -143,7 +143,7 @@ open tracks/01-ai-video-ads-ugc/01-how-ugc-works/module.md
 ## FAQ
 
 **Do I need to know how to code?**
-No. Every module is written for creators and freelancers, not developers — the only technical step in most modules is calling a generation API or using a tool's UI.
+No. Every module is written for creators and freelancers — the only technical step in most modules is calling a generation API or using a tool's UI.
 
 **Do I have to use muapi.ai?**
 No — any generative media provider works. muapi.ai is used as the reference implementation throughout because it aggregates many models behind one API, but the underlying technique in each module isn't provider-specific.
