@@ -54,13 +54,31 @@ Mapped to the structure:
 
 **Common first-attempt mistake:** writing the pitch section like copy ("Introducing GripMount, the revolutionary new way to...") instead of like speech. Read your script out loud before producing anything — if you wouldn't say it to a friend, rewrite it.
 
+**The clip below is real, not a mockup** — the anchor image from Module 2 animated into a short talking clip from the hook line above, so you can see what a first-pass output actually looks like before any editing/b-roll/captions are added:
+
+<p align="center"><video src="outputs/examples/gripmount-hook-clip.mp4" controls width="280"></video></p>
+
+<p align="center"><i>An unedited first pass — lip movement is decent but not perfect, which is normal at this stage. Cutting in b-roll during the pitch/proof section (Do It, step 4) is what usually hides this kind of imperfection in a finished ad.</i></p>
+
+*How this was actually produced, end to end:* generated the anchor portrait with an image model (Module 2's example), uploaded it, then fed it to an image-to-video model with a prompt describing the action and the line of dialogue — no separate TTS/lip-sync pass in this case, since the video model handled speech and mouth movement in one step. The same pipeline (image → video model, prompt-driven) is what "Generate or animate the avatar" in Do It, step 3 means in practice.
+
 ## Compare Tools
+
+Model names change constantly, but the *category* choice matters more than any specific model — here's what's actually reasonable for each stage right now:
+
+| Stage | Good muapi models to reach for | Why |
+|---|---|---|
+| Voice/TTS | Gemini TTS, ElevenLabs text-to-dialogue | Natural multi-speaker delivery with emotion/pace control — not robotic TTS |
+| Avatar/video (image → talking clip) | Seedance 2.x, Kling 3.0 | Current-generation video models that handle head/hand motion and speech convincingly in one pass, as in the clip above |
+| Lip-sync (audio-driven, onto an existing video/image) | A dedicated lip-sync model (e.g. sync-style lip-sync) or a Kling avatar model | Better fit when you already have separately-recorded narration you need to match to a face, rather than generating speech+motion together |
 
 | Path | Cost per ad | Setup effort | Consistency | Best for |
 |---|---|---|---|---|
 | **muapi API** (managed) | Per-generation credit cost, no infra | Low — call the endpoint, get a result | High — same model/voice reused via API params | Fast iteration, client work, testing many variants |
 | **Other paid all-in-one UGC tools** | Often subscription-gated, per-seat pricing | Low, but locked to their UI/workflow | Varies by tool | Teams that want a GUI, not an API |
-| **Local/self-hosted** (ComfyUI + local TTS/lip-sync models) | Free after hardware, but needs a capable GPU | High — workflow setup, model downloads, tuning | Can be very high once tuned, but slower to get there | Zero marginal cost at volume, full control, privacy-sensitive clients who don't want cloud processing |
+| **Local/self-hosted** (ComfyUI + local TTS/video models, e.g. LTX 2.3) | Free after hardware, but needs a capable GPU | High — workflow setup, model downloads, tuning | Can be very high once tuned, but slower to get there | Zero marginal cost at volume, full control, privacy-sensitive clients who don't want cloud processing |
+
+LTX 2.3 is worth naming specifically for the local path: it's an open-weight video model runnable in ComfyUI, so it's the closest local equivalent to the Seedance/Kling-class models above — weaker out of the box, but the only one of this group you can actually run on your own GPU instead of an API call.
 
 The honest tradeoff: local is genuinely free per-generation once set up, but the setup and iteration time cost is real — expect to spend a weekend tuning a ComfyUI workflow before it's reliable. API is the right default while you're still learning what "good" looks like; local becomes worth it once you're producing at real volume (dozens of ads/month) or a client specifically needs on-premise generation.
 

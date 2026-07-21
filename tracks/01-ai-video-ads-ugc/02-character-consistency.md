@@ -47,11 +47,13 @@ Say you generated an anchor image for a recurring "creator" — a woman in her l
 
 ## Compare Tools
 
+For the reference-image step itself, current-generation image models (e.g. Nano Banana 2/Pro, Seedream) hold facial identity noticeably better across prompt changes than older-generation image models — the anchor portrait used in the Worked Example above came from one of these. Model quality matters more here than almost anywhere else in the pipeline, since this whole module exists to fight identity drift.
+
 | Path | Consistency strength | Setup effort | Best for |
 |---|---|---|---|
 | **muapi API, reference-image conditioning** | Good — strong resemblance across generations | Low — pass a reference image param | Most UGC/ad work; fastest path to "good enough" |
 | **Other paid tools with built-in "character" features** | Varies — some wrap reference-image conditioning behind a simpler UI | Low | Teams wanting a GUI over the same underlying technique |
-| **Local (ComfyUI + trained LoRA)** | Strongest — near-identical identity across any prompt/scene | High — needs a training pass on multiple reference photos, then a workflow to use it | A recurring character used across dozens/hundreds of generations (an influencer, a channel host) where the training cost pays for itself |
+| **Local (ComfyUI + trained LoRA, or LTX 2.3 for the video side)** | Strongest — near-identical identity across any prompt/scene | High — needs a training pass on multiple reference photos, then a workflow to use it | A recurring character used across dozens/hundreds of generations (an influencer, a channel host) where the training cost pays for itself |
 
 Be honest with yourself about how many times you'll reuse this character. Reference-image conditioning via API is the right default for a one-off client ad. A trained local identity is worth the extra setup only once you're generating the same character repeatedly.
 
