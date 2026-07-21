@@ -1,49 +1,20 @@
-# Contributing to Awesome Hermes Agent
+# Contributing
 
-Thank you for helping keep this list accurate and useful.
+Contributions of new modules, fixes to existing ones, or new tracks are welcome.
 
-## What belongs here
+## Adding a module to an existing track
 
-This list covers resources directly related to the [Hermes Agent](https://github.com/NousResearch/hermes-agent) ecosystem or the [agentskills.io](https://agentskills.io) open standard. That includes:
+1. Copy the structure in [LESSON_TEMPLATE.md](LESSON_TEMPLATE.md) into a new `module.md` under the right numbered folder (`tracks/<NN>-<track-slug>/<NN>-<module-slug>/`).
+2. Include an `app.json` (`{"status": "existing", "repo_link": "..."}` if a working app already demonstrates this, or `{"status": "needed", "repo_link": null}` if not).
+3. Add an `outputs/` folder with any reusable artifact the module produces (a template, checklist, or script).
+4. Update [ROADMAP.md](ROADMAP.md) to mark the module's status.
 
-- Skills, plugins, and extensions
-- Tools, dashboards, and CLIs built on top of Hermes
-- Deployment configurations and infrastructure
-- Integrations that connect Hermes to other platforms
-- Guides, tutorials, and community documentation
+## Proposing a new track
 
-## Before submitting
+Open an issue describing the monetizable use case and any demand evidence (marketplace gig data, case studies, documented pricing) before writing modules — tracks are added based on real demand, not just interesting ideas.
 
-1. **Check for duplicates** — search the README to make sure the resource isn't already listed.
-2. **Verify the link** — the resource should be publicly accessible and have a working URL.
-3. **Check for a README** — the project should explain what it does and how to use it.
-4. **Check maintenance** — abandoned projects with no recent activity and no clear successor are generally not included.
+## Content rules
 
-## How to submit
-
-Open an issue with:
-
-- The name and link of the resource
-- A brief description (one or two sentences)
-- Which section it belongs in
-- A maturity tag: `production`, `beta`, or `experimental`
-
-Or submit a pull request that follows the existing format:
-
-```
-- **[tag]** [Project Name](url) by [Author](author-url) — Description of what it does and why it's useful.
-```
-
-Keep descriptions factual and specific. Avoid marketing language.
-
-## Maturity tags
-
-| Tag | Use when |
-|-----|----------|
-| **production** | Stable, documented, actively maintained |
-| **beta** | Works but still evolving — expect API or behavior changes |
-| **experimental** | Early-stage, proof of concept, or rarely updated |
-
-## Questions
-
-Open an issue if you're unsure whether something fits.
+- Never state an unverifiable income figure as fact — cite a source or mark it as an estimate.
+- Never name specific competitor course platforms, creators, or "gurus" — describe the pattern, not the source.
+- Every module must include the "Compare Tools" and "Launch It" sections — these are what differentiate this curriculum from a typical tutorial.
