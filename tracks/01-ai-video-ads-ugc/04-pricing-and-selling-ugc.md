@@ -68,6 +68,8 @@ Not applicable in the tool sense — this module is business skills, not a produ
 
 ## Outputs
 
+Reusable template(s) this module produces — fill these in and reuse them on real work:
+
 - [`outputs/outreach-template.md`](outputs/outreach-template.md) — cold outreach message template for pitching project-based work.
 - [`outputs/retainer-proposal-template.md`](outputs/retainer-proposal-template.md) — a fill-in retainer pitch structure.
 

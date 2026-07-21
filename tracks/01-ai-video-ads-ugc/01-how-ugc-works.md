@@ -108,6 +108,8 @@ The honest tradeoff: local is genuinely free per-generation once set up, but the
 
 ## Outputs
 
+Reusable template(s) this module produces — fill these in and reuse them on real work:
+
 - [`outputs/ugc-script-template.md`](outputs/ugc-script-template.md) — the hook/pitch/proof/CTA script structure as a fill-in-the-blank template.
 - [`outputs/ad-brief-checklist.md`](outputs/ad-brief-checklist.md) — a checklist for briefing yourself (or a client) before producing a batch.
 

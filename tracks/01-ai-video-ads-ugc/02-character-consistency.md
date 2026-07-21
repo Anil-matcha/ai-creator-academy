@@ -84,6 +84,8 @@ Be honest with yourself about how many times you'll reuse this character. Refere
 
 ## Outputs
 
+Reusable template(s) this module produces — fill these in and reuse them on real work:
+
 - [`outputs/character-consistency-checklist.md`](outputs/character-consistency-checklist.md) — what to check for drift before delivering a batch to a client.
 
 ---

@@ -84,6 +84,8 @@ Producing these 3 took re-using the same uploaded anchor image across 3 separate
 
 ## Outputs
 
+Reusable template(s) this module produces — fill these in and reuse them on real work:
+
 - [`outputs/batch-matrix-template.md`](outputs/batch-matrix-template.md) — a fill-in template for planning hook × angle combinations before production.
 
 ---

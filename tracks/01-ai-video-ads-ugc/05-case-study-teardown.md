@@ -65,6 +65,8 @@ Not applicable — this module is an analysis skill, not a production technique.
 
 ## Outputs
 
+Reusable template(s) this module produces — fill these in and reuse them on real work:
+
 - [`outputs/teardown-worksheet.md`](outputs/teardown-worksheet.md) — the five-layer teardown structure as a fill-in worksheet.
 
 ---

@@ -4,6 +4,8 @@
 
 Five modules, in order. Each is one markdown file — click straight in, no subfolders. Every module follows the same structure: Problem → Concept → Do It → Compare Tools → Launch It → Exercises.
 
+**"Outputs" below** = the reusable template(s) each module produces (a script template, checklist, pricing sheet) — actual files you fill in and reuse, saved in [`outputs/`](outputs/).
+
 | # | Module | Time | Requires |
 |:---:|---|:---:|---|
 | 1 | [How AI UGC Actually Works](01-how-ugc-works.md) | ~45 min | — |
