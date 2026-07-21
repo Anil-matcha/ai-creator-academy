@@ -34,16 +34,16 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 4 | Scaling to Multiple Channels | ✅ |
 | 5 | Monetization Ladder | ✅ |
 
-## Track 4 — AI Content Factories ⬜
+## Track 4 — AI Content Factories ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | The Idea → Script → Storyboard → Video → Voice → Music → Captions → Publish Pipeline | ⬜ |
-| 2 | Building a TikTok/Reels Factory | ⬜ |
-| 3 | Building a YouTube Shorts Factory | ⬜ |
-| 4 | AI Thumbnail Design | ⬜ |
-| 5 | Batching & Scheduling at Volume | ⬜ |
-| 6 | Selling Content-Factory Output as a Service | ⬜ |
+| 1 | The Idea → Script → Storyboard → Video → Voice → Music → Captions → Publish Pipeline | ✅ |
+| 2 | Building a TikTok/Reels Factory | ✅ |
+| 3 | Building a YouTube Shorts Factory | ✅ |
+| 4 | AI Thumbnail Design | ✅ |
+| 5 | Batching & Scheduling at Volume | ✅ |
+| 6 | Selling Content-Factory Output as a Service | ✅ |
 
 ## Track 5 — AI Avatars & Influencers ⬜
 
