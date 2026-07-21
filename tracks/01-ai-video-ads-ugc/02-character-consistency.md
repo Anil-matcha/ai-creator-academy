@@ -56,3 +56,7 @@ Be honest with yourself about how many times you'll reuse this character. Refere
 ## Outputs
 
 - `outputs/character-consistency-checklist.md` — what to check for drift before delivering a batch to a client.
+
+---
+
+[← Previous: How AI UGC Actually Works](01-how-ugc-works.md) · [Track overview](README.md) · Next: [Building a 10-Ad Batch →](03-building-an-ad-batch.md)

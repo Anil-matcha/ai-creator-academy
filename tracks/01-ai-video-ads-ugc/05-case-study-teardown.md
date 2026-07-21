@@ -46,3 +46,7 @@ Not applicable — this module is an analysis skill, not a production technique.
 ## Outputs
 
 - `outputs/teardown-worksheet.md` — the five-layer teardown structure as a fill-in worksheet.
+
+---
+
+[← Previous: Pricing & Selling UGC Ads](04-pricing-and-selling-ugc.md) · [Track overview](README.md) · You've completed Track 1 — see [ROADMAP.md](../../ROADMAP.md) for what's next.

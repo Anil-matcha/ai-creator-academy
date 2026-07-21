@@ -56,3 +56,7 @@ Varying all three per ad would make every ad different in every way, making it i
 ## Outputs
 
 - `outputs/batch-matrix-template.md` — a fill-in template for planning hook × angle combinations before production.
+
+---
+
+[← Previous: Character & Face Consistency](02-character-consistency.md) · [Track overview](README.md) · Next: [Pricing & Selling UGC Ads →](04-pricing-and-selling-ugc.md)
