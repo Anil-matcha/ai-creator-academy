@@ -35,7 +35,7 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 | # | Track | What you build | Modules | Status |
 |---|---|---|---|---|
 | 1 | [AI Video Ads & UGC](tracks/01-ai-video-ads-ugc/) | Sellable UGC-style ad batches for real brands | 5 | ✅ Live |
-| 2 | [AI Filmmaking](tracks/02-ai-filmmaking/) | Short films, trailers, music videos | 5 | ⬜ Coming soon |
+| 2 | [AI Filmmaking](tracks/02-ai-filmmaking/) | Short films, trailers, music videos | 5 | ✅ Live |
 | 3 | [Faceless AI Channels](tracks/03-faceless-ai-channels/) | A YouTube/TikTok channel with no camera | 5 | ⬜ Coming soon |
 | 4 | [AI Content Factories](tracks/04-ai-content-factories/) | Idea → script → video → publish, at volume | 6 | ⬜ Coming soon |
 | 5 | [AI Avatars & Influencers](tracks/05-ai-avatars-and-influencers/) | A consistent AI character as a business | 5 | ⬜ Coming soon |

@@ -14,15 +14,15 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 4 | Pricing & Selling UGC Ads | ✅ |
 | 5 | Case Study Teardown | ✅ |
 
-## Track 2 — AI Filmmaking ⬜
+## Track 2 — AI Filmmaking ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Screenplay & Story Generation | ⬜ |
-| 2 | Storyboarding & Shot Planning | ⬜ |
-| 3 | Camera Movement & Cinematography Prompts | ⬜ |
-| 4 | Assembling a Short Film | ⬜ |
-| 5 | Selling Short-Form Films (festivals, sponsors, licensing) | ⬜ |
+| 1 | Screenplay & Story Generation | ✅ |
+| 2 | Storyboarding & Shot Planning | ✅ |
+| 3 | Camera Movement & Cinematography Prompts | ✅ |
+| 4 | Assembling a Short Film | ✅ |
+| 5 | Selling Short-Form Films (festivals, sponsors, licensing) | ✅ |
 
 ## Track 3 — Faceless AI Channels ⬜
 
