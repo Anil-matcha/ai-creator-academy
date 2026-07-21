@@ -45,15 +45,15 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 5 | Batching & Scheduling at Volume | ✅ |
 | 6 | Selling Content-Factory Output as a Service | ✅ |
 
-## Track 5 — AI Avatars & Influencers ⬜
+## Track 5 — AI Avatars & Influencers ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Building a Consistent AI Character | ⬜ |
-| 2 | Character to Content Pipeline | ⬜ |
-| 3 | Monetization Tiers by Follower Count | ⬜ |
-| 4 | Agency Case Study: Small-Team Economics | ⬜ |
-| 5 | Platform Economics & Fee Disclosure | ⬜ |
+| 1 | Building a Consistent AI Character | ✅ |
+| 2 | Character to Content Pipeline | ✅ |
+| 3 | Voice Cloning & Dialogue | ✅ |
+| 4 | Monetization Tiers by Follower Count | ✅ |
+| 5 | Agency Case Study: Small-Team Economics | ✅ |
 
 ## Track 6 — AI Audio & Music ⬜
 

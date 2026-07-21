@@ -38,7 +38,7 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 | 2 | [AI Filmmaking](tracks/02-ai-filmmaking/) | Short films, trailers, music videos | 5 | ✅ Live |
 | 3 | [Faceless AI Channels](tracks/03-faceless-ai-channels/) | A YouTube/TikTok channel with no camera | 5 | ✅ Live |
 | 4 | [AI Content Factories](tracks/04-ai-content-factories/) | Idea → script → video → publish, at volume | 6 | ✅ Live |
-| 5 | [AI Avatars & Influencers](tracks/05-ai-avatars-and-influencers/) | A consistent AI character as a business | 5 | ⬜ Coming soon |
+| 5 | [AI Avatars & Influencers](tracks/05-ai-avatars-and-influencers/) | A consistent AI character as a business | 5 | ✅ Live |
 | 6 | [AI Audio & Music](tracks/06-ai-audio-and-music/) | Voice cloning, dubbing, podcasts, music | 5 | ⬜ Coming soon |
 | 7 | [AI Product Photography](tracks/07-ai-product-photography/) | Studio-quality product shots, no photographer | 4 | ⬜ Coming soon |
 | 8 | [AI Fashion & Virtual Try-On](tracks/08-ai-fashion-and-virtual-tryon/) | Garment try-on for fashion e-commerce | 4 | ⬜ Coming soon |
