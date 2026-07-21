@@ -9,6 +9,16 @@
 
 <p align="center"><b>Free, open-source curriculum for making money with generative AI image, video, and audio — for creators and agencies.</b></p>
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=SC9zJ6AxDek">
+    <img src="docs/assets/video-20-thumbnail.png" alt="AI Creator Academy: The Free Course Paid Communities Don't Want You to Find" width="640">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=SC9zJ6AxDek"><b>📺 AI Creator Academy: The Free Course Paid Communities Don't Want You to Find →</b></a>
+</p>
+
 ---
 
 Most AI education either teaches you to prompt a tool, or teaches you to build one. This teaches something else: how to turn AI-generated image/video/audio — or a tool you build yourself with a coding agent — into an actual, priced, sellable service or product. **Every module ends with pricing, positioning, and where to find your first client — not just "how it works."**
