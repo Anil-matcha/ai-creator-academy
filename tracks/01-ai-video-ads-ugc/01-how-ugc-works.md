@@ -62,7 +62,13 @@ Mapped to the structure:
 
 <p align="center"><i>An unedited first pass — lip movement is decent but not perfect, which is normal at this stage. Cutting in b-roll during the pitch/proof section (Do It, step 4) is what usually hides this kind of imperfection in a finished ad.</i></p>
 
-*How this was actually produced, end to end:* generated the anchor portrait with an image model (Module 2's example), uploaded it, then fed it to an image-to-video model with a prompt describing the action and the line of dialogue — no separate TTS/lip-sync pass in this case, since the video model handled speech and mouth movement in one step. The same pipeline (image → video model, prompt-driven) is what "Generate or animate the avatar" in Do It, step 3 means in practice.
+*How this was actually produced, end to end, via the muapi API:*
+1. Generated the anchor portrait with **`nano-banana-2`** (text-to-image, $0.06/image) — the same image used in Module 2's example.
+2. Uploaded that image via muapi's `upload_file` endpoint to get a URL the next model could reference.
+3. Fed that image URL into **`seedance-2-image-to-video-fast`** (image-to-video, $0.75/clip) with a prompt describing the action and the exact line of dialogue — no separate TTS/lip-sync pass was needed, since this model generates speech and mouth movement together from the prompt.
+4. Downloaded the resulting `.mp4` from muapi's CDN (generated outputs expire after 30 days, so anything you want to keep needs downloading promptly) and converted it to the silent GIF preview above with `ffmpeg` for inline display.
+
+Total cost for this one clip: **$0.81** across the two model calls. This is exactly the "image → video model, prompt-driven" pipeline described in Do It, step 3 — the models named here are current examples, not a fixed recommendation; see Compare Tools below for how to pick a model when these become outdated.
 
 ## Compare Tools
 
