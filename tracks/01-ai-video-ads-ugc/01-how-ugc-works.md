@@ -31,10 +31,11 @@ The reason this pipeline matters more than any single "best model" is that each 
 ## Do It
 
 1. **Write the script.** Keep it under 30 seconds spoken (~75-90 words). Structure: hook (first 2 seconds — a question, a bold claim, or a visual surprise), problem/pitch (10-15 seconds), proof or demo (10-15 seconds), call-to-action (last 2-3 seconds).
-2. **Generate the voice.** Use a text-to-speech or voice-cloning model to turn the script into natural-sounding narration. Match tone to the product (energetic for a gadget, calm for skincare).
+2. **Generate the voice.** Use a text-to-speech or voice-cloning model to turn the script into natural-sounding narration. Match tone to the product (energetic for a gadget, calm for skincare) — and don't stop at the first take. Generate 2-3 versions varying pacing and emphasis (which word gets stressed in the hook line changes how "surprised" or "casual" it reads), and pick the one that sounds least like it's being read off a page. Accent/demographic match to the product's likely audience matters here too — a mismatched voice can undercut an otherwise good script.
 3. **Generate or animate the avatar.** Either generate a talking-head video directly from the script/voice, or animate a reference image with lip-sync driven by the audio track.
 4. **Add b-roll.** Cut in product shots or screen recordings during the pitch/proof section — this also hides any short imperfect stretches in the avatar footage.
 5. **Caption and export.** Auto-generate captions, burn them in, and export at 9:16 for short-form platforms.
+6. **Ship check.** Before sending anything to a client, watch the finished ad once with sound off (does the hook work from captions alone?) and once with sound on at regular volume. If you catch yourself pausing anywhere to figure out what's happening, a client will too — that's a sign to fix pacing or cut, not just ship it and see.
 
 ## Worked Example
 

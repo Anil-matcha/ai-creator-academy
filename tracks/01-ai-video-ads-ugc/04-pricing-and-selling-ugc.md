@@ -58,6 +58,10 @@ This module is business skills, not a production technique — the tool comparis
 
 **The real numbers, and how to talk about them honestly:** Named case studies exist of individual brands running AI-UGC-style ad creative at $600K+/month in spend — cite this as evidence the format works at scale, never imply you personally will replicate someone else's ad-spend figure. When you publish your own results, publish the actual number and how it was measured (see the cross-track "Show Your Real Numbers" module) — this is your biggest trust advantage over competitors making vague income claims.
 
+**Handling revisions, honestly:** landing the sale isn't the end of the work — every price above (gig, batch, retainer) needs a stated number of revision rounds *before* you quote it, not after a client asks. One free round is standard; scope it as "1 revision round included" in the listing/proposal itself (see the retainer template), and treat anything beyond that as new work, not a favor. Two situations come up often:
+- **The client wants something the model genuinely can't do well** (a very specific product interaction, an exact competitor-ad shot-for-shot copy) — say so directly and offer the closest alternative, rather than burning 3 revision rounds trying to force it. Clients respect a clear "here's what's realistic" more than a vague "let me try."
+- **Vague feedback** ("make it pop more") — turn it into a specific question ("do you mean a faster cut, a different hook, or a different CTA?") before redoing anything. Guessing wrong wastes a revision round on both sides.
+
 ## Exercises
 
 1. **Easy:** Write a gig listing description for UGC ad production, priced within the documented range.
