@@ -1,7 +1,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1a1a1a?style=flat-square" alt="MIT License"></a>
-  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/tracks-14-3553ff?style=flat-square" alt="14 tracks"></a>
-  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/modules-60_mapped-3553ff?style=flat-square" alt="60 modules mapped"></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/tracks-15-3553ff?style=flat-square" alt="15 tracks"></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/modules-64_mapped-3553ff?style=flat-square" alt="64 modules mapped"></a>
   <a href="https://github.com/Anil-matcha/ai-creator-academy/stargazers"><img src="https://img.shields.io/github/stars/Anil-matcha/ai-creator-academy?style=flat-square&color=3553ff" alt="GitHub stars"></a>
 </p>
 
@@ -11,7 +11,7 @@
 
 ---
 
-Most AI education either teaches you to prompt a tool, or teaches you to build one. This teaches neither — it teaches you to turn AI-generated image/video/audio into an actual, priced, sellable service or product. **Every module ends with pricing, positioning, and where to find your first client — not just "how it works."**
+Most AI education either teaches you to prompt a tool, or teaches you to build one. This teaches something else: how to turn AI-generated image/video/audio — or a tool you build yourself with a coding agent — into an actual, priced, sellable service or product. **Every module ends with pricing, positioning, and where to find your first client — not just "how it works."**
 
 > ⭐ **[Star this repo](https://github.com/Anil-matcha/ai-creator-academy/stargazers)** to bookmark it — new tracks and modules ship regularly.
 
@@ -30,7 +30,7 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 
 ## Tracks
 
-14 independent tracks — pick whichever matches the business you want to build, in any order. Numbered by demand evidence and coverage breadth, not by difficulty or prerequisite order. See [ROADMAP.md](ROADMAP.md) for full module-by-module status.
+15 independent tracks — pick whichever matches the business you want to build, in any order. Numbered by demand evidence and coverage breadth, not by difficulty or prerequisite order. See [ROADMAP.md](ROADMAP.md) for full module-by-module status.
 
 | # | Track | What you build | Modules | Status |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 | 12 | [AI Stock Content & Licensing](tracks/12-ai-stock-content-and-licensing/) | A licensable stock catalog, sold repeatedly | 3 | ⬜ Coming soon |
 | 13 | [AI Tools Mastery](tracks/13-ai-tools-mastery/) | Which model for which outcome — a buyer's guide | 4 | ⬜ Coming soon |
 | 14 | [AI Freelancing & Agency Business](tracks/14-ai-freelancing-and-agency-business/) | Pricing, contracts, clients, scaling a team | 5 | ⬜ Coming soon |
+| 15 | [AI Agents & Vibe-Coding for Creators](tracks/15-ai-agents-and-vibe-coding/) | Sellable micro-tools, no CS degree needed | 4 | ⬜ Coming soon |
 
 ### Start here
 
@@ -143,7 +144,7 @@ open tracks/01-ai-video-ads-ugc/01-how-ugc-works/module.md
 ## FAQ
 
 **Do I need to know how to code?**
-No. Every module is written for creators and freelancers — the only technical step in most modules is calling a generation API or using a tool's UI.
+No. Every module is written for creators and freelancers — the only technical step in most modules is calling a generation API or using a tool's UI. If you want to go further, [Track 15](tracks/15-ai-agents-and-vibe-coding/) covers using coding agents to build your own tools — no prior programming background required there either.
 
 **Do I have to use muapi.ai?**
 No — any generative media provider works. muapi.ai is used as the reference implementation throughout because it aggregates many models behind one API, but the underlying technique in each module isn't provider-specific.
