@@ -4,7 +4,7 @@
 
 Five modules, in order. Each is one markdown file — click straight in, no subfolders. Every module follows the same structure: Problem → Concept → Do It → Compare Tools → Launch It → Exercises.
 
-**"Outputs" below** = the reusable template(s) each module produces (a script template, checklist, pricing sheet) — actual files you fill in and reuse, saved in [`templates/`](templates/).
+**"Templates" below** = the reusable template(s) each module produces (a script template, checklist, pricing sheet) — actual files you fill in and reuse, saved in [`templates/`](templates/).
 
 | # | Module | Time | Requires |
 |:---:|---|:---:|---|
@@ -25,7 +25,7 @@ Five modules, in order. Each is one markdown file — click straight in, no subf
 - Why avatar face/voice sync — not the script — is usually what gets an ad rejected
 - Real pricing context: $10-$55/ad gig rates, $1,500-$3,000/mo agency retainers
 
-**Outputs:** [`ugc-script-template.md`](templates/ugc-script-template.md) · [`ad-brief-checklist.md`](templates/ad-brief-checklist.md)
+**Templates:** [`ugc-script-template.md`](templates/ugc-script-template.md) · [`ad-brief-checklist.md`](templates/ad-brief-checklist.md)
 
 ### 2. [Character & Face Consistency](02-character-consistency.md)
 
@@ -35,7 +35,7 @@ Five modules, in order. Each is one markdown file — click straight in, no subf
 - Three anchor techniques, weakest to strongest: prompt-only → reference-image conditioning → trained/locked identity (LoRA)
 - A drift-check workflow, and when a one-time LoRA training pass pays for itself
 
-**Outputs:** [`character-consistency-checklist.md`](templates/character-consistency-checklist.md)
+**Templates:** [`character-consistency-checklist.md`](templates/character-consistency-checklist.md)
 
 ### 3. [Building a 10-Ad Batch](03-building-an-ad-batch.md)
 
@@ -45,7 +45,7 @@ Five modules, in order. Each is one markdown file — click straight in, no subf
 - Why varying everything at once makes results unreadable
 - Delivering a batch with a test plan the client can actually use
 
-**Outputs:** [`batch-matrix-template.md`](templates/batch-matrix-template.md)
+**Templates:** [`batch-matrix-template.md`](templates/batch-matrix-template.md)
 
 ### 4. [Pricing & Selling UGC Ads as a Service](04-pricing-and-selling-ugc.md)
 
@@ -55,7 +55,7 @@ Five modules, in order. Each is one markdown file — click straight in, no subf
 - Building a portfolio from your first few pieces
 - Outreach that leads with a finished sample, not your process
 
-**Outputs:** [`outreach-template.md`](templates/outreach-template.md) · [`retainer-proposal-template.md`](templates/retainer-proposal-template.md)
+**Templates:** [`outreach-template.md`](templates/outreach-template.md) · [`retainer-proposal-template.md`](templates/retainer-proposal-template.md)
 
 ### 5. [Case Study Teardown](05-case-study-teardown.md)
 
@@ -65,7 +65,7 @@ Five modules, in order. Each is one markdown file — click straight in, no subf
 - Turns "that ad performed well" into reusable structural takeaways
 - Doubles as a sales tool: a free teardown as a prospecting opener
 
-**Outputs:** [`teardown-worksheet.md`](templates/teardown-worksheet.md)
+**Templates:** [`teardown-worksheet.md`](templates/teardown-worksheet.md)
 
 ---
 

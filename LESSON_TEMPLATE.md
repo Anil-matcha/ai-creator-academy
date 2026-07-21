@@ -51,7 +51,7 @@ checkable.]
 2. [Medium — apply it to a different case]
 3. [Hard — combine with a prior module or scale it up]
 
-## Outputs
+## Templates
 
 [List the reusable artifacts this module produces, saved in this module's
 `templates/` folder — e.g. a prompt template, a pricing sheet, an outreach

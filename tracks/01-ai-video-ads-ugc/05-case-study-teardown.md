@@ -82,7 +82,7 @@ Use it as a learning aid (compare its read to your own to check your instincts) 
 2. **Medium:** Tear down 3 ads in the same category and identify what's common across all three (a shared structural pattern) versus what's unique to each.
 3. **Hard:** Apply a teardown's structural takeaway to produce a new ad for a different product, and write down which specific choice you borrowed and why.
 
-## Outputs
+## Templates
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 

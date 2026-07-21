@@ -106,7 +106,7 @@ The honest tradeoff: local is genuinely free per-generation once set up, but the
 2. **Medium:** Produce one full ad end-to-end (script → voice → avatar → captions → export) for a real or hypothetical product.
 3. **Hard:** Produce 5 variants of the same ad (same product, different hooks or angles) and compare which hook you'd expect to perform best, and why.
 
-## Outputs
+## Templates
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 

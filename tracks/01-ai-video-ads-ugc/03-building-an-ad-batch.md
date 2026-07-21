@@ -82,7 +82,7 @@ Producing these 3 took re-using the same uploaded anchor image across 3 separate
 2. **Medium:** Produce a 5-ad batch end-to-end, holding character and CTA constant while varying hook and angle.
 3. **Hard:** Produce a 10-ad batch and write a one-page "test plan" a client could use to track which variant performed best.
 
-## Outputs
+## Templates
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 

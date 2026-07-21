@@ -64,7 +64,7 @@ This module is business skills, not a production technique — the tool comparis
 2. **Medium:** Write a cold outreach message to a real DTC brand, including a sample ad you produced for their product category.
 3. **Hard:** Draft a retainer proposal (scope, monthly ad count, price, revision policy) as if pitching a real brand after 2 successful projects.
 
-## Outputs
+## Templates
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 

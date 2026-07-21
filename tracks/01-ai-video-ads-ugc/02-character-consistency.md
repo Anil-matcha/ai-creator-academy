@@ -82,7 +82,7 @@ Be honest with yourself about how many times you'll reuse this character. Refere
 2. **Medium:** Generate the same character in 5 different scenes/backgrounds and identify which details drift first (usually: age, specific facial proportions, hairstyle).
 3. **Hard:** Set up a local ComfyUI workflow with a trained identity for one character and compare consistency against the API reference-image approach for the same 5 scenes.
 
-## Outputs
+## Templates
 
 Reusable template(s) this module produces — fill these in and reuse them on real work:
 
