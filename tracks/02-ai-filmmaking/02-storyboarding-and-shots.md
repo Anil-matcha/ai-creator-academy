@@ -62,13 +62,6 @@ Place the storyboard frames next to each other. Do a drift check:
 
 ## Worked Example
 
-<p align="center">
-<img src="templates/examples/storyboard-shot1-wide.jpg" alt="Shot 1 Wide" width="240">
-<img src="templates/examples/storyboard-shot2-medium.jpg" alt="Shot 2 Medium" width="240">
-<img src="templates/examples/storyboard-anim-clip.gif" alt="Animated Storyboard Sequence (I2V)" width="240">
-</p>
-<p align="center"><sub>Storyboard Frame 1 (Left) ──► Frame 2 (Center) ──► Image-to-Video Animation (Right) · <a href="templates/examples/storyboard-anim-clip.mp4">MP4</a></sub></p>
-
 **Storyboard Script & Scene Breakdown for "The Last Signal" (Scene 1)**
 
 Below is the screenplay script excerpt for Scene 1 and its corresponding 3-shot AI storyboard breakdown:
@@ -86,18 +79,33 @@ Day 412. Still no response from deep space relay Theta. If anyone is listening..
 The overhead monitor flickers aggressively before flashing stark green text: NO SIGNAL.
 ```
 
-### Storyboard Shot List & AI Prompts
+### Storyboard Shot List & Visual Examples
 
-We generated 3 actual storyboard frames from this script excerpt:
+We generated 3 actual storyboard frames and an Image-to-Video clip from this script excerpt:
 
-**Shot 1: Wide Establishing Shot (WS)**
+#### Shot 1: Wide Establishing Shot (WS)
+<p align="center">
+<img src="templates/examples/storyboard-shot1-wide.jpg" alt="Shot 1 Wide Establishing Shot" width="480">
+</p>
 > **Prompt:** `"Cinematic 35mm film photograph, establishing wide shot of a cramped spaceship cockpit. glowing green control panels line the curved metallic walls. Muted teal lighting with deep shadows. No characters. Widescreen, highly detailed."`
 
-**Shot 2: Medium Shot (MS - Character Intro)**
+#### Shot 2: Medium Shot (MS - Character Intro)
+<p align="center">
+<img src="templates/examples/storyboard-shot2-medium.jpg" alt="Shot 2 Medium Character Intro" width="480">
+</p>
 > **Prompt:** `"Cinematic 35mm film photograph, medium shot of a tired astronaut (40s, short gray hair, stubble, wearing a worn silver flight suit) sitting in a pilot seat inside a spaceship cockpit. Cool blue light illuminates his face, glowing green control panels out of focus in the background. Widescreen."` *(Reference Image: Character Anchor)*
 
-**Shot 3: Close-up (CU - Prop Detail Shot)**
+#### Shot 3: Close-up (CU - Prop Detail Shot)
+<p align="center">
+<img src="templates/examples/storyboard-shot3-closeup.jpg" alt="Shot 3 Close-up CRT Monitor" width="480">
+</p>
 > **Prompt:** `"Cinematic 35mm film photograph, extreme close-up of a dusty CRT monitor screen showing static and a flashing green text reading 'NO SIGNAL'. Widescreen."`
+
+#### Shot 4: Image-to-Video Motion Animation (I2V)
+<p align="center">
+<img src="templates/examples/storyboard-anim-clip.gif" alt="Animated Storyboard Sequence (I2V)" width="480">
+</p>
+<p align="center"><sub>Image-to-Video Animated Storyboard Sequence · <a href="templates/examples/storyboard-anim-clip.mp4">Download MP4 Video</a></sub></p>
 
 
 
