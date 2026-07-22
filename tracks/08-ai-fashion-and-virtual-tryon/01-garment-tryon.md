@@ -60,9 +60,9 @@ Zoom in on the final image and inspect these key areas:
 <p align="center">
 <img src="templates/examples/linen-shirt-vto.jpg" alt="Linen Shirt Ghost Mannequin vs VTO Model" width="480">
 <br>
-<img src="templates/examples/linen-shirt-motion.gif" alt="Linen Shirt Motion Loop" width="360">
+<img src="templates/examples/linen-shirt-motion.gif" alt="Linen Shirt Motion Loop (I2V)" width="360">
 </p>
-<p align="center"><sub>Virtual Try-On Model Result (Top) & Fabric Motion Loop (Bottom) · <a href="templates/examples/linen-shirt-motion.mp4">MP4</a></sub></p>
+<p align="center"><sub>Virtual Try-On Model Image (Top) ──► Image-to-Video Fabric Motion Loop (Bottom) · <a href="templates/examples/linen-shirt-motion.mp4">MP4</a></sub></p>
 
 **Linen Shirt Mannequin-to-Model Swap**
 

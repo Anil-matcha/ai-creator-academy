@@ -55,13 +55,9 @@ Place your b-roll clips on video track V1, matching the cuts exactly to the audi
 ## Worked Example
 
 <p align="center">
-<img src="templates/examples/faceless-clip.gif" alt="Narration-Synced Video Loop" width="320">
+<img src="templates/examples/faceless-clip.gif" alt="Narration-Synced Video Loop (I2V)" width="240">
 </p>
-<p align="center"><sub>AI-Generated Narration Video Loop · <a href="templates/examples/faceless-clip.mp4">Download MP4</a></sub></p>
-
-
-
-
+<p align="center"><sub>Image-to-Video Narration Loop · <a href="templates/examples/faceless-clip.mp4">Download MP4</a></sub></p>
 
 **Timeline Setup for "Automate Smarter" (First 10 seconds)**
 

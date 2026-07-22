@@ -60,13 +60,9 @@ If the action requires a precise end point, upload a second storyboard image to 
 ## Worked Example
 
 <p align="center">
-<img src="templates/examples/astronaut-clip.gif" alt="Cinematic Dolly Motion Clip" width="480">
+<img src="templates/examples/astronaut-clip.gif" alt="Cinematic Dolly Motion Clip (I2V)" width="480">
 </p>
-<p align="center"><sub>AI-Generated Camera Movement Animation Loop (Shot 1.2 Dolly-In) · <a href="templates/examples/astronaut-clip.mp4">Download MP4</a></sub></p>
-
-
-
-
+<p align="center"><sub>Image-to-Video Camera Motion Animation (Shot 1.2 Dolly-In) · <a href="templates/examples/astronaut-clip.mp4">Download MP4</a></sub></p>
 
 **Animating Shot 1.2 from "The Last Signal"**
 

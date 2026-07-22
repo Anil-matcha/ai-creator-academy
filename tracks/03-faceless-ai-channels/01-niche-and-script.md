@@ -57,9 +57,9 @@ Read your finished draft script out loud. If you stumble on a sentence, or if it
 
 <p align="center">
 <img src="templates/examples/faceless-anchor.jpg" alt="Faceless Channel Visual Anchor" width="240">
-<img src="templates/examples/faceless-niche-intro.gif" alt="Faceless Niche Video Loop" width="240">
+<img src="templates/examples/faceless-niche-intro.gif" alt="Faceless Niche Video Loop (I2V)" width="240">
 </p>
-<p align="center"><sub>Faceless Channel Storyboard Anchor (Left) & Motion Loop (Right) · <a href="templates/examples/faceless-niche-intro.mp4">MP4</a></sub></p>
+<p align="center"><sub>Faceless Channel Image (Left) ──► Image-to-Video Motion Loop (Right) · <a href="templates/examples/faceless-niche-intro.mp4">MP4</a></sub></p>
 
 **Niche Evaluation & Script for "Automate Smarter" (SaaS Automation Niche)**
 

@@ -55,13 +55,9 @@ Import the talking-head video into CapCut. Do not leave the talking head on scre
 ## Worked Example
 
 <p align="center">
-<img src="templates/examples/emma-clip.gif" alt="Avatar Video Clip Loop" width="320">
+<img src="templates/examples/emma-clip.gif" alt="Avatar Video Clip Loop (I2V)" width="260">
 </p>
-<p align="center"><sub>AI-Generated Avatar Video Clip · <a href="templates/examples/emma-clip.mp4">Download MP4</a></sub></p>
-
-
-
-
+<p align="center"><sub>Image-to-Video Avatar Animation Loop · <a href="templates/examples/emma-clip.mp4">Download MP4</a></sub></p>
 
 **Animating "Emma" for a 60-Second Short**
 

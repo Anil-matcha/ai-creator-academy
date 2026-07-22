@@ -59,13 +59,9 @@ Export the completed lookbook files as high-quality WebP.
 
 <p align="center">
 <img src="templates/examples/fashion-lookbook-model.jpg" alt="Editorial Fashion Lookbook Model" width="240">
-<img src="templates/examples/fashion-lookbook-loop.gif" alt="Lookbook Motion Loop" width="240">
+<img src="templates/examples/fashion-lookbook-loop.gif" alt="Lookbook Motion Loop (I2V)" width="240">
 </p>
-<p align="center"><sub>AI-Generated Editorial Studio Lookbook Portrait (Left) & Motion Loop (Right) · <a href="templates/examples/fashion-lookbook-loop.mp4">MP4</a></sub></p>
-
-
-
-
+<p align="center"><sub>Editorial Studio Lookbook Image (Left) ──► Image-to-Video Camera Motion (Right) · <a href="templates/examples/fashion-lookbook-loop.mp4">MP4</a></sub></p>
 
 **Cashmere Collection Lookbook (Nordic Autumn Theme)**
 

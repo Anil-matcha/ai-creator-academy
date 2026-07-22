@@ -56,13 +56,9 @@ Check the first frame of your video and the last frame of your video. If the fir
 ## Worked Example
 
 <p align="center">
-<img src="templates/examples/focus-loop-clip.gif" alt="YouTube Shorts Infinite Loop Video" width="320">
+<img src="templates/examples/focus-loop-clip.gif" alt="YouTube Shorts Infinite Loop Video (I2V)" width="240">
 </p>
-<p align="center"><sub>AI-Generated YouTube Shorts Seamless Infinite Loop · <a href="templates/examples/focus-loop-clip.mp4">Download MP4</a></sub></p>
-
-
-
-
+<p align="center"><sub>Image-to-Video Shorts Infinite Motion Loop · <a href="templates/examples/focus-loop-clip.mp4">Download MP4</a></sub></p>
 
 **Loop Build: "Focus Blueprint" (Productivity Niche)**
 
