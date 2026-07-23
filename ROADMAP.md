@@ -98,14 +98,14 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 1 | Consistent Headshot Generation | ✅ |
 | 2 | Standing Out Against Fiverr Competition | ✅ |
 
-## Track 11 — AI Print-on-Demand & Merch Design ⬜
+## Track 11 — AI Print-on-Demand & Merch Design ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Designing Sellable AI Art for Merch | ⬜ |
-| 2 | Print-on-Demand Platform Basics (Etsy, Redbubble-style) | ⬜ |
-| 3 | Building a Catalog Without Repeating Yourself | ⬜ |
-| 4 | Pricing & Passive-Income Math for POD | ⬜ |
+| 1 | Designing Sellable AI Art for Merch | ✅ |
+| 2 | Print-on-Demand Platform Basics (Etsy, Redbubble-style) | ✅ |
+| 3 | Building a Catalog Without Repeating Yourself | ✅ |
+| 4 | Pricing & Passive-Income Math for POD | ✅ |
 
 ## Track 12 — AI Stock Content & Licensing ⬜
 
