@@ -8,25 +8,18 @@
 
 | # | Module | Core Concept | Output / Deliverable |
 |---|---|---|---|
-| 1 | [What Coding Agents Actually Do](01-what-coding-agents-actually-do.md) | Agents vs. prompts vs. scripts — how AI coding tools work without a CS degree | Working mental model & first agent-run code file |
-| 2 | [Building Your First Sellable Micro-Tool](02-building-your-first-sellable-micro-tool.md) | Scoping, building, and wrapping a single-function creator tool with an agent | Deployed micro-tool (e.g., a FLUX prompt batch runner or an Etsy keyword generator) |
-| 3 | [The Vibe-Coding Workflow: Prompt → Build → Test → Ship](03-vibe-coding-workflow.md) | Iterative development loop using Claude Code or Cursor without reading source code | End-to-end shipped tool using structured vibe-coding sessions |
-| 4 | [Pricing & Selling Tools You Build With Agents](04-pricing-and-selling-tools.md) | Gumroad/LemonSqueezy digital product listing, lifetime vs. subscription pricing, and affiliate distribution | Live product page generating passive tool revenue |
+| 1 | [What Coding Agents Actually Do](01-what-coding-agents-actually-do.md) | Agent capabilities, context windows, non-developer terminology | Mental model & environment setup for vibe-coding |
+| 2 | [Building Your First Sellable Micro-Tool](02-building-your-first-sellable-micro-tool.md) | Scope definition, single-purpose apps, wrapping APIs (Replicate, ElevenLabs) | Working, deployable micro-tool web app prototype |
+| 3 | [The Vibe-Coding Workflow](03-vibe-coding-workflow.md) | Prompt → Build → Test → Ship loop, debugging via agent, avoiding code sprawl | Tested, error-free micro-tool codebase ready for hosting |
+| 4 | [Pricing & Selling Tools You Build](04-pricing-and-selling-tools.md) | Lifetime access vs. monthly subscription, API cost pass-through, Lemon Squeezy/Stripe integration | Monetization strategy & live sales page for your tool |
 
 ---
 
 ## 🛠️ Reusable Templates & Examples
 
-* [`templates/vibe-coding-session-brief.md`](templates/vibe-coding-session-brief.md) — Session planning templates, agent prompt frameworks, and tool spec sheets.
-* [`templates/micro-tool-product-page.md`](templates/micro-tool-product-page.md) — Gumroad/LemonSqueezy product page copy templates, pricing frameworks, and affiliate setup guides.
-* [`templates/tool-scope-definition.md`](templates/tool-scope-definition.md) — Single-function tool scope definitions, input/output specs, and monetization checklists.
-
----
-
-## 💡 Who This Track Is For
-
-This track assumes **zero coding background**. If you can write a detailed sentence explaining what you want a tool to do, you have all the skills needed. The coding agent handles the actual code — your job is to direct, test, and ship.
-
----
-
-[← Track 14: AI Freelancing & Agency Business](../14-ai-freelancing-and-agency-business/README.md) · [Academy Home](../../README.md)
+* [`templates/tool-scope-definition.md`](templates/tool-scope-definition.md) — 1-page spec template for scoping a sellable micro-tool before prompting your agent.
+* [`templates/vibe-coding-session-brief.md`](templates/vibe-coding-session-brief.md) — Initial system prompt template to prime your coding agent for clean code generation.
+* [`templates/micro-tool-product-page.md`](templates/micro-tool-product-page.md) — High-converting landing page structure and sales copy framework for creator micro-tools.
+* [`templates/tool-monetization-calculator.md`](templates/tool-monetization-calculator.md) — Unit economics calculator, API cost pass-through formulas, 3-tier SaaS pricing matrix, and payback period model.
+* [`templates/examples/vibe-coding-workspace.jpg`](templates/examples/vibe-coding-workspace.jpg) — Photorealistic 8k developer vibe-coding workstation setup ([vibe-coding-workspace-motion.mp4](templates/examples/vibe-coding-workspace-motion.mp4) / [.gif](templates/examples/vibe-coding-workspace-motion.gif)).
+* [`templates/examples/micro-tool-app-interface.jpg`](templates/examples/micro-tool-app-interface.jpg) — High-tech web application UI interface mockup for a sellable AI creator micro-tool SaaS ([micro-tool-app-motion.mp4](templates/examples/micro-tool-app-motion.mp4) / [.gif](templates/examples/micro-tool-app-motion.gif)).
