@@ -107,15 +107,15 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 3 | Building a Catalog Without Repeating Yourself | ✅ |
 | 4 | Pricing & Passive-Income Math for POD | ✅ |
 
-## Track 12 — AI Stock Content & Licensing ⬜
+## Track 12 — AI Stock Content & Licensing ✅
 
 The only track with no client relationship at all — generate once, license repeatedly.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | What Actually Sells on Stock Marketplaces | ⬜ |
-| 2 | Batch-Generating a Licensable Catalog | ⬜ |
-| 3 | Licensing Models & Realistic Passive-Income Expectations | ⬜ |
+| 1 | What Actually Sells on Stock Marketplaces | ✅ |
+| 2 | Batch-Generating a Licensable Catalog | ✅ |
+| 3 | Licensing Models & Realistic Passive-Income Expectations | ✅ |
 
 ## Track 13 — AI Tools Mastery ⬜
 
