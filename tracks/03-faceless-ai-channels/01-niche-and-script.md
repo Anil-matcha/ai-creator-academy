@@ -24,7 +24,7 @@ Earnings = (Views / 1000) * RPM + Direct Conversions
 
 To maximize this, we focus on:
 * **High-CPM Niches:** Industries that sell high-priced products (e.g. business software, SaaS, banking, real estate, luxury travel). Advertisers in these fields bid heavily to show ads, driving your RPM up to $10–$30. At $20 RPM, you only need 50,000 views to make $1,000.
-* **The Retention Curve:** The drop-off in viewer attention occurs mostly in the first 5–10 seconds. We counter this drop-off using a structured script template that leads with a powerful hook (fear or desire), followed by a core problem, a step-by-step solve, and periodic **pattern interrupts** (visual changes or audio SFX) every 3-5 seconds.
+* **The Retention Curve:** Most viewers hit the exit button within the first 5–10 seconds — that's the sharpest drop in how long people keep watching. We fight this by leading the script with a powerful hook (fear or desire), followed by a core problem, a step-by-step solve, and **pattern interrupts** (visual changes or audio SFX) every 3–5 seconds to restart attention.
 
 ---
 
@@ -59,7 +59,7 @@ Read your finished draft script out loud. If you stumble on a sentence, or if it
 <img src="templates/examples/faceless-anchor.jpg" alt="Faceless Channel Visual Anchor" width="240">
 <img src="templates/examples/faceless-niche-intro.gif" alt="Faceless Niche Video Loop (I2V)" width="240">
 </p>
-<p align="center"><sub>Faceless Channel Image (Left) ──► Image-to-Video Motion Loop (Right) · <a href="templates/examples/faceless-niche-intro.mp4">MP4</a></sub></p>
+<p align="center"><sub>Faceless Channel Image (Left) ──► Image-to-Video Motion Loop (Right) · Video File: <a href="templates/examples/faceless-niche-intro.mp4">templates/examples/faceless-niche-intro.mp4</a></sub></p>
 
 **Niche Evaluation & Script for "Automate Smarter" (SaaS Automation Niche)**
 

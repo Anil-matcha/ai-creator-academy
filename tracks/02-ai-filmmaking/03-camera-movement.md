@@ -60,9 +60,10 @@ If the action requires a precise end point, upload a second storyboard image to 
 ## Worked Example
 
 <p align="center">
-<img src="templates/examples/astronaut-clip.gif" alt="Cinematic Dolly Motion Clip (I2V)" width="480">
+<img src="templates/examples/astronaut-anchor.jpg" alt="Static Character Anchor Frame" width="320">
+<img src="templates/examples/astronaut-clip.gif" alt="Cinematic Dolly Motion Clip (I2V)" width="320">
 </p>
-<p align="center"><sub>Image-to-Video Camera Motion Animation (Shot 1.2 Dolly-In) · <a href="templates/examples/astronaut-clip.mp4">Download MP4</a></sub></p>
+<p align="center"><sub>Static Character Frame (Left) ──► Image-to-Video Dolly Camera Motion (Right) · Video File: <a href="templates/examples/astronaut-clip.mp4">templates/examples/astronaut-clip.mp4</a></sub></p>
 
 **Animating Shot 1.2 from "The Last Signal"**
 

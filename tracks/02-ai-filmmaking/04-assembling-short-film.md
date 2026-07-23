@@ -37,7 +37,7 @@ To fix slight shifts in color grading between different generations, you apply a
 ## Do It
 
 ### Step 1: Organize Your Project Timeline
-Import your generated clips into an NLE editing program (e.g., DaVinci Resolve, Premiere Pro, or CapCut). Lay them out in order on your main video track (V1). Trim any visual glitches that occur at the very beginning or end of a clip (video models often dissolve or warp in the final half-second).
+Import your generated clips into an NLE (Non-Linear Editor — a video editing program that lets you arrange and cut clips on a timeline) such as DaVinci Resolve, Premiere Pro, or CapCut. Lay them out in order on your main video track (V1). Trim any visual glitches that occur at the very beginning or end of a clip (video models often dissolve or warp in the final half-second).
 
 ### Step 2: Generate the Voiceover Narration
 Use a high-quality TTS or voice-cloning API (like ElevenLabs).
@@ -65,7 +65,7 @@ Select all video clips on V1. Add an adjustment layer over the entire timeline a
 <img src="templates/examples/the-last-signal-poster.jpg" alt="Key Art Poster" width="280">
 <img src="templates/examples/last-signal-assembly-clip.gif" alt="Scene Assembly Video Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Film Key Art (Left) ──► Image-to-Video Film Assembly Motion (Right) · <a href="templates/examples/last-signal-assembly-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Film Key Art (Left) ──► Image-to-Video Film Assembly Motion (Right) · Video File: <a href="templates/examples/last-signal-assembly-clip.mp4">templates/examples/last-signal-assembly-clip.mp4</a></sub></p>
 
 **Timeline Assembly for "The Last Signal" Scene 1**
 

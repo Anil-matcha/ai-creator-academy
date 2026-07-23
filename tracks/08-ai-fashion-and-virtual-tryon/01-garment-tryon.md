@@ -12,7 +12,7 @@ For e-commerce fashion brands, booking models, hair/makeup artists, photographer
 
 To save money, brands often rely on flat-lays (clothing laid flat on a table) or "ghost mannequin" shots (clothing on a plastic dummy that is edited out). While cheap, these photos look flat and uninspiring. Customers want to see how the fabric drapes, folds, fits, and matches a real person's body. Without human model photos, fashion brands suffer from low click-through rates and high return rates because customers cannot judge the fit.
 
-To launch new designs instantly without physical photo shoots, you need to implement a **Virtual Try-On (VTO)** pipeline.
+To launch new designs instantly without physical photo shoots, you need to implement a **Virtual Try-On (VTO)** pipeline — a technology that takes a flat garment photo and digitally drapes it onto a model's body, producing realistic fitted product shots without a physical shoot.
 
 ## The Concept
 
@@ -37,7 +37,7 @@ Photograph your physical garment flat-lay or on a mannequin. Make sure it is fla
 Open your try-on specification sheet in [`templates/tryon-spec-sheet.md`](templates/tryon-spec-sheet.md). Document the target model's parameters:
 * *Example:* East Asian male, 28 years old, athletic build, standing in a studio environment.
 
-### Step 3: Choose a Target Model Model Pose
+### Step 3: Choose a Target Model Pose
 If your try-on pipeline supports reference models, upload a photo of a model in your desired pose (e.g. Pose A: standing straight, hands at sides). If using a text-to-image edit model (like `nano-banana-2-edit`), upload the original mannequin photo, mask the clothing area, and write your target model description.
 
 ### Step 4: Run the VTO Draping Engine
@@ -62,7 +62,7 @@ Zoom in on the final image and inspect these key areas:
 <br>
 <img src="templates/examples/linen-shirt-motion.gif" alt="Linen Shirt Motion Loop (I2V)" width="360">
 </p>
-<p align="center"><sub>Virtual Try-On Model Image (Top) ──► Image-to-Video Fabric Motion Loop (Bottom) · <a href="templates/examples/linen-shirt-motion.mp4">MP4</a></sub></p>
+<p align="center"><sub>Virtual Try-On Model Image (Top) ──► Image-to-Video Fabric Motion Loop (Bottom) · Video File: <a href="templates/examples/linen-shirt-motion.mp4">templates/examples/linen-shirt-motion.mp4</a></sub></p>
 
 **Linen Shirt Mannequin-to-Model Swap**
 

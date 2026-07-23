@@ -81,33 +81,30 @@ The overhead monitor flickers aggressively before flashing stark green text: NO 
 
 ### Storyboard Shot List & Visual Examples
 
-We generated 3 actual storyboard frames and an Image-to-Video clip from this script excerpt:
-
 #### Shot 1: Wide Establishing Shot (WS)
 <p align="center">
 <img src="templates/examples/storyboard-shot1-wide.jpg" alt="Shot 1 Wide Establishing Shot" width="480">
 </p>
-> **Prompt:** `"Cinematic 35mm film photograph, establishing wide shot of a cramped spaceship cockpit. glowing green control panels line the curved metallic walls. Muted teal lighting with deep shadows. No characters. Widescreen, highly detailed."`
+> **Prompt:** `"Cinematic 35mm film photograph, establishing wide shot of a cramped spaceship cockpit. glowing green control panels line the curved metallic walls. Muted teal lighting with deep shadows. No characters. Widescreen, highly detailed."` 
 
 #### Shot 2: Medium Shot (MS - Character Intro)
 <p align="center">
 <img src="templates/examples/storyboard-shot2-medium.jpg" alt="Shot 2 Medium Character Intro" width="480">
 </p>
-> **Prompt:** `"Cinematic 35mm film photograph, medium shot of a tired astronaut (40s, short gray hair, stubble, wearing a worn silver flight suit) sitting in a pilot seat inside a spaceship cockpit. Cool blue light illuminates his face, glowing green control panels out of focus in the background. Widescreen."` *(Reference Image: Character Anchor)*
+> **Prompt:** `"Cinematic 35mm film photograph, medium shot of a tired astronaut (40s, short gray hair, stubble, wearing a worn silver flight suit) sitting in a pilot seat inside a spaceship cockpit. Cool blue light illuminates his face, glowing green control panels out of focus in the background. Widescreen."` *(Reference Image: Character Anchor)* 
 
 #### Shot 3: Close-up (CU - Prop Detail Shot)
 <p align="center">
 <img src="templates/examples/storyboard-shot3-closeup.jpg" alt="Shot 3 Close-up CRT Monitor" width="480">
 </p>
-> **Prompt:** `"Cinematic 35mm film photograph, extreme close-up of a dusty CRT monitor screen showing static and a flashing green text reading 'NO SIGNAL'. Widescreen."`
+> **Prompt:** `"Cinematic 35mm film photograph, extreme close-up of a dusty CRT monitor screen showing static and a flashing green text reading 'NO SIGNAL'. Widescreen."` 
 
 #### Shot 4: Image-to-Video Motion Animation (I2V)
 <p align="center">
-<img src="templates/examples/storyboard-anim-clip.gif" alt="Animated Storyboard Sequence (I2V)" width="480">
+<img src="templates/examples/storyboard-shot1-wide.jpg" alt="Shot 1 Wide Static Frame" width="240">
+<img src="templates/examples/storyboard-anim-clip.gif" alt="Animated Storyboard Sequence (I2V)" width="240">
 </p>
-<p align="center"><sub>Image-to-Video Animated Storyboard Sequence · <a href="templates/examples/storyboard-anim-clip.mp4">Download MP4 Video</a></sub></p>
-
-
+<p align="center"><sub>Static Storyboard Frame (Left) ──► Image-to-Video Motion Animation (Right) · Video File: <a href="templates/examples/storyboard-anim-clip.mp4">templates/examples/storyboard-anim-clip.mp4</a></sub></p>
 
 **Why this sequence works:**
 * The Wide shot sets the space.

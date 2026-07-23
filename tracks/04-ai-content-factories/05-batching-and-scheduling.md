@@ -57,7 +57,7 @@ Open YouTube Studio Web, TikTok Studio Web, and Instagram Creator Studio. Upload
 <img src="templates/examples/batch-production-suite.jpg" alt="Batch Suite" width="280">
 <img src="templates/examples/batch-suite-clip.gif" alt="Calendar Video Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Batch Schedule Image (Left) ──► Image-to-Video Motion (Right) · <a href="templates/examples/batch-suite-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Batch Schedule Image (Left) ──► Image-to-Video Motion (Right) · Video File: <a href="templates/examples/batch-suite-clip.mp4">templates/examples/batch-suite-clip.mp4</a></sub></p>
 
 **30-Shorts Production Run (Total time: 15 hours)**
 

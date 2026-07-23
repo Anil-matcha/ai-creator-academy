@@ -62,7 +62,7 @@ Apply a color balance adjustment layer clipped to the product layer:
 <br>
 <img src="templates/examples/perfume-motion.gif" alt="Perfume Bottle Motion Loop (I2V)" width="320">
 </p>
-<p align="center"><sub>Raw Photo vs. AI Studio Backdrop (Top) ──► Image-to-Video Reflection Loop (Bottom) · <a href="templates/examples/perfume-motion.mp4">MP4</a></sub></p>
+<p align="center"><sub>Raw Photo vs. AI Studio Backdrop (Top) ──► Image-to-Video Reflection Loop (Bottom) · Video File: <a href="templates/examples/perfume-motion.mp4">templates/examples/perfume-motion.mp4</a></sub></p>
 
 **Backdrop Shift for an Organic Aloe Vera Gel Tube**
 

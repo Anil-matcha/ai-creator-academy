@@ -12,18 +12,18 @@ You want to produce a custom theme song, a musical ad, or a parody intro track f
 
 Standard Text-to-Speech (TTS) models cannot sing. If you feed them lyrics, they will read them like a boring lecture, with zero rhythm, melody, or timing.
 
-To produce musical content without singing, you need to implement a **Singing Voice Conversion (SVC)** pipeline. This technology allows you to record a basic "guide vocal" (even if you sing poorly or speak in rhythm) and convert the vocal timbre into the singing voice of a professional model, preserving the original pitch, timing, and melody.
+To produce musical content without singing, you need to implement a **Singing Voice Conversion (SVC)** pipeline — a tool that takes your voice as input and outputs the same melody sung in a completely different vocal timbre (voice quality). This technology allows you to record a basic "guide vocal" (even if you sing poorly or speak in rhythm) and convert the vocal timbre into the singing voice of a professional model, preserving the original pitch, timing, and melody.
 
 ## The Concept
 
-The vocal synthesis pipeline relies on **Retrieval-based Voice Conversion (RVC)** and **Timbre Transfer**:
+The vocal synthesis pipeline relies on **Retrieval-based Voice Conversion (RVC)** — a technique that looks up a target singer's voice characteristics from a trained model and projects them onto your guide vocal — combined with **Timbre Transfer** (swapping the unique "colour" of a voice while keeping its pitch and timing intact):
 
 ```
 Source Guide Vocal  ──►  Pitch Correction (Auto-Tune)  ──►  RVC Timbre Transfer  ──►  Target Singing Master
 ```
 
 * **Voice-to-Voice Conversion:** Unlike text-to-speech, voice-to-voice takes an audio input. It ignores the *text* of the words and analyzes the *pitch* (fundamental frequency) and *volume* envelope. It then swaps the vocal cords (timbre signature) of the source speaker with the target model.
-* **Acapella Extraction:** The source guide vocal must be dry and isolated. If there is background piano or guitar noise on your input track, the converter will try to convert those instruments into singing voices, creating digital screeches.
+* **Acapella Extraction:** The source guide vocal must be dry and isolated — meaning just your voice with no background music playing. For example, if you record yourself singing while a piano track is playing in the room, the converter will try to convert those piano notes into singing voices too, creating jarring digital screeches. Record your guide vocal in silence, then layer the music back in afterwards.
 * **Transposition (Pitch Shift):** If you are a male editor recording a guide vocal for a female avatar, you must transpose the pitch up by **+12 semitones** (one full octave) so the model can process the vocals inside the target singer's natural pitch range. Configure these parameters inside the [`templates/vocal-conversion-brief.md`](templates/vocal-conversion-brief.md).
 
 ---
@@ -57,7 +57,7 @@ Import the converted singing track back into your audio editor. Add a subtle pla
 <img src="templates/examples/singing-vocal-studio.jpg" alt="Singing Vocal Studio" width="280">
 <img src="templates/examples/singing-vocal-studio-clip.gif" alt="Vocal Studio Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Singing Studio Image (Left) ──► Image-to-Video Studio Bokeh Motion (Right) · <a href="templates/examples/singing-vocal-studio-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Singing Studio Image (Left) ──► Image-to-Video Studio Bokeh Motion (Right) · Video File: <a href="templates/examples/singing-vocal-studio-clip.mp4">templates/examples/singing-vocal-studio-clip.mp4</a></sub></p>
 
 **Creating a Theme Song Vocal (Male Guide to Emma Avatar)**
 

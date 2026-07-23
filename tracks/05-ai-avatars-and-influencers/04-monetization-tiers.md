@@ -58,7 +58,7 @@ Once the deal is closed, generate the video following the brand guidelines. Set 
 <img src="templates/examples/avatar-brand-sponsor.jpg" alt="Brand Sponsor" width="240">
 <img src="templates/examples/avatar-sponsor-clip.gif" alt="Virtual Influencer Sponsor Motion (I2V)" width="240">
 </p>
-<p align="center"><sub>Virtual Influencer Image (Left) ──► Image-to-Video Sponsorship Loop (Right) · <a href="templates/examples/avatar-sponsor-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Virtual Influencer Image (Left) ──► Image-to-Video Sponsorship Loop (Right) · Video File: <a href="templates/examples/avatar-sponsor-clip.mp4">templates/examples/avatar-sponsor-clip.mp4</a></sub></p>
 
 **Sponsorship Campaign for "Emma" (Tech Niche, 8,000 followers)**
 

@@ -61,7 +61,7 @@ Deliver the final WebP assets to the client within the promised timeframe. Inclu
 <img src="templates/examples/product-agency-studio.jpg" alt="Commercial Studio" width="280">
 <img src="templates/examples/product-agency-studio-clip.gif" alt="Product Photography Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Commercial Product Studio Image (Left) ──► Image-to-Video Studio Lighting Motion (Right) · <a href="templates/examples/product-agency-studio-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Commercial Product Studio Image (Left) ──► Image-to-Video Studio Lighting Motion (Right) · Video File: <a href="templates/examples/product-agency-studio-clip.mp4">templates/examples/product-agency-studio-clip.mp4</a></sub></p>
 
 **Scaling MRR for an E-commerce Visual Agency**
 

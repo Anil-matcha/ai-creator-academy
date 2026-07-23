@@ -83,73 +83,75 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 3 | Sizing & Layout Consistency | ✅ |
 | 4 | Before/After Conversion Cases | ✅ |
 
-## Track 9 — AI Real Estate (Virtual Staging) ⬜
+## Track 9 — AI Real Estate (Virtual Staging) ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Empty Room → Staged Room Pipeline | ⬜ |
-| 2 | Pricing Against Traditional Staging | ⬜ |
-| 3 | Selling to Realtors & Agencies | ⬜ |
+| 1 | Empty Room → Staged Room Pipeline | ✅ |
+| 2 | Pricing Against Traditional Staging | ✅ |
+| 3 | Selling to Realtors & Agencies | ✅ |
 
-## Track 10 — AI Headshots & Portraits ⬜
-
-| # | Module | Status |
-|---|---|---|
-| 1 | Consistent Headshot Generation | ⬜ |
-| 2 | Standing Out Against Fiverr Competition | ⬜ |
-
-## Track 11 — AI Print-on-Demand & Merch Design ⬜
+## Track 10 — AI Headshots & Portraits ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Designing Sellable AI Art for Merch | ⬜ |
-| 2 | Print-on-Demand Platform Basics (Etsy, Redbubble-style) | ⬜ |
-| 3 | Building a Catalog Without Repeating Yourself | ⬜ |
-| 4 | Pricing & Passive-Income Math for POD | ⬜ |
+| 1 | Consistent Headshot Generation | ✅ |
+| 2 | Standing Out Against Fiverr Competition | ✅ |
+| 3 | Batch Headshots for Remote Teams | ✅ |
+| 4 | Creative Headshots & Stylized Portraits | ✅ |
 
-## Track 12 — AI Stock Content & Licensing ⬜
+## Track 11 — AI Print-on-Demand & Merch Design ✅
+
+| # | Module | Status |
+|---|---|---|
+| 1 | Designing Sellable AI Art for Merch | ✅ |
+| 2 | Print-on-Demand Platform Basics (Etsy, Redbubble-style) | ✅ |
+| 3 | Building a Catalog Without Repeating Yourself | ✅ |
+| 4 | Pricing & Passive-Income Math for POD | ✅ |
+
+## Track 12 — AI Stock Content & Licensing ✅
 
 The only track with no client relationship at all — generate once, license repeatedly.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | What Actually Sells on Stock Marketplaces | ⬜ |
-| 2 | Batch-Generating a Licensable Catalog | ⬜ |
-| 3 | Licensing Models & Realistic Passive-Income Expectations | ⬜ |
+| 1 | What Actually Sells on Stock Marketplaces | ✅ |
+| 2 | Batch-Generating a Licensable Catalog | ✅ |
+| 3 | Licensing Models & Realistic Passive-Income Expectations | ✅ |
 
-## Track 13 — AI Tools Mastery ⬜
+## Track 13 — AI Tools Mastery ✅
 
 Not tool tutorials — a buyer's guide: which tool for which creative outcome, and why.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Image Models — Which One for Which Use Case | ⬜ |
-| 2 | Video Models — Which One for Which Use Case | ⬜ |
-| 3 | Voice/Audio Models — Which One for Which Use Case | ⬜ |
-| 4 | API vs. Local: A Decision Framework | ⬜ |
+| 1 | Image Models — Which One for Which Use Case | ✅ |
+| 2 | Video Models — Which One for Which Use Case | ✅ |
+| 3 | Voice/Audio Models — Which One for Which Use Case | ✅ |
+| 4 | API vs. Local: A Decision Framework | ✅ |
 
-## Track 14 — AI Freelancing & Agency Business ⬜
+## Track 14 — AI Freelancing & Agency Business ✅
 
 The business skills every other track assumes you already have.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Pricing Your Services | ⬜ |
-| 2 | Contracts & Scope Basics | ⬜ |
-| 3 | Finding & Closing Clients | ⬜ |
-| 4 | Scaling from Freelancer to Small Agency | ⬜ |
-| 5 | Building a Portfolio That Sells | ⬜ |
+| 1 | Pricing Your Services | ✅ |
+| 2 | Contracts & Scope Basics | ✅ |
+| 3 | Finding & Closing Clients | ✅ |
+| 4 | Scaling from Freelancer to Small Agency | ✅ |
+| 5 | Building a Portfolio That Sells | ✅ |
 
-## Track 15 — AI Agents & Vibe-Coding for Creators ⬜
+## Track 15 — AI Agents & Vibe-Coding for Creators ✅
 
 Coding agents (Claude Code, Cursor, and similar) removed the "you have to already be a developer" barrier — this track teaches creators to build and sell their own micro-tools, not just AI-generated media.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | What Coding Agents Actually Do (no CS degree required) | ⬜ |
-| 2 | Building Your First Sellable Micro-Tool | ⬜ |
-| 3 | The Vibe-Coding Workflow: Prompt → Build → Test → Ship | ⬜ |
-| 4 | Pricing & Selling Tools You Build With Agents | ⬜ |
+| 1 | What Coding Agents Actually Do (no CS degree required) | ✅ |
+| 2 | Building Your First Sellable Micro-Tool | ✅ |
+| 3 | The Vibe-Coding Workflow: Prompt → Build → Test → Ship | ✅ |
+| 4 | Pricing & Selling Tools You Build With Agents | ✅ |
 
 ## Cross-track modules (referenced from every track, not tied to one)
 

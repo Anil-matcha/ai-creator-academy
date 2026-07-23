@@ -22,7 +22,7 @@ Vocal synthesis divides into two major technical categories:
 Requires only **1 to 5 minutes** of sample audio. The cloning engine extracts the basic frequency signature (timbre) of the speaker. It is fast and cheap but can struggle with complex emotional ranges or unique pronunciations of technical terms.
 
 ### 2. Professional Voice Cloning (PVC):
-Requires **30+ minutes** of high-fidelity, studio-quality speech samples. The model trains deep neural network weights specifically for that voice, capturing subtle throat dynamics, mouth clicks, laughing inflections, and accent parameters.
+Requires **30+ minutes** of high-fidelity, studio-quality speech samples. The model trains deep neural network weights specifically for that voice, capturing subtle throat dynamics, mouth clicks, laughing inflections, and accent parameters. The result is virtually indistinguishable from the original speaker.
 
 ```
 Studio Capture (Dry/Mono)  ──►  ElevenLabs PVC Training  ──►  Deep Voice Lock (Accents/Breaths)
@@ -64,7 +64,7 @@ Save your ideal configurations in the cloning log.
 <img src="templates/examples/voice-studio-setup.jpg" alt="Voice Studio" width="280">
 <img src="templates/examples/voice-studio-clip.gif" alt="Voice Recording Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Voice Recording Booth Image (Left) ──► Image-to-Video Studio Motion (Right) · <a href="templates/examples/rachel-vocal-cloned.mp3">Cloned MP3</a> · <a href="templates/examples/voice-studio-clip.mp4">Video MP4</a></sub></p>
+<p align="center"><sub>Voice Recording Booth Image (Left) ──► Image-to-Video Studio Motion (Right) · Audio File: <a href="templates/examples/rachel-vocal-cloned.mp3">templates/examples/rachel-vocal-cloned.mp3</a> · Video File: <a href="templates/examples/voice-studio-clip.mp4">templates/examples/voice-studio-clip.mp4</a></sub></p>
 
 **Creating "Arthur" (B2B SaaS Spokesperson)**
 

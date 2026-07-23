@@ -23,7 +23,7 @@ Idea  ──►  Script  ──►  Voiceover  ──►  Visuals  ──►  As
 ```
 
 By organizing your work into stations, you achieve:
-* **Unidirectional Flow:** You never write or modify a script *after* voiceover generation is complete. You never generate new visual assets *after* editing is complete.
+* **Unidirectional Flow:** You never write or modify a script *after* voiceover generation is complete. You never generate new visual assets *after* editing is complete. Work only moves forward through the pipeline — never backward.
 * **Station Specialization:** Each stage has strict input and output criteria, preventing unfinished work from clogging down-line editors.
 * **Standardized Deliverables:** Export files are checked against strict technical parameters (resolution, codecs, audio thresholds) before delivery to avoid revisions.
 
@@ -68,7 +68,7 @@ Before exporting, run through the [`templates/asset-specs-checklist.md`](templat
 <img src="templates/examples/content-factory-studio.jpg" alt="Content Studio" width="280">
 <img src="templates/examples/content-factory-studio-clip.gif" alt="Automated Factory Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Automated Content Studio Image (Left) ──► Image-to-Video Factory Motion (Right) · <a href="templates/examples/content-factory-studio-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Automated Content Studio Image (Left) ──► Image-to-Video Factory Motion (Right) · Video File: <a href="templates/examples/content-factory-studio-clip.mp4">templates/examples/content-factory-studio-clip.mp4</a></sub></p>
 
 **Pipeline Run: "AI in Retail" Explainer (Widescreen)**
 

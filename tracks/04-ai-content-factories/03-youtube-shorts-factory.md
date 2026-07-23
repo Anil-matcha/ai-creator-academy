@@ -22,7 +22,7 @@ The core mechanism of a high-retention Short is the **Seamless Script & Audio Lo
 [Final Word of Script] ──► (0-frame gap) ──► [First Word of Script]
 ```
 
-To create an invisible loop:
+This works because most viewers won't notice a gap-free loop restart — they'll keep watching and only realize they've started again after a second or third loop, which registers as extra watch time. To create an invisible loop:
 1. **The Loop Sentence:** The last sentence of the video must remain unfinished. The starting sentence of the video must complete it.
 2. **Audio Continuity:** The background music track must maintain a constant volume and tempo across the cut. Never apply a fade-out effect to the audio tail.
 3. **Visual Continuity:** The visual style (framing, color grading) of the final clip must closely match the starting clip so the transition does not flash.
@@ -56,9 +56,10 @@ Check the first frame of your video and the last frame of your video. If the fir
 ## Worked Example
 
 <p align="center">
+<img src="templates/examples/focus-anchor.jpg" alt="Focus Anchor Image" width="240">
 <img src="templates/examples/focus-loop-clip.gif" alt="YouTube Shorts Infinite Loop Video (I2V)" width="240">
 </p>
-<p align="center"><sub>Image-to-Video Shorts Infinite Motion Loop · <a href="templates/examples/focus-loop-clip.mp4">Download MP4</a></sub></p>
+<p align="center"><sub>Shorts Model Image (Left) ──► Image-to-Video Shorts Infinite Motion Loop (Right) · Video File: <a href="templates/examples/focus-loop-clip.mp4">templates/examples/focus-loop-clip.mp4</a></sub></p>
 
 **Loop Build: "Focus Blueprint" (Productivity Niche)**
 

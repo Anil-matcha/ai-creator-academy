@@ -60,7 +60,7 @@ Apply a Compressor:
 
 ### Step 5: Export to Loudness Standards
 Run a Loudness Normalization effect:
-* Set target loudness to **-16.0 LUFS** (stereo) or **-19.0 LUFS** (mono).
+* Set target loudness to **-16.0 LUFS** (Loudness Units relative to Full Scale — the industry-standard way to measure and match audio volume across platforms) for stereo, or **-19.0 LUFS** for mono tracks.
 * Set the **True Peak Limiter** to **-1.0 dBTP** to prevent digital clipping when uploaded to platforms like Spotify or Apple Podcasts.
 
 ---
@@ -71,7 +71,7 @@ Run a Loudness Normalization effect:
 <img src="templates/examples/podcast-audio-console.jpg" alt="Podcast Console" width="280">
 <img src="templates/examples/podcast-console-clip.gif" alt="Podcast Mixing Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Podcast Console Image (Left) ──► Image-to-Video VU Meter Motion (Right) · <a href="templates/examples/podcast-console-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Podcast Console Image (Left) ──► Image-to-Video VU Meter Motion (Right) · Video File: <a href="templates/examples/podcast-console-clip.mp4">templates/examples/podcast-console-clip.mp4</a></sub></p>
 
 **Mastering a Raw Podcast Interview Track**
 
@@ -102,6 +102,10 @@ For content creators starting out, using Audacity or Adobe Audition gives you th
 ---
 
 ## Launch It
+
+**How to monetize audio cleaning:**
+* **Podcast Mastering Service:** Offer audio cleanup as a standalone service to indie podcasters and YouTubers. A typical 30-minute episode cleaning and mastering package runs **$50–$150 per episode**. Because the pipeline runs in under 15 minutes, your effective hourly rate is well over $200.
+* **Retainer Editing Package:** Sign podcast clients on a monthly retainer (e.g. 4 episodes/month for **$300–$500/month**) to ensure consistent income. Clients value consistency — a podcaster who records weekly is an ideal recurring contract.
 
 **How to manage audio files:**
 * **Keep tracks dry:** When recording, never apply reverb, delay, or EQ effects during capture. Keep the raw file clean and dry so you can adjust settings in post-production.

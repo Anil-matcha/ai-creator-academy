@@ -12,7 +12,7 @@ Brands update their websites and ad creatives blindly. They assume that if an im
 
 If a listing has high traffic but low sales, the images are failing to answer customer questions or build trust. If a listing has low clicks on search pages, the main search image lacks the visual contrast needed to stand out from competitors.
 
-To run a profitable e-commerce channel, you must implement A/B testing frameworks and understand the visual psychology that drives customers to click the "Add to Cart" button.
+To run a profitable e-commerce channel, you must implement A/B testing frameworks and understand the visual psychology that drives customers to click the "Add to Cart" button. This practice is called **CRO (Conversion Rate Optimization)** — the science of improving how many visitors to your product page actually make a purchase.
 
 ## The Concept
 
@@ -67,7 +67,7 @@ Allow the test to run for at least 14 days to capture mid-week and weekend shopp
 <br>
 <img src="templates/examples/coffee-motion.gif" alt="Coffee Product Motion Loop (I2V)" width="360">
 </p>
-<p align="center"><sub>AI Product Image Redesign (Top) ──► Image-to-Video Steam Loop (Bottom) · <a href="templates/examples/coffee-motion.mp4">MP4</a></sub></p>
+<p align="center"><sub>AI Product Image Redesign (Top) ──► Image-to-Video Steam Loop (Bottom) · Video File: <a href="templates/examples/coffee-motion.mp4">templates/examples/coffee-motion.mp4</a></sub></p>
 
 **Redesigning a High-End Specialty Coffee Bag Listing**
 

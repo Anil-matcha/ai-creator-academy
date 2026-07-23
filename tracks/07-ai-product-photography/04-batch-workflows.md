@@ -63,7 +63,7 @@ Import your isolated PNG masks into the template:
 <img src="templates/examples/batch-skincare-grid.jpg" alt="Skincare Grid" width="280">
 <img src="templates/examples/batch-skincare-grid-clip.gif" alt="Catalog Batch Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Skincare Collection Catalog Image (Left) ──► Image-to-Video Batch Lighting Motion (Right) · <a href="templates/examples/batch-skincare-grid-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Skincare Collection Catalog Image (Left) ──► Image-to-Video Batch Lighting Motion (Right) · Video File: <a href="templates/examples/batch-skincare-grid-clip.mp4">templates/examples/batch-skincare-grid-clip.mp4</a></sub></p>
 
 **Batch Catalog Refurbishing for a Skincare Brand**
 
@@ -77,7 +77,7 @@ Import your isolated PNG masks into the template:
 * **Batch Processing:**
   * Ran folder-wide background removal on the 5 raw product shots.
   * Imported all 5 PNG masks into the template PSD.
-  * Toggled each dropper layer on one by one, keeping the base shadows and background layers identical.
+  * Toggled each dropper layer on one by one (in Photoshop: click the eye icon next to a layer to show/hide it), keeping the base shadows and background layers identical.
 * **Results:** Generated 5 perfectly matching catalog images with uniform lighting, shadows, and sizing in under 10 minutes.
 
 ---

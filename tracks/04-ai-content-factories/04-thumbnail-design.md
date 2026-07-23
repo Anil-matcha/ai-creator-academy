@@ -65,7 +65,7 @@ Zoom out your editor screen until the thumbnail is the size of a coin (approx. 1
 <img src="templates/examples/get-rich-automated-thumbnail.jpg" alt="Thumbnail Design" width="280">
 <img src="templates/examples/thumbnail-motion-clip.gif" alt="Glowing Thumbnail Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>High-CTR Thumbnail Image (Left) ──► Image-to-Video Motion (Right) · <a href="templates/examples/thumbnail-motion-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>High-CTR Thumbnail Image (Left) ──► Image-to-Video Motion (Right) · Video File: <a href="templates/examples/thumbnail-motion-clip.mp4">templates/examples/thumbnail-motion-clip.mp4</a></sub></p>
 
 **Thumbnail Design: "Get Rich Automated"**
 

@@ -59,7 +59,7 @@ Listen to the generated foreign dub. Zoom in to the timeline in your editor:
 <img src="templates/examples/dubbing-studio.jpg" alt="Dubbing Studio" width="280">
 <img src="templates/examples/dubbing-studio-clip.gif" alt="Global Dubbing Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Dubbing Studio Image (Left) ──► Image-to-Video Dubbing Motion (Right) · <a href="templates/examples/rachel-vocal-dubbed.mp3">Dubbed MP3</a> · <a href="templates/examples/dubbing-studio-clip.mp4">Video MP4</a></sub></p>
+<p align="center"><sub>Dubbing Studio Image (Left) ──► Image-to-Video Dubbing Motion (Right) · Audio File: <a href="templates/examples/rachel-vocal-dubbed.mp3">templates/examples/rachel-vocal-dubbed.mp3</a> · Video File: <a href="templates/examples/dubbing-studio-clip.mp4">templates/examples/dubbing-studio-clip.mp4</a></sub></p>
 
 **Translating a SaaS Tutorial Video (English to Spanish)**
 

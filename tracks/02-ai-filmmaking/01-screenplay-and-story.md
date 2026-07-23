@@ -10,7 +10,7 @@
 
 Traditional screenplays are written for human actors and camera crews. A standard script might describe "a crowded café with dozens of patrons chatting, as the protagonist slams their coffee cup down in anger, causing coffee to spill onto a passing waiter's uniform." 
 
-If you feed a scene like this into a generative AI video model, the rendering will fail completely. patrons' faces will morph, the physical interaction of spilling coffee on a waiter will look like a surreal glitch, and keeping the protagonist looking like the same person across shots will be impossible.
+If you feed a scene like this into a generative AI video model, the rendering will fail completely. The patrons' faces will morph, the physical interaction of spilling coffee on a waiter will look like a surreal glitch, and keeping the protagonist looking like the same person across shots will be impossible.
 
 Most aspiring AI filmmakers start by writing a standard story, only to waste hundreds of generation credits trying to force an AI model to render complex physics, crowds, or constant location shifts. Designing your screenplay with **AI-first constraints** from day one is the difference between a completed film and a folder of discarded, glitchy clips.
 
@@ -63,7 +63,7 @@ Create a style sheet with your prompt prefixes (lighting, film stock, aspect rat
 <img src="templates/examples/astronaut-anchor.jpg" alt="Hero Portrait for The Last Signal: Astronaut in flight suit" width="320">
 <img src="templates/examples/astronaut-intro-clip.gif" alt="Hero Character Motion Clip (I2V)" width="320">
 </p>
-<p align="center"><sub>AI Hero Character Anchor Image (Left) ──► Image-to-Video Animation (Right) · <a href="templates/examples/astronaut-intro-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>AI Hero Character Anchor Image (Left) ──► Image-to-Video Animation (Right) · Video File: <a href="templates/examples/astronaut-intro-clip.mp4">templates/examples/astronaut-intro-clip.mp4</a></sub></p>
 
 **Film Brief: "The Last Signal"**
 * **Character:** John (40s), a tired astronaut.

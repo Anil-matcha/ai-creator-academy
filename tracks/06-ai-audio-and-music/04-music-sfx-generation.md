@@ -67,7 +67,7 @@ If your editor supports auto-ducking (e.g. Premiere Pro or CapCut):
 <img src="templates/examples/ai-music-workstation.jpg" alt="Music Workstation" width="280">
 <img src="templates/examples/ai-music-workstation-clip.gif" alt="Synthesizer Visualizer Motion (I2V)" width="280">
 </p>
-<p align="center"><sub>Synthesizer Workstation Image (Left) ──► Image-to-Video Visualizer Motion (Right) · <a href="templates/examples/ai-music-workstation-clip.mp4">MP4</a></sub></p>
+<p align="center"><sub>Synthesizer Workstation Image (Left) ──► Image-to-Video Visualizer Motion (Right) · Video File: <a href="templates/examples/ai-music-workstation-clip.mp4">templates/examples/ai-music-workstation-clip.mp4</a></sub></p>
 
 **Sound Design for a 15-Second Vertical SaaS Ad**
 
