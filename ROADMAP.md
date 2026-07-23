@@ -130,17 +130,17 @@ Not tool tutorials — a buyer's guide: which tool for which creative outcome, a
 | 3 | Voice/Audio Models — Which One for Which Use Case | ✅ |
 | 4 | API vs. Local: A Decision Framework | ✅ |
 
-## Track 14 — AI Freelancing & Agency Business ⬜
+## Track 14 — AI Freelancing & Agency Business ✅
 
 The business skills every other track assumes you already have.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Pricing Your Services | ⬜ |
-| 2 | Contracts & Scope Basics | ⬜ |
-| 3 | Finding & Closing Clients | ⬜ |
-| 4 | Scaling from Freelancer to Small Agency | ⬜ |
-| 5 | Building a Portfolio That Sells | ⬜ |
+| 1 | Pricing Your Services | ✅ |
+| 2 | Contracts & Scope Basics | ✅ |
+| 3 | Finding & Closing Clients | ✅ |
+| 4 | Scaling from Freelancer to Small Agency | ✅ |
+| 5 | Building a Portfolio That Sells | ✅ |
 
 ## Track 15 — AI Agents & Vibe-Coding for Creators ⬜
 
