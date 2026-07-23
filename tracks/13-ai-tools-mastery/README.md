@@ -15,13 +15,12 @@
 
 ---
 
-## 🛠️ Reusable Templates & Scripts
+## 🛠️ Reusable Templates & Examples
 
 * [`templates/image-model-selection-guide.md`](templates/image-model-selection-guide.md) — Architectural comparison matrices, prompt adherence rules, and resolution benchmarks.
 * [`templates/video-audio-stack-matrix.md`](templates/video-audio-stack-matrix.md) — Motion control parameters, camera movement guides, and model speed benchmarks.
 * [`templates/api-cost-calculator.md`](templates/api-cost-calculator.md) — API cost formulas, GPU payback calculators, and hardware VRAM decision trees.
 * [`templates/tool-evaluation-framework.md`](templates/tool-evaluation-framework.md) — A 5-point evaluation checklist for testing new AI models.
-* [`templates/scripts/tool_cost_analyzer.py`](templates/scripts/tool_cost_analyzer.py) — Python automation script analyzing monthly credit spend vs. local GPU hardware amortization.
 * [`templates/examples/model-benchmark-comparison.jpg`](templates/examples/model-benchmark-comparison.jpg) — AI image model benchmark comparison infographic.
 * [`templates/examples/camera-motion-matrix.jpg`](templates/examples/camera-motion-matrix.jpg) — Cinematic camera motion reference graphic.
 * [`templates/examples/tools-workflow-motion.gif`](templates/examples/tools-workflow-motion.gif) — Image-to-Video tools workflow motion loop ([tools-workflow-motion.mp4](templates/examples/tools-workflow-motion.mp4)).

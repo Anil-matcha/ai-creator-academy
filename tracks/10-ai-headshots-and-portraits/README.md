@@ -15,13 +15,12 @@
 
 ---
 
-## 🛠️ Reusable Templates & Scripts
+## 🛠️ Reusable Templates & Examples
 
 * [`templates/headshot-style-guide.md`](templates/headshot-style-guide.md) — Lighting setup prompts, wardrobe descriptors, and negative prompt libraries.
 * [`templates/b2b-headshot-proposal.md`](templates/b2b-headshot-proposal.md) — Enterprise sales proposals, intake form schemas, GDPR privacy agreements, and SLA contracts.
 * [`templates/headshot-prompt-library.md`](templates/headshot-prompt-library.md) — Complete prompt cheat-sheet for 15+ corporate and creative industry roles.
 * [`templates/client-delivery-checklist.md`](templates/client-delivery-checklist.md) — Quality assurance inspection checklist, color calibration, and folder delivery specs.
-* [`templates/scripts/batch_headshot_generator.py`](templates/scripts/batch_headshot_generator.py) — Python automation script for batch processing remote employee rosters via API.
 * [`templates/examples/corporate-executive-headshot.jpg`](templates/examples/corporate-executive-headshot.jpg) — Photorealistic 8k corporate executive portrait photograph.
 * [`templates/examples/creative-studio-headshot.jpg`](templates/examples/creative-studio-headshot.jpg) — Photorealistic 8k creative tech founder studio portrait.
 * [`templates/examples/headshot-transformation-before-after.jpg`](templates/examples/headshot-transformation-before-after.jpg) — Casual smartphone selfie vs. studio AI corporate headshot comparison graphic.

@@ -15,13 +15,12 @@
 
 ---
 
-## 🛠️ Reusable Templates & Scripts
+## 🛠️ Reusable Templates & Examples
 
 * [`templates/merch-prompt-brief.md`](templates/merch-prompt-brief.md) — Vector style prompts, DPI scaling specs, and trademark compliance checklists.
 * [`templates/pod-pricing-calculator.md`](templates/pod-pricing-calculator.md) — COGS pricing models, profit margin calculators, and platform fee structures.
 * [`templates/niche-prompt-matrix.md`](templates/niche-prompt-matrix.md) — 30+ niche prompt formulas across trending POD categories.
 * [`templates/printify-etsy-setup-guide.md`](templates/printify-etsy-setup-guide.md) — Step-by-step store launch checklist and Etsy SEO tagging matrix.
-* [`templates/scripts/pod_graphic_upscaler.py`](templates/scripts/pod_graphic_upscaler.py) — Python automation script for verifying and prepping DTG print specs.
 * [`templates/examples/cyberpunk-cat-merch-tshirt.jpg`](templates/examples/cyberpunk-cat-merch-tshirt.jpg) — Photorealistic commercial t-shirt product mockup.
 * [`templates/examples/vintage-botanical-mug-mockup.jpg`](templates/examples/vintage-botanical-mug-mockup.jpg) — Photorealistic ceramic coffee mug product mockup.
 * [`templates/examples/merch-design-vector-art.jpg`](templates/examples/merch-design-vector-art.jpg) — Isolated 300 DPI vector artwork graphic.
