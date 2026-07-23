@@ -52,13 +52,13 @@ Paid communities teaching this (Skool/Whop-style, $47–$97/mo) already cluster 
 | 6 | [AI Audio & Music](tracks/06-ai-audio-and-music/) | Voice cloning, dubbing, podcasts, music | 5 | ✅ Live |
 | 7 | [AI Product Photography](tracks/07-ai-product-photography/) | Studio-quality product shots, no photographer | 4 | ✅ Live |
 | 8 | [AI Fashion & Virtual Try-On](tracks/08-ai-fashion-and-virtual-tryon/) | Garment try-on for fashion e-commerce | 4 | ✅ Live |
-| 9 | [AI Real Estate Staging](tracks/09-ai-real-estate-staging/) | Empty room → staged listing photo | 3 | ⬜ Coming soon |
-| 10 | [AI Headshots & Portraits](tracks/10-ai-headshots-and-portraits/) | Consistent professional headshots | 2 | ⬜ Coming soon |
-| 11 | [AI Print-on-Demand & Merch](tracks/11-ai-print-on-demand-and-merch/) | Sellable AI art on merch, no client needed | 4 | ⬜ Coming soon |
-| 12 | [AI Stock Content & Licensing](tracks/12-ai-stock-content-and-licensing/) | A licensable stock catalog, sold repeatedly | 3 | ⬜ Coming soon |
-| 13 | [AI Tools Mastery](tracks/13-ai-tools-mastery/) | Which model for which outcome — a buyer's guide | 4 | ⬜ Coming soon |
-| 14 | [AI Freelancing & Agency Business](tracks/14-ai-freelancing-and-agency-business/) | Pricing, contracts, clients, scaling a team | 5 | ⬜ Coming soon |
-| 15 | [AI Agents & Vibe-Coding for Creators](tracks/15-ai-agents-and-vibe-coding/) | Sellable micro-tools, no CS degree needed | 4 | ⬜ Coming soon |
+| 9 | [AI Real Estate Staging](tracks/09-ai-real-estate-staging/) | Empty room → staged listing photo | 3 | ✅ Live |
+| 10 | [AI Headshots & Portraits](tracks/10-ai-headshots-and-portraits/) | Consistent professional headshots | 4 | ✅ Live |
+| 11 | [AI Print-on-Demand & Merch](tracks/11-ai-print-on-demand-and-merch/) | Sellable AI art on merch, no client needed | 4 | ✅ Live |
+| 12 | [AI Stock Content & Licensing](tracks/12-ai-stock-content-and-licensing/) | A licensable stock catalog, sold repeatedly | 3 | ✅ Live |
+| 13 | [AI Tools Mastery](tracks/13-ai-tools-mastery/) | Which model for which outcome — a buyer's guide | 4 | ✅ Live |
+| 14 | [AI Freelancing & Agency Business](tracks/14-ai-freelancing-and-agency-business/) | Pricing, contracts, clients, scaling a team | 5 | ✅ Live |
+| 15 | [AI Agents & Vibe-Coding for Creators](tracks/15-ai-agents-and-vibe-coding/) | Sellable micro-tools, no CS degree needed | 4 | ✅ Live |
 
 ### Start here
 
