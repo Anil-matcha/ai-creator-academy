@@ -142,16 +142,16 @@ The business skills every other track assumes you already have.
 | 4 | Scaling from Freelancer to Small Agency | ✅ |
 | 5 | Building a Portfolio That Sells | ✅ |
 
-## Track 15 — AI Agents & Vibe-Coding for Creators ⬜
+## Track 15 — AI Agents & Vibe-Coding for Creators ✅
 
 Coding agents (Claude Code, Cursor, and similar) removed the "you have to already be a developer" barrier — this track teaches creators to build and sell their own micro-tools, not just AI-generated media.
 
 | # | Module | Status |
 |---|---|---|
-| 1 | What Coding Agents Actually Do (no CS degree required) | ⬜ |
-| 2 | Building Your First Sellable Micro-Tool | ⬜ |
-| 3 | The Vibe-Coding Workflow: Prompt → Build → Test → Ship | ⬜ |
-| 4 | Pricing & Selling Tools You Build With Agents | ⬜ |
+| 1 | What Coding Agents Actually Do (no CS degree required) | ✅ |
+| 2 | Building Your First Sellable Micro-Tool | ✅ |
+| 3 | The Vibe-Coding Workflow: Prompt → Build → Test → Ship | ✅ |
+| 4 | Pricing & Selling Tools You Build With Agents | ✅ |
 
 ## Cross-track modules (referenced from every track, not tied to one)
 
