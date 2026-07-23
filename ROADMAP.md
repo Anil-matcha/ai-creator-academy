@@ -83,13 +83,13 @@ Status key: ✅ live · 🚧 in progress · ⬜ coming soon
 | 3 | Sizing & Layout Consistency | ✅ |
 | 4 | Before/After Conversion Cases | ✅ |
 
-## Track 9 — AI Real Estate (Virtual Staging) ⬜
+## Track 9 — AI Real Estate (Virtual Staging) ✅
 
 | # | Module | Status |
 |---|---|---|
-| 1 | Empty Room → Staged Room Pipeline | ⬜ |
-| 2 | Pricing Against Traditional Staging | ⬜ |
-| 3 | Selling to Realtors & Agencies | ⬜ |
+| 1 | Empty Room → Staged Room Pipeline | ✅ |
+| 2 | Pricing Against Traditional Staging | ✅ |
+| 3 | Selling to Realtors & Agencies | ✅ |
 
 ## Track 10 — AI Headshots & Portraits ⬜
 
