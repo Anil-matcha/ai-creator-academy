@@ -68,8 +68,20 @@ Apply a subtle color balance filter (cinematic teal & orange or warm amber midto
 
 ---
 
+## Compare Tools
+
+| Style / Platform | Creative Control | Client Tier | Best For |
+|---|---|---|---|
+| **FLUX PuLID / InstantID (muapi)** | High (Responsive to cinematic prompt anchors: gel lighting, loft environments) | Creative professionals, media clients | Fast editorial portrait batches for agencies |
+| **Midjourney (--cref identity reference)** | Medium-High (Excellent aesthetic quality, weaker identity lock) | Individual creatives, personal brand | Social media editorial series and speaker headshots |
+| **Local ComfyUI (InstantID + LoRA)** | Maximum (Full creative node control over lighting geometry) | High-budget executive clients | Luxury speaker & author portrait packages |
+
+---
+
 ## Launch It
 
+**Pricing for creative portrait packages:**
+* **Individual Creative Portrait Pack:** **$149 – $249** (Includes 5 stylized variations: Keynote Stage, Loft Environmental, Podcast Gel, Author Dark, Studio Press Kit).
 * **Offer Pitch-Deck Formatting:** Package completed creative headshots into pre-sized assets for Spotify podcast covers (3000x3000px), YouTube banners (2560x1440px), and speaker press kits.
 
 ---

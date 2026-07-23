@@ -73,8 +73,20 @@ Generate employee subfolders containing `[FullName]_linkedin.jpg` (1080x1080px) 
 
 ---
 
+## Compare Tools
+
+| Platform / Tool | Automation Capability | Identity Consistency | Best For |
+|---|---|---|---|
+| **muapi Batch API + Python** | Ultra-High (Folder-wide script execution, auto-zip output) | High (InstantID vector embedding per employee) | High-volume corporate team contracts (25–100+ employees) |
+| **InstantID / FLUX PuLID (local)** | Medium (Manual batch queue via ComfyUI) | Maximum (Highest identity fidelity) | Premium executive packages where top-tier accuracy is critical |
+| **Typeform + Zapier Automation** | High (Auto-routes intake form submissions to processing queue) | N/A | Client-facing intake portals for self-serve employee photo uploads |
+
+---
+
 ## Launch It
 
+**Pricing for batch corporate packages:**
+* **Per-Seat Add-On Rate:** Charge **$20 – $25 per additional employee** beyond the base package tier (e.g., a 35-person team on the $799 Corporate Standard package: 25 included + 10 add-ons × $20 = **$999 total**).
 * **Automate Quality Audits:** Write a quick script to check output resolution and file size automatically before zipping, ensuring no corrupt or under-sized renders are sent to the client.
 
 ---

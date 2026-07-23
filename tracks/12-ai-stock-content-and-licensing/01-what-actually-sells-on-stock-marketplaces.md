@@ -22,7 +22,7 @@ If you generate pretty art without a commercial use-case, your images sit at the
 
 ## The Concept
 
-The AI stock licensing pipeline relies on **Commercial Trend Analysis**, **IPTC Metadata Tagging**, and **Property Release Compliance**:
+The AI stock licensing pipeline relies on **Commercial Trend Analysis**, **IPTC Metadata Tagging** (IPTC = International Press Telecommunications Council — the industry-standard schema for embedding titles, keywords, and copyright fields inside an image file), and **Property Release Compliance**:
 
 ```
 Commercial Demand Search ──► Concept Prompting ──► Quality Audit & Upscale ──► IPTC Keywording ──► Marketplace Submission

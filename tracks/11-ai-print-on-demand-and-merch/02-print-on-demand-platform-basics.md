@@ -27,7 +27,7 @@ Customer Places Order (Etsy/Shopify) ──► Auto-Sync to Print Supplier (Prin
 ### Core Components:
 
 1. **Front-End Storefronts:** Etsy (built-in search traffic), Shopify (custom brand control), or Redbubble (marketplace catalog).
-2. **Back-End Print Suppliers:** Printify, Printful, or Gelato. They handle Direct-to-Garment (DTG) printing, quality control, packaging, and shipping.
+2. **Back-End Print Suppliers:** Printify, Printful, or Gelato. They handle **DTG (Direct-to-Garment — a process that inkjet-prints your design directly onto fabric, one item at a time, with no minimum order)** printing, quality control, packaging, and shipping.
 3. **Mockup Generation:** Creating photorealistic lifestyle product photos so customers see the shirt/mug in a real-world setting.
 
 ---

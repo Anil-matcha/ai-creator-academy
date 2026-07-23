@@ -16,6 +16,8 @@ Many POD sellers generate sales but end up **losing money** at the end of the mo
 
 After subtracting all costs, a $19.99 shirt nets a negative profit margin. You need an exact mathematical pricing model to ensure every sale yields a healthy **$7 to $12 net profit**.
 
+> **Note on Etsy fees:** Etsy charges a $0.20 listing fee, a 6.5% transaction fee on the sale price, and a ~3% + $0.25 payment processing fee. Combined, this totals roughly **9.5–10% of your retail price** — which is what the model below uses.
+
 ---
 
 ## The Concept

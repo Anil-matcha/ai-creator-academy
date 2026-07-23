@@ -66,6 +66,16 @@ Generate a `metadata.csv` file mapping titles and 30 keywords to each file. Uplo
 
 ---
 
+## Compare Tools
+
+| Platform / Tool | Batch Automation | Output Quality | Best For |
+|---|---|---|---|
+| **muapi `/nano-banana-2` + Python** | Ultra-High (50 images per API script run) | High (Prompt-controlled commercial framing) | Bulk catalog generation for business, tech, and healthcare niches |
+| **Adobe Firefly (Batch Credits)** | Medium (Web UI batch mode, up to 10 at once) | Very High (Native Adobe Stock compatibility) | Direct submission to Adobe Stock contributor portal |
+| **FLUX Local (ComfyUI Queue)** | High (Unlimited offline rendering) | High | High-volume creators with local GPU who want zero API credit costs |
+
+---
+
 ## Launch It
 
 * **Maintain High Acceptance Rates:** Keep your approval rate above 80% on Adobe Stock by thoroughly checking 100% zoom crop for noise artifacts before uploading.

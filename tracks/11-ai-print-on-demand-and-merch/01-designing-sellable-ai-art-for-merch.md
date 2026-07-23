@@ -10,7 +10,7 @@
 
 Most AI creators try to upload raw AI image generations directly to Print-on-Demand (POD) platforms like Printify, Printful, or Redbubble. The results are disappointing:
 * **Resolution Blur:** Raw AI generations (1024x1024px) pixelate heavily when stretched across a t-shirt chest print area requiring **4500x5400px at 300 DPI**.
-* **Solid Background Box:** Generating a image with a solid square background leaves an ugly rectangular box printed on a black or white t-shirt.
+* **Solid Background Box:** Generating an image with a solid square background leaves an ugly rectangular box printed on a black or white t-shirt.
 * **Color Bleed:** Dark or muddy colors wash out during direct-to-garment (DTG) ink printing.
 
 If you don't isolate graphics, vector-upscale, and format specifically for apparel print specs, your products look cheap and get negative customer reviews.
