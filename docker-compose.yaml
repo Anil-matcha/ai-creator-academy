@@ -1,7 +1,7 @@
 services:
-  backend:
+  server:
     build:
-      context: ./backend
+      context: ./server
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -9,18 +9,18 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./open_agent_email.db
       - SHARED_DOMAIN=agents.local
     volumes:
-      - ./backend/open_agent_email.db:/app/open_agent_email.db
+      - ./server/open_agent_email.db:/app/open_agent_email.db
 
-  frontend:
+  client:
     build:
-      context: ./frontend
+      context: ./client
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - backend
+      - server
 
   mailpit:
     image: axllent/mailpit:latest

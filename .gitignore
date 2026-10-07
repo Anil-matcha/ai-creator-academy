@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+server/.venv/
 backend/.venv/
 .venv/
 env/
@@ -12,6 +13,9 @@ venv/
 *.sqlite3
 
 # Node / Next.js
+client/node_modules/
+client/.next/
+client/out/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
