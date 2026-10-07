@@ -112,24 +112,80 @@ class ReviewItemResponse(BaseModel):
         from_attributes = True
 
 
-# --- Simulation Schemas ---
-class SimulateInboundRequest(BaseModel):
-    agent_email: str = Field(..., example="support@agents.local")
-    sender: str = Field("user@company.com", example="user@company.com")
-    subject: str = Field("Help with billing invoice", example="Help with billing invoice")
-    body_text: str = Field("Could you please review invoice INV-8821?", example="Could you please review invoice INV-8821?")
-    body_html: Optional[str] = None
-    spf_status: str = "pass"
-    dkim_status: str = "pass"
-    dmarc_status: str = "pass"
-    verified_domain: Optional[str] = "company.com"
+# --- Domain Schemas ---
+class DomainCreate(BaseModel):
+    domain: str = Field(..., example="agents.mycompany.com")
 
-class SimulateInboundResponse(BaseModel):
-    message: MessageResponse
-    threat_scan: ThreatScanResult
-    action_taken: str  # delivered, held_for_hitl_review, blocked
-    review_id: Optional[str] = None
+class DomainResponse(BaseModel):
+    id: str
+    domain: str
+    status: str
+    mx_record: str
+    mx_status: str
+    spf_record: str
+    spf_status: str
+    dkim_selector: str
+    dkim_record: str
+    dkim_status: str
+    dmarc_record: str
+    dmarc_status: str
+    created_at: datetime
 
+    class Config:
+        from_attributes = True
+
+# --- SMTP Config Schemas ---
+class SmtpConfigUpdate(BaseModel):
+    host: str = Field("", example="smtp.gmail.com")
+    port: str = Field("587", example="587")
+    username: str = Field("", example="user@gmail.com")
+    password: Optional[str] = Field(None, example="app_password")
+    use_tls: bool = True
+    use_ssl: bool = False
+    from_email: str = Field("", example="agent@mycompany.com")
+    enabled: bool = False
+
+class SmtpConfigResponse(BaseModel):
+    id: str
+    host: str
+    port: str
+    username: str
+    password_configured: bool
+    use_tls: bool
+    use_ssl: bool
+    from_email: str
+    enabled: bool
+    updated_at: Optional[datetime] = None
+
+class SmtpTestRequest(BaseModel):
+    test_recipient: str = Field(..., example="recipient@example.com")
+
+class SmtpTestResponse(BaseModel):
+    success: bool
+    message: str
+
+# --- API Key Schemas ---
+class ApiKeyCreate(BaseModel):
+    name: str = Field(..., example="Cursor AI Integration")
+    scope: str = Field("full_access", example="full_access")
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    scope: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ApiKeyCreatedResponse(BaseModel):
+    id: str
+    name: str
+    key: str
+    prefix: str
+    scope: str
+    created_at: datetime
 
 # --- Stats Schema ---
 class StatsResponse(BaseModel):
@@ -140,3 +196,4 @@ class StatsResponse(BaseModel):
     pending_reviews: int
     threats_neutralized: int
     active_websockets: int
+

@@ -92,3 +92,37 @@ class SecurityEvent(Base):
     severity = Column(String(32), default="medium")  # low, medium, high, critical
     details = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+class Domain(Base):
+    __tablename__ = "domains"
+
+    id = Column(String(64), primary_key=True, index=True)
+    domain = Column(String(255), unique=True, index=True, nullable=False)
+    status = Column(String(32), default="pending_dns")  # verified, pending_dns
+    mx_record = Column(String(255), nullable=False)
+    mx_status = Column(String(32), default="pending")  # verified, pending
+    spf_record = Column(String(255), nullable=False)
+    spf_status = Column(String(32), default="pending")  # verified, pending
+    dkim_selector = Column(String(64), default="default")
+    dkim_record = Column(Text, nullable=False)
+    dkim_status = Column(String(32), default="pending")  # verified, pending
+    dmarc_record = Column(String(255), nullable=False)
+    dmarc_status = Column(String(32), default="pending")  # verified, pending
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class SmtpConfig(Base):
+    __tablename__ = "smtp_configs"
+
+    id = Column(String(64), primary_key=True, default="default")
+    host = Column(String(255), nullable=False, default="")
+    port = Column(String(16), default="587")
+    username = Column(String(255), nullable=False, default="")
+    password = Column(String(255), nullable=False, default="")
+    use_tls = Column(Boolean, default=True)
+    use_ssl = Column(Boolean, default=False)
+    from_email = Column(String(255), nullable=False, default="")
+    enabled = Column(Boolean, default=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+

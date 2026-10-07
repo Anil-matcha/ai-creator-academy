@@ -147,15 +147,20 @@ class SmtpSession:
             else:
                 logger.warning(f"No configured agent found for recipient {target_recipient}. Dropping message.")
 
-async def main():
+async def start_smtp_server(host: str = HOST, port: int = PORT):
     server = await asyncio.start_server(
         lambda r, w: SmtpSession(r, w).handle(),
-        HOST,
-        PORT
+        host,
+        port
     )
-    logger.info(f"Open Agent Email SMTP Receiver listening on {HOST}:{PORT}")
+    logger.info(f"Open Agent Email SMTP Receiver listening on {host}:{port}")
+    return server
+
+async def main():
+    server = await start_smtp_server()
     async with server:
         await server.serve_forever()
 
 if __name__ == "__main__":
     asyncio.run(main())
+

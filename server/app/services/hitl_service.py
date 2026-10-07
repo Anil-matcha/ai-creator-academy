@@ -38,7 +38,11 @@ class HitlService:
             review.status = "approved"
             if message:
                 message.status = "delivered"
-                # Deliver to agent via WebSocket now that human has cleared it
+                
+                # Fetch agent
+                agent_res = await db.execute(select(Agent).where(Agent.email == message.agent_email))
+                agent = agent_res.scalar_one_or_none()
+
                 msg_payload = {
                     "id": message.id,
                     "agent_email": message.agent_email,
@@ -50,7 +54,17 @@ class HitlService:
                     "thread_id": message.thread_id,
                     "created_at": message.created_at.isoformat()
                 }
-                await ws_manager.send_agent_message(message.agent_email, "email.received", msg_payload)
+
+                if message.direction == "outbound" and agent:
+                    # Dispatch to upstream SMTP relay or local loopback
+                    from app.services.email_service import EmailService
+                    await EmailService.dispatch_to_upstream(db, message, agent)
+                    await ws_manager.send_agent_message(message.agent_email, "email.sent", msg_payload)
+                    await ws_manager.broadcast_event("email.sent", msg_payload)
+                else:
+                    # Inbound email approved by reviewer - deliver to agent
+                    await ws_manager.send_agent_message(message.agent_email, "email.received", msg_payload)
+                    await ws_manager.broadcast_event("email.received", msg_payload)
         elif action == "reject":
             review.status = "rejected"
             if message:

@@ -63,6 +63,52 @@ export interface ReviewItem {
   message?: Message;
 }
 
+export interface Domain {
+  id: string;
+  domain: string;
+  status: "verified" | "pending_dns";
+  mx_record: string;
+  mx_status: "verified" | "pending";
+  spf_record: string;
+  spf_status: "verified" | "pending";
+  dkim_selector: string;
+  dkim_record: string;
+  dkim_status: "verified" | "pending";
+  dmarc_record: string;
+  dmarc_status: "verified" | "pending";
+  created_at: string;
+}
+
+export interface SmtpConfig {
+  id: string;
+  host: string;
+  port: string;
+  username: string;
+  password_configured: boolean;
+  use_tls: boolean;
+  use_ssl: boolean;
+  from_email: string;
+  enabled: boolean;
+  updated_at?: string;
+}
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: string;
+  created_at: string;
+}
+
+export interface ApiKeyCreated {
+  id: string;
+  name: string;
+  key: string;
+  prefix: string;
+  scope: string;
+  created_at: string;
+}
+
 export interface Stats {
   total_agents: number;
   total_messages: number;

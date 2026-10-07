@@ -1,4 +1,13 @@
-import { Agent, Message, ReviewItem, Stats, ThreatScanResult } from "./types";
+import {
+  Agent,
+  Message,
+  ReviewItem,
+  Stats,
+  Domain,
+  SmtpConfig,
+  ApiKeyItem,
+  ApiKeyCreated
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -95,43 +104,46 @@ export const api = {
       body: JSON.stringify({ action: "reject", notes }),
     }),
 
-  // Simulator
-  simulateInbound: (data: {
-    agent_email: string;
-    sender: string;
-    subject: string;
-    body_text: string;
-    body_html?: string;
-    spf_status?: string;
-    dkim_status?: string;
-    dmarc_status?: string;
-    verified_domain?: string;
-  }) =>
-    request<{
-      message: Message;
-      threat_scan: ThreatScanResult;
-      action_taken: string;
-      review_id?: string;
-    }>("/v1/simulate/inbound", {
+  // Domains & DNS
+  getDomains: () => request<Domain[]>("/v1/domains"),
+  createDomain: (domain: string) =>
+    request<Domain>("/v1/domains", {
+      method: "POST",
+      body: JSON.stringify({ domain }),
+    }),
+  verifyDomain: (domain: string) =>
+    request<Domain>(`/v1/domains/${encodeURIComponent(domain)}/verify`, {
+      method: "POST",
+    }),
+  deleteDomain: (domain: string) =>
+    request<void>(`/v1/domains/${encodeURIComponent(domain)}`, {
+      method: "DELETE",
+    }),
+
+  // Upstream SMTP Relay Settings
+  getSmtpConfig: () => request<SmtpConfig>("/v1/settings/smtp"),
+  updateSmtpConfig: (data: Partial<SmtpConfig>) =>
+    request<SmtpConfig>("/v1/settings/smtp", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-
-  evaluateThreat: (data: {
-    subject: string;
-    body_text: string;
-    body_html?: string;
-    sensitivity?: string;
-  }) => {
-    const params = new URLSearchParams();
-    if (data.subject) params.append("subject", data.subject);
-    if (data.body_text) params.append("body_text", data.body_text);
-    if (data.body_html) params.append("body_html", data.body_html);
-    if (data.sensitivity) params.append("sensitivity", data.sensitivity);
-    return request<ThreatScanResult>(`/v1/simulate/threat-eval?${params.toString()}`, {
+  testSmtpConnection: (test_recipient: string) =>
+    request<{ success: boolean; message: string }>("/v1/settings/smtp/test", {
       method: "POST",
-    });
-  },
+      body: JSON.stringify({ test_recipient }),
+    }),
+
+  // API Keys
+  getApiKeys: () => request<ApiKeyItem[]>("/v1/api-keys"),
+  createApiKey: (name: string, scope: string = "full_access") =>
+    request<ApiKeyCreated>("/v1/api-keys", {
+      method: "POST",
+      body: JSON.stringify({ name, scope }),
+    }),
+  deleteApiKey: (id: string) =>
+    request<void>(`/v1/api-keys/${id}`, {
+      method: "DELETE",
+    }),
 
   // MCP Info
   getMcpInfo: () => request<Record<string, unknown>>("/mcp/info"),

@@ -2,26 +2,41 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import asyncio
 
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, simulator, mcp, stats
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("open_agent_email")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables if not present
+    # 1. Startup: Create tables if not present
     logger.info("Initializing database schema...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database schema ready.")
 
+    # 2. Start inbound SMTP server daemon on port 2525
+    smtp_server = None
+    try:
+        from smtp_receiver import start_smtp_server
+        smtp_server = await start_smtp_server()
+        logger.info("Inbound SMTP listener active on port 2525.")
+    except Exception as e:
+        logger.warning(f"Could not bind SMTP port 2525 on startup: {e}")
+
     yield
 
     # 3. Shutdown
+    if smtp_server:
+        logger.info("Shutting down inbound SMTP listener...")
+        smtp_server.close()
+        await smtp_server.wait_closed()
+
     logger.info("Shutting down database connection...")
     await engine.dispose()
 
@@ -62,7 +77,9 @@ app.include_router(stats.router)
 app.include_router(agents.router)
 app.include_router(messages.router)
 app.include_router(reviews.router)
-app.include_router(simulator.router)
+app.include_router(domains.router)
+app.include_router(settings_router.router)
+app.include_router(api_keys.router)
 app.include_router(mcp.router)
 
 @app.get("/health")

@@ -7,10 +7,11 @@ import {
   LayoutDashboard,
   Mail,
   ShieldAlert,
-  FlaskConical,
+  Globe,
+  Sliders,
+  Key,
   Bot,
-  Cpu,
-  ExternalLink
+  Cpu
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -34,16 +35,18 @@ export function Sidebar() {
 
   const navItems = [
     { name: "Overview", href: "/", icon: LayoutDashboard },
-    { name: "Two-Way Inbox", href: "/inbox", icon: Mail },
+    { name: "Inboxes", href: "/inbox", icon: Mail },
     {
-      name: "HITL Reviews",
+      name: "Reviews",
       href: "/reviews",
       icon: ShieldAlert,
       badge: pendingReviews > 0 ? pendingReviews : undefined,
     },
-    { name: "Simulator", href: "/simulator", icon: FlaskConical },
+    { name: "Domains & DNS", href: "/domains", icon: Globe },
+    { name: "Upstream SMTP", href: "/settings", icon: Sliders },
+    { name: "API Keys", href: "/api-keys", icon: Key },
     { name: "Agents", href: "/agents", icon: Bot },
-    { name: "MCP Server", href: "/mcp", icon: Cpu },
+    { name: "MCP Gateway", href: "/mcp", icon: Cpu },
   ];
 
   return (
@@ -59,7 +62,7 @@ export function Sidebar() {
               <div className="text-xs font-semibold text-[#e6edf3] tracking-tight">
                 Open Agent Email
               </div>
-              <div className="text-[10px] text-[#8b949e]">Gateway & Inboxes</div>
+              <div className="text-[10px] text-[#8b949e]">Gateway & Infrastructure</div>
             </div>
           </Link>
         </div>
@@ -92,7 +95,16 @@ export function Sidebar() {
             );
           })}
         </nav>
-      </div>      
+      </div>
+
+      {/* SMTP Listener Status Footer */}
+      <div className="p-3 border-t border-[#30363d] text-[11px] text-[#8b949e] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#238636] inline-block animate-pulse" />
+          <span>SMTP Port 2525</span>
+        </div>
+        <span className="text-[10px] font-mono text-[#8b949e]">READY</span>
+      </div>
     </aside>
   );
 }
