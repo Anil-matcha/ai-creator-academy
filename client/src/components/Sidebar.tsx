@@ -14,7 +14,8 @@ import {
   Cpu,
   Archive,
   Webhook,
-  Users
+  Users,
+  Ban,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -61,6 +62,7 @@ export function Sidebar() {
     { name: "API Keys", href: "/api-keys", icon: Key },
     { name: "Agents", href: "/agents", icon: Bot },
     { name: "Contacts", href: "/contacts", icon: Users },
+    { name: "Suppressions", href: "/suppressions", icon: Ban },
     { name: "MCP Gateway", href: "/mcp", icon: Cpu },
   ];
 

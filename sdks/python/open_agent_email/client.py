@@ -71,6 +71,14 @@ class ContactUpdate(TypedDict, total=False):
     notes: str
 
 
+class Suppression(TypedDict):
+    id: str
+    agent_email: str
+    email: str
+    reason: str | None
+    created_at: str
+
+
 MessageStatus = Literal[
     "delivered",
     "accepted_by_relay",
@@ -324,6 +332,46 @@ class AgentEmailClient:
         self._request(
             "DELETE",
             f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}",
+        )
+
+    @staticmethod
+    def _validate_suppression_email(email: str) -> str:
+        normalized = email.strip().lower()
+        local, separator, domain = normalized.rpartition("@")
+        if (
+            not separator or not local or not domain or len(normalized) > 255
+            or any(char.isspace() for char in normalized) or "@" in local or "." not in domain
+        ):
+            raise ValueError("email must be a valid address of at most 255 characters")
+        return normalized
+
+    def list_suppressions(self, inbox: str, *, limit: int = 100) -> list[Suppression]:
+        """List operator-managed recipient blocks for one inbox (limit 1–500)."""
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/suppressions", query={"limit": limit}
+        )
+
+    def add_suppression(
+        self, inbox: str, *, email: str, reason: str | None = None
+    ) -> Suppression:
+        """Block an address for this inbox; this does not record unsubscribe or consent state."""
+        normalized = self._validate_suppression_email(email)
+        if reason is not None and len(reason) > 500:
+            raise ValueError("reason must be no more than 500 characters")
+        payload: dict[str, Any] = {"email": normalized}
+        if reason is not None:
+            payload["reason"] = reason.strip() or None
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/suppressions", payload=payload
+        )
+
+    def remove_suppression(self, inbox: str, suppression_id: str) -> None:
+        """Remove an operator-managed block from this inbox."""
+        self._request(
+            "DELETE",
+            f"/v1/agents/{self._inbox_path(inbox)}/suppressions/{quote(suppression_id, safe='')}",
         )
 
     def send_message(

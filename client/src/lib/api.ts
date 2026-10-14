@@ -1,6 +1,7 @@
 import {
   Agent,
   Contact,
+  RecipientSuppression,
   Message,
   MessagePage,
   MessageAttachment,
@@ -82,6 +83,17 @@ export const api = {
     request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}`, {
       method: "DELETE",
     }),
+
+  // Inbox-scoped outbound recipient suppressions
+  getSuppressions: (agentEmail: string, limit = 500) =>
+    request<RecipientSuppression[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/suppressions?limit=${limit}`),
+  addSuppression: (agentEmail: string, data: { email: string; reason?: string }) =>
+    request<RecipientSuppression>(`/v1/agents/${encodeURIComponent(agentEmail)}/suppressions`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deleteSuppression: (agentEmail: string, suppressionId: string) =>
+    request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/suppressions/${encodeURIComponent(suppressionId)}`, { method: "DELETE" }),
 
   // Messages
   getMessages: (

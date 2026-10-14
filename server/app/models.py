@@ -39,6 +39,18 @@ class Contact(Base):
     agent = relationship("Agent", back_populates="contacts")
 
 
+class RecipientSuppression(Base):
+    """Recipient addresses an inbox has explicitly blocked from outbound mail."""
+    __tablename__ = "recipient_suppressions"
+    __table_args__ = (UniqueConstraint("agent_email", "email", name="uq_suppressions_agent_email_email"),)
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False)
+    reason = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
@@ -105,7 +117,7 @@ class OutboundJob(Base):
 
     id = Column(String(64), primary_key=True, index=True)
     message_id = Column(String(64), ForeignKey("messages.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
-    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, complete, failed, uncertain
+    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, complete, failed, uncertain, blocked
     attempts = Column(Integer, nullable=False, default=0)
     available_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
     locked_at = Column(DateTime, nullable=True, index=True)

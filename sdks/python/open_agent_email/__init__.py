@@ -10,6 +10,7 @@ from .client import (
     Message,
     MessagePage,
     OtpResult,
+    Suppression,
     attachment_from_bytes,
 )
 from .webhooks import verify_webhook_signature
@@ -24,6 +25,7 @@ __all__ = [
     "Message",
     "MessagePage",
     "OtpResult",
+    "Suppression",
     "attachment_from_bytes",
     "verify_webhook_signature",
 ]

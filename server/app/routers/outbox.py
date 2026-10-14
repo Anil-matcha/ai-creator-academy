@@ -16,7 +16,7 @@ from app.schemas import OutboundJobPageResponse, OutboundJobResponse, OutboundRe
 from app.security import Principal, require_admin
 
 router = APIRouter(prefix="/v1/outbox", tags=["Outbound Queue"], dependencies=[Depends(require_admin)])
-OUTBOX_STATUSES = {"pending", "processing", "complete", "failed", "uncertain"}
+OUTBOX_STATUSES = {"pending", "processing", "complete", "failed", "uncertain", "blocked"}
 
 
 def _encode_outbox_cursor(job: OutboundJob, status: Optional[str]) -> str:
@@ -46,7 +46,7 @@ def _decode_outbox_cursor(cursor: str, status: Optional[str]) -> tuple[datetime.
 
 @router.get("", response_model=List[OutboundJobResponse])
 async def list_outbound_jobs(
-    status: Optional[str] = Query(None, description="pending, processing, complete, failed, or uncertain"),
+    status: Optional[str] = Query(None, description="pending, processing, complete, failed, uncertain, or blocked"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
@@ -61,7 +61,7 @@ async def list_outbound_jobs(
 
 @router.get("/page", response_model=OutboundJobPageResponse)
 async def page_outbound_jobs(
-    status: Optional[str] = Query(None, description="pending, processing, complete, failed, or uncertain"),
+    status: Optional[str] = Query(None, description="pending, processing, complete, failed, uncertain, or blocked"),
     limit: int = Query(50, ge=1, le=100),
     cursor: Optional[str] = Query(None, max_length=512),
     db: AsyncSession = Depends(get_db),

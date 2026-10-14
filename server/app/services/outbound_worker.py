@@ -151,6 +151,7 @@ async def _dispatch_one() -> bool:
 
         completed_status = (
             "uncertain" if status == "delivery_unknown"
+            else "blocked" if status == "blocked"
             else "failed" if status == "failed"
             else "complete"
         )
@@ -164,7 +165,7 @@ async def _dispatch_one() -> bool:
             .values(
                 status=completed_status,
                 locked_at=None,
-                last_error=info if status in {"failed", "delivery_unknown"} else None,
+                last_error=info if status in {"failed", "delivery_unknown", "blocked"} else None,
             )
         )
         if completed.rowcount != 1:
@@ -173,11 +174,12 @@ async def _dispatch_one() -> bool:
             return True
         if message:
             message.status = status
-            message.delivery_error = info if status in {"failed", "delivery_unknown"} else None
+            message.delivery_error = info if status in {"failed", "delivery_unknown", "blocked"} else None
             event_type = {
                 "accepted_by_relay": "email.accepted_by_relay",
                 "failed": "email.failed",
                 "delivery_unknown": "email.delivery_unknown",
+                "blocked": "email.blocked",
             }.get(status)
             # This runs only after the conditional job transition succeeds, so
             # stale/duplicate dispatch results cannot create duplicate events.
@@ -208,6 +210,7 @@ async def _dispatch_one() -> bool:
             }
             event_name = {
                 "failed": "email.failed",
+                "blocked": "email.blocked",
                 "accepted_by_relay": "email.accepted",
                 "delivered": "email.sent",
                 "delivery_unknown": "email.delivery_unknown",

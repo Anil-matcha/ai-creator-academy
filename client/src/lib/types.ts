@@ -23,6 +23,14 @@ export interface Contact {
   updated_at: string;
 }
 
+export interface RecipientSuppression {
+  id: string;
+  agent_email: string;
+  email: string;
+  reason: string | null;
+  created_at: string;
+}
+
 export interface ThreatDetail {
   threat_type: string;
   severity: "low" | "medium" | "high" | "critical";
@@ -148,7 +156,7 @@ export interface ApiKeyCreated {
   expires_at?: string | null;
 }
 
-export type OutboundJobStatus = "pending" | "processing" | "complete" | "failed" | "uncertain";
+export type OutboundJobStatus = "pending" | "processing" | "complete" | "failed" | "uncertain" | "blocked";
 
 export interface OutboundJob {
   id: string;

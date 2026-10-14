@@ -69,6 +69,20 @@ client.delete_contact("agent@example.com", contact["id"])
 
 The list limit is 1–500 (default 100). Email and name are limited to 255 characters, company to 255, and notes to 4,000. The SDK checks these bounds before sending requests. Contacts are inert records; creating one does not send an email.
 
+## Recipient suppressions
+
+Suppressions are explicit, operator-managed blocks scoped to one inbox. Listing requires read access; adding or removing an entry requires full-access scope. The SDK normalizes addresses to lowercase and checks email length (maximum 255 characters), optional reason length (maximum 500 characters), and list limit (1–500) before sending.
+
+```python
+blocked = client.add_suppression(
+    "agent@example.com", email="person@example.net", reason="Requested no further contact"
+)
+entries = client.list_suppressions("agent@example.com", limit=100)
+client.remove_suppression("agent@example.com", blocked["id"])
+```
+
+This list is an explicit sending block, not an unsubscribe mechanism or a record of consent/preferences. Removing a suppression permits sending again; it does not establish that the recipient consented.
+
 The SDK sends the key in the `Authorization: Bearer` header. Keep it in a secret manager or environment variable, and use HTTPS except for local development. The client never prints or includes the token in its API exceptions. Each socket operation uses a bounded timeout (15 seconds by default, configurable up to 60 seconds).
 
 ## Send and reply

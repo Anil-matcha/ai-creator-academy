@@ -115,6 +115,46 @@ class ContactResponse(BaseModel):
         from_attributes = True
 
 
+class RecipientSuppressionCreate(BaseModel):
+    email: EmailStr
+    reason: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if len(normalized) > 255:
+            raise ValueError("Email address must be at most 255 characters")
+        return normalized
+
+    @field_validator("email")
+    @classmethod
+    def bound_normalized_email(cls, value: EmailStr) -> EmailStr:
+        if len(str(value)) > 255:
+            raise ValueError("Email address must be at most 255 characters")
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def trim_reason(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class RecipientSuppressionResponse(BaseModel):
+    id: str
+    agent_email: str
+    email: EmailStr
+    reason: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- Threat Scan Schemas ---
 class ThreatDetail(BaseModel):
     threat_type: str
@@ -138,7 +178,7 @@ class MessageAttachmentInput(BaseModel):
 
 
 class MessageSendRequest(BaseModel):
-    recipient: str = Field(..., example="customer@example.com")
+    recipient: str = Field(..., min_length=3, max_length=320, example="customer@example.com")
     subject: str = Field(..., example="Update on your support ticket #492")
     body_text: str = Field(..., example="Hello! We have reviewed your inquiry and resolved the issue.")
     body_html: Optional[str] = None

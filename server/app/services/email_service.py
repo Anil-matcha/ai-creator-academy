@@ -27,6 +27,7 @@ from app.services.webhook_events import (
     enqueue_email_webhook_event,
     enqueue_inbound_security_webhook_event,
 )
+from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
 
 logger = logging.getLogger("email_service")
 SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
@@ -155,6 +156,11 @@ class EmailService:
         - Local loopback is delivered directly to the recipient inbox.
         - External SMTP success means accepted by the relay, not delivered to the recipient.
         """
+        # A suppression may have been added after queuing or while awaiting review.
+        # Recheck immediately before either local loopback or external SMTP dispatch.
+        if await get_recipient_suppression(db, agent.email, message.recipient):
+            return "blocked", "Recipient is suppressed for this inbox; no delivery attempt was made"
+
         # 1. Local loopback check
         recip_agent_res = await db.execute(select(Agent).where(Agent.email == message.recipient))
         recip_agent = recip_agent_res.scalar_one_or_none()
@@ -500,12 +506,17 @@ class EmailService:
         If HITL approval gate is enabled, places message into pending_review.
         Otherwise, delivers to local inbox or upstream SMTP relay.
         """
+        raw_recipient = recipient
+        try:
+            recipient = canonicalize_recipient(recipient)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         request_hash = None
         if idempotency_key is not None:
             idempotency_key = idempotency_key.strip()
             if not idempotency_key or len(idempotency_key) > 128:
                 raise HTTPException(status_code=400, detail="Idempotency-Key must contain 1 to 128 characters")
-            canonical_request = json.dumps({
+            request_fields = {
                 "recipient": recipient,
                 "subject": subject,
                 "body_text": body_text,
@@ -518,17 +529,41 @@ class EmailService:
                      "content_sha256": hashlib.sha256(item["content"]).hexdigest()}
                     for item in attachments or []
                 ],
-            }, sort_keys=True, separators=(",", ":"))
+            }
+            canonical_request = json.dumps(request_fields, sort_keys=True, separators=(",", ":"))
             request_hash = hashlib.sha256(canonical_request.encode("utf-8")).hexdigest()
+            legacy_request_hash = None
+            if raw_recipient != recipient:
+                legacy_request = json.dumps(
+                    {**request_fields, "recipient": raw_recipient},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                legacy_request_hash = hashlib.sha256(legacy_request.encode("utf-8")).hexdigest()
             result = await db.execute(select(Message).where(
                 Message.agent_email == agent.email,
                 Message.idempotency_key == idempotency_key,
             ))
             existing = result.scalar_one_or_none()
             if existing:
-                if existing.request_hash != request_hash:
+                matches_current = existing.request_hash == request_hash
+                matches_legacy = (
+                    legacy_request_hash is not None
+                    and existing.request_hash == legacy_request_hash
+                    and existing.recipient == raw_recipient
+                )
+                if not matches_current and not matches_legacy:
                     raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
                 return existing
+
+        # Preserve idempotent retries of a message already accepted before the
+        # recipient was suppressed, while blocking creation of any new message.
+        suppression = await get_recipient_suppression(db, agent.email, recipient)
+        if suppression:
+            raise HTTPException(
+                status_code=422,
+                detail="This inbox has suppressed outbound email to the requested recipient.",
+            )
 
         msg_id = f"msg_{uuid.uuid4().hex[:12]}"
         rfc_id = cls.generate_message_id(agent.email.split("@")[-1])

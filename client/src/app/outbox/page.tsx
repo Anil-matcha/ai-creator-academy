@@ -12,6 +12,7 @@ const FILTERS: { label: string; value: OutboundJobStatus | "" }[] = [
   { label: "Complete", value: "complete" },
   { label: "Failed", value: "failed" },
   { label: "Uncertain", value: "uncertain" },
+  { label: "Blocked", value: "blocked" },
 ];
 
 const statusColor: Record<OutboundJobStatus, string> = {
@@ -20,6 +21,7 @@ const statusColor: Record<OutboundJobStatus, string> = {
   complete: "text-[#3fb950] border-[#3fb950]/40 bg-[#3fb950]/10",
   failed: "text-[#f85149] border-[#f85149]/40 bg-[#f85149]/10",
   uncertain: "text-[#d29922] border-[#d29922]/40 bg-[#d29922]/10",
+  blocked: "text-[#f85149] border-[#f85149]/40 bg-[#f85149]/10",
 };
 
 function formatDate(value?: string | null) {
