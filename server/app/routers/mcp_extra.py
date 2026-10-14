@@ -7,9 +7,22 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Agent, EmailTemplate, RecipientSuppression
-from app.routers import contacts, conversations, messages, meta, suppressions
-from app.schemas import MessageLabelsUpdate, RecipientSuppressionCreate
+import base64
+
+from app.models import (
+    Agent, ContactEngagement, EmailTemplate, Message, MessageAttachment, RecipientSuppression,
+)
+from app.routers import (
+    agents, api_keys, contacts, conversations, domains, engagements, events, messages, meta,
+    outbox, stats, suppressions, templates, webhooks,
+)
+from app.schemas import (
+    AgentCreate, AgentResponse, AgentUpdate, ApiKeyCreate, ApiKeyResponse, ContactConsentWrite,
+    ContactCreate, ContactResponse, ContactUpdate, ContactEngagementUpdate, ContactEngagementWrite,
+    DomainCreate, DomainResponse, EmailTemplateCreate, EmailTemplatePreviewRequest,
+    EmailTemplateRenderData, EmailTemplateResponse, EmailTemplateUpdate, MessageLabelsUpdate,
+    OutboundJobResponse, RecipientSuppressionCreate,
+)
 from app.security import Principal
 
 _EMAIL = {"agent_email": {"type": "string", "description": "Agent inbox address"}}
@@ -53,7 +66,6 @@ EXT_ADMIN = {"update_protection"}
 EXT_WRITE = {"update_message_labels", "delete_message", "restore_message", "create_agent_suppression"}
 EXT_READ = {"list_conversations", "get_conversation", "get_message_lifecycle", "get_agent_metrics",
             "get_protection", "list_contacts", "list_templates", "list_suppressions"}
-EXT_NAMES = {t["name"] for t in EXT_TOOLS}
 
 
 def _dump(value):
@@ -80,6 +92,8 @@ def _int(args, key, default, lo, hi):
 
 async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
     email = args.get("agent_email")
+    if name in _HANDLERS:
+        return json.dumps(_dump(await _HANDLERS[name](db, args, principal)))
     if name == "whoami":
         return json.dumps(await meta.whoami(principal))
     if name == "list_conversations":
@@ -119,3 +133,450 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
         req = RecipientSuppressionCreate(email=args["email"], reason=args.get("reason"))
         return json.dumps(_dump(await suppressions.add_suppression(email, req, db)))
     raise ValueError(f"Unknown tool: {name}")
+
+
+# ---------------------------------------------------------------------------
+# Inbox, integration and administration tools. Each handler calls the same
+# function as the matching REST route. The caller's scope is checked before
+# dispatch in mcp.execute_mcp_tool: inbox match for EXT_READ/EXT_WRITE, an
+# administrator credential for EXT_ADMIN.
+# ---------------------------------------------------------------------------
+
+MAX_ATTACHMENT_DATA_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_CSV_CHARS = 1_000_000
+
+
+def _limit(default, maximum):
+    return {"type": "integer", "minimum": 1, "maximum": maximum, "default": default}
+
+
+_ID = {"type": "string"}
+
+
+def _m(model, obj):
+    return model.model_validate(obj).model_dump(mode="json")
+
+
+def _require(args, *keys):
+    missing = [k for k in keys if k not in args]
+    if missing:
+        raise ValueError(f"Missing required argument(s): {', '.join(missing)}")
+
+
+def _fields(args, *keys):
+    return {k: args[k] for k in keys if k in args}
+
+
+class _CsvBody:
+    """Minimal stand-in for the request object the CSV import route streams from."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+
+    async def stream(self):
+        yield self._data
+
+
+async def _h_get_attachment(db, args, principal):
+    _require(args, "agent_email", "message_id")
+    if not await db.scalar(select(Message.id).where(
+            Message.id == args["message_id"], Message.agent_email == args["agent_email"])):
+        raise ValueError(f"Message {args['message_id']} not found")
+    rows = (await db.execute(
+        select(MessageAttachment).where(MessageAttachment.message_id == args["message_id"])
+        .order_by(MessageAttachment.created_at)
+    )).scalars().all()
+    if "attachment_id" in args:
+        rows = [r for r in rows if r.id == args["attachment_id"]]
+        if not rows:
+            raise ValueError("Attachment not found")
+    return [{"id": r.id, "filename": r.filename, "content_type": r.content_type, "size_bytes": r.size_bytes}
+            for r in rows]
+
+
+async def _h_get_attachment_data(db, args, principal):
+    _require(args, "agent_email", "message_id", "attachment_id")
+    row = await db.scalar(
+        select(MessageAttachment).join(Message, Message.id == MessageAttachment.message_id).where(
+            Message.id == args["message_id"], Message.agent_email == args["agent_email"],
+            MessageAttachment.id == args["attachment_id"])
+    )
+    if not row:
+        raise ValueError("Attachment not found")
+    if row.size_bytes > MAX_ATTACHMENT_DATA_BYTES:
+        raise ValueError(
+            f"Attachment is {row.size_bytes} bytes; inline data is limited to {MAX_ATTACHMENT_DATA_BYTES}. "
+            "Download it over the REST attachment endpoint instead."
+        )
+    return {"id": row.id, "filename": row.filename, "content_type": row.content_type,
+            "size_bytes": row.size_bytes, "content_base64": base64.b64encode(row.content).decode("ascii")}
+
+
+async def _h_get_template(db, args, principal):
+    _require(args, "agent_email", "template_id")
+    return _m(EmailTemplateResponse, await templates.get_template(args["agent_email"], args["template_id"], db))
+
+
+async def _h_create_template(db, args, principal):
+    _require(args, "agent_email")
+    payload = EmailTemplateCreate(**_fields(args, "name", "subject", "body_text", "body_html"))
+    return _m(EmailTemplateResponse, await templates.create_template(args["agent_email"], payload, db))
+
+
+async def _h_update_template(db, args, principal):
+    _require(args, "agent_email", "template_id")
+    payload = EmailTemplateUpdate(**_fields(args, "name", "subject", "body_text", "body_html"))
+    return _m(EmailTemplateResponse,
+              await templates.update_template(args["agent_email"], args["template_id"], payload, db))
+
+
+async def _h_delete_template(db, args, principal):
+    _require(args, "agent_email", "template_id")
+    await templates.delete_template(args["agent_email"], args["template_id"], db)
+    return {"deleted": True, "template_id": args["template_id"]}
+
+
+async def _h_preview_template(db, args, principal):
+    _require(args, "agent_email")
+    data = args.get("data") or {}
+    if "template_id" in args:
+        return await templates.preview_saved_template(
+            args["agent_email"], args["template_id"], EmailTemplateRenderData(data=data), db)
+    payload = EmailTemplatePreviewRequest(**_fields(args, "subject", "body_text", "body_html"), data=data)
+    return await templates.preview_template(args["agent_email"], payload, db)
+
+
+async def _h_create_contact(db, args, principal):
+    _require(args, "agent_email")
+    payload = ContactCreate(**_fields(args, "email", "name", "company", "notes"))
+    return _m(ContactResponse, await contacts.create_contact(args["agent_email"], payload, db))
+
+
+async def _h_update_contact(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    payload = ContactUpdate(**_fields(args, "email", "name", "company", "notes"))
+    return _m(ContactResponse, await contacts.update_contact(args["agent_email"], args["contact_id"], payload, db))
+
+
+async def _h_delete_contact(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    await contacts.delete_contact(args["agent_email"], args["contact_id"], db)
+    return {"deleted": True, "contact_id": args["contact_id"]}
+
+
+async def _h_import_contacts(db, args, principal):
+    _require(args, "agent_email", "csv")
+    csv_text = args["csv"]
+    if not isinstance(csv_text, str) or len(csv_text) > MAX_IMPORT_CSV_CHARS:
+        raise ValueError(f"csv must be a string of at most {MAX_IMPORT_CSV_CHARS} characters")
+    return await contacts.import_contacts(args["agent_email"], _CsvBody(csv_text.encode("utf-8")), db)
+
+
+async def _h_delete_contact_import(db, args, principal):
+    _require(args, "agent_email", "batch_id")
+    return await contacts.reverse_contact_import(args["agent_email"], args["batch_id"], args.get("confirm", ""), db)
+
+
+async def _h_get_contact_consent(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    return _dump(await contacts.get_contact_consent(args["agent_email"], args["contact_id"], db))
+
+
+async def _h_record_contact_consent(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    payload = ContactConsentWrite(**_fields(args, "action", "source", "evidence", "note"))
+    return _dump(await contacts.record_contact_consent(args["agent_email"], args["contact_id"], payload, db))
+
+
+async def _h_list_outreach_contacts(db, args, principal):
+    _require(args, "agent_email")
+    due = args.get("due", False)
+    if not isinstance(due, bool):
+        raise ValueError("due must be a boolean")
+    rows = await engagements.list_engagements(args["agent_email"], due, _int(args, "limit", 100, 1, 500), db)
+    return [r.model_dump(mode="json") for r in rows]
+
+
+async def _h_set_outreach_contact(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    email = args["agent_email"]
+    existing = await db.scalar(select(ContactEngagement).where(
+        ContactEngagement.agent_email == email, ContactEngagement.contact_id == args["contact_id"]))
+    fields = _fields(args, "stage", "next_due_at", "notes")
+    if existing:
+        result = await engagements.update_engagement(email, existing.id, ContactEngagementUpdate(**fields), db)
+    else:
+        result = await engagements.create_engagement(
+            email, ContactEngagementWrite(contact_id=args["contact_id"], **fields), db)
+    return result.model_dump(mode="json")
+
+
+async def _h_delete_outreach_contact(db, args, principal):
+    _require(args, "agent_email", "engagement_id")
+    await engagements.delete_engagement(args["agent_email"], args["engagement_id"], db)
+    return {"deleted": True, "engagement_id": args["engagement_id"]}
+
+
+async def _h_delete_agent_suppression(db, args, principal):
+    _require(args, "agent_email", "suppression_id")
+    await suppressions.remove_suppression(args["agent_email"], args["suppression_id"], db)
+    return {"deleted": True, "suppression_id": args["suppression_id"]}
+
+
+# --- administration (administrator credential only) ---
+
+async def _h_list_webhooks(db, args, principal):
+    return await webhooks.list_webhooks(args.get("agent_email"), _int(args, "limit", 100, 1, 200), db)
+
+
+async def _h_get_webhook(db, args, principal):
+    _require(args, "webhook_id")
+    return await webhooks.get_webhook(args["webhook_id"], db)
+
+
+async def _h_create_webhook(db, args, principal):
+    payload = webhooks.WebhookCreate(**_fields(args, "agent_email", "url", "enabled", "events"))
+    return await webhooks.create_webhook(payload, db)  # includes the signing secret, shown only now
+
+
+async def _h_update_webhook(db, args, principal):
+    _require(args, "webhook_id")
+    payload = webhooks.WebhookUpdate(**_fields(args, "url", "enabled", "events"))
+    return await webhooks.update_webhook(args["webhook_id"], payload, db)
+
+
+async def _h_delete_webhook(db, args, principal):
+    _require(args, "webhook_id")
+    await webhooks.delete_webhook(args["webhook_id"], db)
+    return {"deleted": True, "webhook_id": args["webhook_id"]}
+
+
+async def _h_rotate_webhook_secret(db, args, principal):
+    _require(args, "webhook_id")
+    return await webhooks.rotate_webhook_secret(args["webhook_id"], db)  # new secret, shown only now
+
+
+async def _h_test_webhook(db, args, principal):
+    _require(args, "webhook_id")
+    return await webhooks.send_test_webhook(args["webhook_id"], db)
+
+
+async def _h_list_webhook_deliveries(db, args, principal):
+    _require(args, "webhook_id")
+    return await webhooks.list_webhook_deliveries(
+        args["webhook_id"], args.get("status"), _int(args, "limit", 100, 1, 200), db)
+
+
+async def _h_list_events(db, args, principal):
+    return await events.list_events(
+        args.get("agent_email"), args.get("event_type"), args.get("status"),
+        _int(args, "limit", 50, 1, 100), args.get("cursor"), db)
+
+
+async def _h_get_event(db, args, principal):
+    _require(args, "event_id")
+    return await events.get_event(args["event_id"], db)
+
+
+async def _h_redeliver_event(db, args, principal):
+    _require(args, "event_id")
+    return await events.redeliver_event(args["event_id"], principal, db)
+
+
+async def _h_list_api_keys(db, args, principal):
+    return [_m(ApiKeyResponse, k) for k in await api_keys.list_api_keys(db)]
+
+
+async def _h_create_api_key(db, args, principal):
+    payload = ApiKeyCreate(**_fields(args, "name", "agent_email", "scope", "expires_in_days"))
+    return (await api_keys.create_api_key(payload, db)).model_dump(mode="json")  # key shown only now
+
+
+async def _h_delete_api_key(db, args, principal):
+    _require(args, "key_id")
+    await api_keys.revoke_api_key(args["key_id"], db)
+    return {"revoked": True, "key_id": args["key_id"]}
+
+
+async def _h_list_domains(db, args, principal):
+    return [_m(DomainResponse, d) for d in await domains.list_domains(db)]
+
+
+async def _h_register_domain(db, args, principal):
+    _require(args, "domain")
+    return _m(DomainResponse, await domains.create_domain(DomainCreate(domain=args["domain"]), db))
+
+
+async def _h_verify_domain(db, args, principal):
+    _require(args, "domain")
+    return _m(DomainResponse, await domains.verify_domain(args["domain"], db))
+
+
+async def _h_delete_domain(db, args, principal):
+    _require(args, "domain")
+    await domains.delete_domain(args["domain"], db)
+    return {"deleted": True, "domain": args["domain"]}
+
+
+async def _h_create_agent(db, args, principal):
+    payload = AgentCreate(**_fields(args, "email", "display_name", "description", "threat_sensitivity",
+                                    "hitl_enabled", "auto_reply_enabled", "auto_reply_prompt"))
+    return _m(AgentResponse, await agents.create_agent(payload, db))
+
+
+async def _h_get_agent(db, args, principal):
+    _require(args, "agent_email")
+    return _m(AgentResponse, await agents.get_agent(args["agent_email"], db))
+
+
+async def _h_update_agent(db, args, principal):
+    _require(args, "agent_email")
+    payload = AgentUpdate(**_fields(args, "display_name", "description", "status", "threat_sensitivity",
+                                    "hitl_enabled", "auto_reply_enabled", "auto_reply_prompt"))
+    return _m(AgentResponse, await agents.update_agent(args["agent_email"], payload, db))
+
+
+async def _h_delete_agent(db, args, principal):
+    _require(args, "agent_email")
+    await agents.delete_agent(args["agent_email"], db)
+    return {"deleted": True, "agent_email": args["agent_email"]}
+
+
+async def _h_get_account_metrics(db, args, principal):
+    return (await stats.get_overview_stats(db)).model_dump(mode="json")
+
+
+async def _h_list_outbox(db, args, principal):
+    rows = await outbox.list_outbound_jobs(args.get("status"), _int(args, "limit", 50, 1, 200), db)
+    return [_m(OutboundJobResponse, r) for r in rows]
+
+
+async def _h_retry_outbox_job(db, args, principal):
+    _require(args, "job_id")
+    confirm = args.get("confirm_duplicate_risk", False)
+    if not isinstance(confirm, bool):
+        raise ValueError("confirm_duplicate_risk must be a boolean")
+    return _m(OutboundJobResponse, await outbox.retry_outbound_job(args["job_id"], confirm, principal, db))
+
+
+_AE = _EMAIL
+_TPL_FIELDS = {"name": _ID, "subject": _ID, "body_text": _ID, "body_html": _ID}
+_CONTACT_FIELDS = {"email": _ID, "name": _ID, "company": _ID, "notes": _ID}
+_WH_ID = {"webhook_id": {"type": "string", "description": "Webhook endpoint id (wh_...)"}}
+_EVENTS = {"type": "array", "items": _ID}
+_DELIVERY_STATUS = {"type": "string", "enum": ["pending", "processing", "delivered", "failed"]}
+_AGENT_FIELDS = {
+    "display_name": _ID, "description": _ID,
+    "threat_sensitivity": {"type": "string", "enum": ["off", "low", "medium", "high"]},
+    "hitl_enabled": {"type": "boolean"}, "auto_reply_enabled": {"type": "boolean"}, "auto_reply_prompt": _ID,
+}
+
+# (name, description, properties, required, kind, handler)
+_NEW_SPECS = [
+    ("get_attachment", "List attachment metadata (id, filename, type, size) for a message, or one attachment if attachment_id is given. Does not return content.",
+     {**_AE, "message_id": _ID, "attachment_id": _ID}, ["agent_email", "message_id"], "read", _h_get_attachment),
+    ("get_attachment_data", "Return one attachment's content as base64. Limited to 5 MB inline; larger files must be fetched over REST.",
+     {**_AE, "message_id": _ID, "attachment_id": _ID}, ["agent_email", "message_id", "attachment_id"], "read", _h_get_attachment_data),
+    ("get_template", "Fetch one saved email template.",
+     {**_AE, "template_id": _ID}, ["agent_email", "template_id"], "read", _h_get_template),
+    ("preview_template", "Render a saved template (template_id) or ad-hoc subject/body with placeholder data. Nothing is sent.",
+     {**_AE, "template_id": _ID, "subject": _ID, "body_text": _ID, "body_html": _ID, "data": {"type": "object"}},
+     ["agent_email"], "read", _h_preview_template),
+    ("create_template", "Create a saved template with {{variable}} placeholders; needs a name, a subject, and body_text or body_html.",
+     {**_AE, **_TPL_FIELDS}, ["agent_email", "name", "subject"], "write", _h_create_template),
+    ("update_template", "Change fields of a saved template.",
+     {**_AE, "template_id": _ID, **_TPL_FIELDS}, ["agent_email", "template_id"], "write", _h_update_template),
+    ("delete_template", "Delete a saved template.",
+     {**_AE, "template_id": _ID}, ["agent_email", "template_id"], "write", _h_delete_template),
+    ("create_contact", "Add an inert contact record to the inbox. It does not imply consent and sends nothing.",
+     {**_AE, **_CONTACT_FIELDS}, ["agent_email", "email", "name"], "write", _h_create_contact),
+    ("update_contact", "Change a contact's fields.",
+     {**_AE, "contact_id": _ID, **_CONTACT_FIELDS}, ["agent_email", "contact_id"], "write", _h_update_contact),
+    ("delete_contact", "Delete a contact and its follow-up record.",
+     {**_AE, "contact_id": _ID}, ["agent_email", "contact_id"], "write", _h_delete_contact),
+    ("import_contacts", "Import contacts from CSV text (header: email,name,company,notes; at most 1000 rows and 1 MB). Reports every row and skips duplicates and suppressed recipients.",
+     {**_AE, "csv": _ID}, ["agent_email", "csv"], "write", _h_import_contacts),
+    ("delete_contact_import", "Reverse an import batch, deleting only contacts not edited since import. Requires confirm=DELETE.",
+     {**_AE, "batch_id": _ID, "confirm": {"type": "string", "enum": ["DELETE"]}},
+     ["agent_email", "batch_id", "confirm"], "write", _h_delete_contact_import),
+    ("get_contact_consent", "Read a contact's append-only consent history and current state (granted, revoked, unknown).",
+     {**_AE, "contact_id": _ID}, ["agent_email", "contact_id"], "read", _h_get_contact_consent),
+    ("record_contact_consent", "Append an operator-entered consent change (granted or revoked) with its source and evidence.",
+     {**_AE, "contact_id": _ID, "action": {"type": "string", "enum": ["granted", "revoked"]},
+      "source": _ID, "evidence": _ID, "note": _ID},
+     ["agent_email", "contact_id", "action", "source"], "write", _h_record_contact_consent),
+    ("list_outreach_contacts", "List follow-up records (stage, next due time, reply and suppression facts). due=true returns only currently due, unsuppressed ones.",
+     {**_AE, "due": {"type": "boolean", "default": False}, "limit": _limit(100, 500)},
+     ["agent_email"], "read", _h_list_outreach_contacts),
+    ("set_outreach_contact", "Create or update a contact's follow-up record: stage (new, contacted, waiting, closed), optional next_due_at ISO time, notes. Never sends mail.",
+     {**_AE, "contact_id": _ID, "stage": {"type": "string", "enum": ["new", "contacted", "waiting", "closed"]},
+      "next_due_at": {"type": "string", "format": "date-time"}, "notes": _ID},
+     ["agent_email", "contact_id"], "write", _h_set_outreach_contact),
+    ("delete_outreach_contact", "Delete a follow-up record by engagement_id.",
+     {**_AE, "engagement_id": _ID}, ["agent_email", "engagement_id"], "write", _h_delete_outreach_contact),
+    ("delete_agent_suppression", "Remove a suppression so the inbox may email that recipient again.",
+     {**_AE, "suppression_id": _ID}, ["agent_email", "suppression_id"], "write", _h_delete_agent_suppression),
+    ("list_webhooks", "Administrator only: list webhook endpoints, optionally for one inbox. Signing secrets are never returned.",
+     {**_AE, "limit": _limit(100, 200)}, [], "admin", _h_list_webhooks),
+    ("get_webhook", "Administrator only: fetch one webhook endpoint (no secret).",
+     _WH_ID, ["webhook_id"], "admin", _h_get_webhook),
+    ("create_webhook", "Administrator only: register an HTTPS webhook (port 443, public host) for an inbox. The signing secret is returned once, in this response only.",
+     {**_AE, "url": _ID, "enabled": {"type": "boolean"}, "events": _EVENTS}, ["agent_email", "url"], "admin", _h_create_webhook),
+    ("update_webhook", "Administrator only: change a webhook's url, enabled flag or event filter.",
+     {**_WH_ID, "url": _ID, "enabled": {"type": "boolean"}, "events": _EVENTS}, ["webhook_id"], "admin", _h_update_webhook),
+    ("delete_webhook", "Administrator only: delete a webhook endpoint and its delivery history.",
+     _WH_ID, ["webhook_id"], "admin", _h_delete_webhook),
+    ("rotate_webhook_secret", "Administrator only: issue a new signing secret, returned once; the old one stays valid for 24 hours.",
+     _WH_ID, ["webhook_id"], "admin", _h_rotate_webhook_secret),
+    ("test_webhook", "Administrator only: queue a signed synthetic event to an enabled webhook.",
+     _WH_ID, ["webhook_id"], "admin", _h_test_webhook),
+    ("list_webhook_deliveries", "Administrator only: delivery attempts for one webhook, newest first.",
+     {**_WH_ID, "status": _DELIVERY_STATUS, "limit": _limit(100, 200)}, ["webhook_id"], "admin", _h_list_webhook_deliveries),
+    ("list_events", "Administrator only: cursor-paged event log across webhooks, filterable by inbox, type and status.",
+     {**_AE, "event_type": _ID, "status": _DELIVERY_STATUS, "limit": _limit(50, 100), "cursor": _ID},
+     [], "admin", _h_list_events),
+    ("get_event", "Administrator only: fetch one event with its payload and delivery state.",
+     {"event_id": _ID}, ["event_id"], "admin", _h_get_event),
+    ("redeliver_event", "Administrator only: re-queue a failed or delivered event for another delivery.",
+     {"event_id": _ID}, ["event_id"], "admin", _h_redeliver_event),
+    ("list_api_keys", "Administrator only: list API keys (prefix, scope, inbox, expiry; never the key itself).",
+     {}, [], "admin", _h_list_api_keys),
+    ("create_api_key", "Administrator only: mint an inbox-scoped key (read_only, full_access or reviewer; 90-day expiry by default). The key is returned once, in this response only.",
+     {"name": _ID, "agent_email": _ID, "scope": {"type": "string", "enum": ["read_only", "full_access", "reviewer"]},
+      "expires_in_days": {"type": "integer", "minimum": 1, "maximum": 3650}},
+     ["name", "agent_email"], "admin", _h_create_api_key),
+    ("delete_api_key", "Administrator only: revoke an API key immediately.",
+     {"key_id": _ID}, ["key_id"], "admin", _h_delete_api_key),
+    ("list_domains", "Administrator only: list registered domains and their DNS record status.",
+     {}, [], "admin", _h_list_domains),
+    ("register_domain", "Administrator only: register a domain and return the DNS records to publish.",
+     {"domain": _ID}, ["domain"], "admin", _h_register_domain),
+    ("verify_domain", "Administrator only: check a domain's DNS records. DNS verification is not implemented yet, so this currently reports an error.",
+     {"domain": _ID}, ["domain"], "admin", _h_verify_domain),
+    ("delete_domain", "Administrator only: remove a registered domain.",
+     {"domain": _ID}, ["domain"], "admin", _h_delete_domain),
+    ("create_agent", "Administrator only: create an inbox.",
+     {"email": _ID, **_AGENT_FIELDS}, ["email", "display_name"], "admin", _h_create_agent),
+    ("get_agent", "Administrator only: fetch one inbox's configuration.",
+     _AE, ["agent_email"], "admin", _h_get_agent),
+    ("update_agent", "Administrator only: change an inbox's name, status, screening or approval settings.",
+     {**_AE, "status": _ID, **_AGENT_FIELDS}, ["agent_email"], "admin", _h_update_agent),
+    ("delete_agent", "Administrator only: permanently delete an inbox with its messages, contacts and keys.",
+     _AE, ["agent_email"], "admin", _h_delete_agent),
+    ("get_account_metrics", "Administrator only: totals across all inboxes (agents, messages, unread, pending reviews, threats, live connections).",
+     {}, [], "admin", _h_get_account_metrics),
+    ("list_outbox", "Administrator only: durable outbound queue jobs, optionally by status.",
+     {"status": {"type": "string", "enum": ["pending", "processing", "complete", "failed", "uncertain", "blocked"]},
+      "limit": _limit(50, 200)}, [], "admin", _h_list_outbox),
+    ("retry_outbox_job", "Administrator only: retry a failed or uncertain job. An uncertain job may already have been accepted by the relay, so confirm_duplicate_risk=true is required for it.",
+     {"job_id": _ID, "confirm_duplicate_risk": {"type": "boolean", "default": False}},
+     ["job_id"], "admin", _h_retry_outbox_job),
+]
+
+_HANDLERS = {}
+for _name, _desc, _props, _req, _kind, _handler in _NEW_SPECS:
+    EXT_TOOLS.append(_tool(_name, _desc, dict(_props), _req))
+    _HANDLERS[_name] = _handler
+    {"read": EXT_READ, "write": EXT_WRITE, "admin": EXT_ADMIN}[_kind].add(_name)
+
+EXT_NAMES = {t["name"] for t in EXT_TOOLS}

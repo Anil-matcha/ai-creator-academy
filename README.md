@@ -270,6 +270,16 @@ claude mcp add --transport http open-agent-email http://127.0.0.1:8000/mcp/rpc -
 | `approve_review` | Approves a held email and triggers delivery. |
 | `reject_review` | Rejects and quarantines an email. |
 
+**67 tools in total** (`GET /mcp/tools` returns every schema). Beyond the table above, grouped by the credential each needs:
+
+- **Any credential:** `whoami`.
+- **Inbox read scope** (`read_only` or `full_access` key for that inbox, or admin): `list_conversations`, `get_conversation`, `get_message_lifecycle`, `get_agent_metrics`, `get_protection`, `get_attachment` (metadata), `get_attachment_data` (base64, 5 MB cap), `list_templates`, `get_template`, `preview_template`, `list_contacts`, `get_contact_consent`, `list_outreach_contacts`, `list_suppressions`.
+- **Inbox write scope** (`full_access` key for that inbox, or admin): `update_message_labels`, `delete_message`, `restore_message`, `create_template`, `update_template`, `delete_template`, `create_contact`, `update_contact`, `delete_contact`, `import_contacts` (CSV text), `delete_contact_import`, `record_contact_consent`, `set_outreach_contact`, `delete_outreach_contact`, `create_agent_suppression`, `delete_agent_suppression`. `send_message` and `reply_to_message` also accept `send_at`.
+- **Administrator only:** `create_agent`, `get_agent`, `update_agent`, `delete_agent`, `update_protection`, `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook`, `rotate_webhook_secret`, `test_webhook`, `list_webhook_deliveries`, `list_events`, `get_event`, `redeliver_event`, `list_api_keys`, `create_api_key`, `delete_api_key`, `list_domains`, `register_domain`, `verify_domain`, `delete_domain`, `get_account_metrics`, `list_outbox`, `retry_outbox_job`.
+- **Reviewer keys** can call only `list_reviews`, `approve_review`, `reject_review` and `whoami`.
+
+Webhook signing secrets and newly created API keys are returned once, in the response that creates or rotates them; reads never include them. Each tool runs the same code as its REST route, so validation, idempotency, suppression checks and approval rules are identical.
+
 ---
 
 A first-party TypeScript SDK (`@open-agent-email/sdk`, zero runtime dependencies) lives in [sdks/typescript](sdks/typescript): typed REST client, cursor iterators, webhook signature verification, and a real-time `listen()` stream.

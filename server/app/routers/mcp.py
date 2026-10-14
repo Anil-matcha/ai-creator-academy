@@ -20,7 +20,7 @@ router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
 MCP_TOOLS = [
     {
         "name": "list_agents",
-        "description": "Lists all AI agent email inboxes configured in Open Agent Email",
+        "description": "Administrator only: list every agent email inbox configured in Open Agent Email",
         "inputSchema": {
             "type": "object",
             "properties": {}
