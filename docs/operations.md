@@ -92,6 +92,25 @@ Restoring a message from trash before its `scheduled_at` re-arms the send (the c
    - MX points at `MAIL_HOSTNAME` (default `mx.<SHARED_DOMAIN>`), which must be the host running the SMTP listener.
    - If your outbound relay requires an SPF include (for example `amazonses.com`), set `SPF_INCLUDE` before registering.
 3. `POST /v1/domains/{domain}/verify` looks the records up (3 s per query). Each record is `verified`, `pending` (not found), `mismatch` (found but wrong, including duplicate SPF records), or `error` (DNS failure). The domain is `verified` when MX, SPF and DKIM all match; DMARC is recommended but not required.
+
 4. Mail sent from a verified domain through the configured relay is DKIM-signed. A signing failure never blocks delivery; the message is sent unsigned and the failure is logged.
 
+Inbound SMTP disposition follows the effective published DMARC policy only when authentication returns an exact `fail`: `p=reject` returns SMTP 550 before any inbox write, while `p=quarantine` stores the message in the normal pending-review queue. For a From subdomain using a parent policy, `sp` supplies the effective disposition when present; otherwise `p` applies. `p=none`, absent or invalid policy, DNS temporary errors, and unverified results use the normal inbound workflow. The implementation does not apply `np` or `pct` sampling semantics.
+
 Domains registered before this feature carry placeholder DKIM data and cannot be verified; delete and register them again.
+
+## Production validation record
+
+Passing unit tests and `/ready` checks do not prove a production mail deployment. Before enabling external traffic, run each exercise against an isolated staging environment and retain its date, software revision, operator, result, and sanitized evidence:
+
+| Exercise | Evidence to retain |
+| --- | --- |
+| PostgreSQL deployment | Apply all migrations to a clean database and an upgraded copy; exercise inbox reads, message writes, cursor pagination, and worker claims; confirm `/ready` returns healthy. |
+| Backup and restore | Restore the database and matching encryption/signing keys into a separate environment; verify message/attachment reads, encrypted relay/webhook secrets, and a signed webhook test. |
+| Key rotation | Rotate the encryption key using the previous-key setting; verify stored credentials and webhook signatures, then remove the previous key and restart successfully. |
+| Domain and authentication | Publish staging MX, SPF, DKIM, and DMARC records; verify DNS, receive a message with known SPF/DKIM/DMARC outcomes, and confirm outbound DKIM against the delivered raw message. Include `p=reject`, `p=quarantine`, and inherited `sp` cases. |
+| Provider feedback | Send through the configured staging provider and deliver its signed lifecycle notification; verify exact message/recipient correlation, duplicate notification handling, and the resulting webhook event. |
+| SMTP ambiguity and recovery | Simulate an upstream relay accepting a message and dropping the connection before the response reaches this service; verify the message becomes uncertain, is not automatically resent, and manual retry requires duplicate-risk confirmation. |
+| Operational monitoring | Confirm alerts cover readiness failures, database/worker errors, growing outbox and webhook backlogs, uncertain SMTP outcomes, and attachment scanner failures. `/ready` provides point-in-time health and queue counts; deployment-specific dashboards and alert delivery must be verified separately. |
+
+These are operator-run release gates, not claims established by the repository test suite. Do not enable production inbound or outbound mail until the applicable exercises pass and their records are reviewed.

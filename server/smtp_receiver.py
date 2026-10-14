@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.database import AsyncSessionLocal
 from app.models import Agent
 from app.services.email_service import EmailService
-from app.services.mail_auth import evaluate_inbound_authentication
+from app.services.mail_auth import evaluate_inbound_authentication, inbound_dmarc_disposition
 from app.services.attachment_scan import (
     AttachmentInfectedError,
     AttachmentScanLimitError,
@@ -97,6 +97,10 @@ class SmtpMessageRejected(ValueError):
     """A permanent size or MIME-policy rejection suitable for SMTP 552."""
 
 
+class SmtpPolicyRejected(ValueError):
+    """A permanent sender-authentication policy rejection suitable for SMTP 550."""
+
+
 class SmtpHandler:
     """Async SMTP hooks that ingest validated messages into agent inboxes."""
 
@@ -127,6 +131,8 @@ class SmtpHandler:
             await self.process_email(raw_bytes, envelope, session)
         except SmtpMessageRejected as exc:
             return f"552 {exc}"
+        except SmtpPolicyRejected as exc:
+            return f"550 {exc}"
         except AttachmentInfectedError:
             return "554 Attachment rejected by malware scanner"
         except AttachmentScanLimitError as exc:
@@ -198,6 +204,9 @@ class SmtpHandler:
             mail_from=envelope.mail_from,
             helo_domain=getattr(session, "host_name", "") or "",
         )
+        dmarc_disposition = inbound_dmarc_disposition(dmarc_status, auth_evidence)
+        if dmarc_disposition == "reject":
+            raise SmtpPolicyRejected("DMARC policy rejects this unauthenticated message")
         inbound_dedup_hash = hashlib.sha256(
             envelope.mail_from.strip().lower().encode("utf-8", errors="replace") + b"\0" + raw_bytes
         ).hexdigest()
@@ -223,6 +232,7 @@ class SmtpHandler:
                     dkim_status=dkim_status,
                     dmarc_status=dmarc_status,
                     auth_evidence=auth_evidence,
+                    force_review=dmarc_disposition == "quarantine",
                     inbound_dedup_hash=inbound_dedup_hash,
                     raw_message_id=raw_message_id,
                     in_reply_to=in_reply_to,

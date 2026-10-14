@@ -310,6 +310,7 @@ class EmailService:
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        force_review: bool = False,
     ) -> Tuple[Message, ThreatScanResult, Optional[ReviewItem]]:
         """
         Processes inbound email:
@@ -380,7 +381,7 @@ class EmailService:
         review_item = None
         if scan_result.verdict == "block":
             status = "blocked"
-        elif scan_result.verdict == "review" or (agent.hitl_enabled and scan_result.threat_score >= 0.40):
+        elif force_review or scan_result.verdict == "review" or (agent.hitl_enabled and scan_result.threat_score >= 0.40):
             status = "pending_review"
         else:
             status = "delivered"
@@ -457,7 +458,11 @@ class EmailService:
                 id=f"rev_{uuid.uuid4().hex[:12]}",
                 message_id=msg_id,
                 agent_email=agent.email,
-                reason=f"Threat score {scan_result.threat_score}: {scan_result.analysis_summary}",
+                reason=(
+                    "DMARC policy requests quarantine for a failed authentication result"
+                    if force_review
+                    else f"Threat score {scan_result.threat_score}: {scan_result.analysis_summary}"
+                ),
                 threat_score=scan_result.threat_score,
                 status="pending",
                 created_at=datetime.datetime.utcnow()

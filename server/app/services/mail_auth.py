@@ -191,6 +191,7 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
         deadline = time.monotonic() + DMARC_TOTAL_TIMEOUT_SECONDS
         author_tree = _dmarc_tree(author_domain, deadline)
         exact_record = next((item for item in author_tree if item[0] == author_domain), None)
+        policy_domain = author_domain
         if exact_record:
             policy_tags = exact_record[2]
         elif author_tree:
@@ -201,14 +202,17 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
                 policy_record = next((item for item in author_tree if item[2].get("psd") == "y"), None)
             if not policy_record:
                 return "none"
+            policy_domain = policy_record[0]
             policy_tags = policy_record[2]
         else:
             return "none"
 
         if details is not None:
+            effective_policy = policy_tags.get("sp", policy_tags.get("p")) if author_domain != policy_domain else policy_tags.get("p")
             details["policy"] = {
-                "domain": exact_record[0] if exact_record else (policy_record[0] if author_tree and policy_record else None),
+                "domain": policy_domain,
                 **{tag: policy_tags[tag] for tag in ("p", "sp", "np", "adkim", "aspf", "psd") if tag in policy_tags},
+                "effective": effective_policy,
             }
 
         try:
@@ -321,3 +325,29 @@ async def evaluate_inbound_authentication(
         "authentication": authentication,
     }
     return spf_result, dkim_status, dmarc_result, evidence
+
+
+def inbound_dmarc_disposition(dmarc_status: str, auth_evidence: dict | None) -> str | None:
+    """Return the published effective DMARC disposition for an exact failure.
+
+    This intentionally consumes only the policy selected during the bounded DNS
+    evaluation. Missing, temporary, malformed, and otherwise unverified evidence
+    never becomes a delivery policy decision.
+    """
+    if dmarc_status != "fail" or not isinstance(auth_evidence, dict):
+        return None
+    dmarc = auth_evidence.get("dmarc")
+    if not isinstance(dmarc, dict):
+        authentication = auth_evidence.get("authentication")
+        dmarc = authentication.get("dmarc") if isinstance(authentication, dict) else None
+    policy_record = dmarc.get("policy") if isinstance(dmarc, dict) else None
+    if not isinstance(policy_record, dict):
+        return None
+    effective = policy_record.get("effective")
+    if effective not in {"reject", "quarantine", "none"}:
+        # Compatibility for stored/older evidence, including inherited sp.
+        from_domain = (auth_evidence.get("from_header") or [None])[0]
+        policy_domain = policy_record.get("domain")
+        inherited = bool(from_domain and policy_domain and str(from_domain).rsplit("@", 1)[-1].rstrip(".").lower() != str(policy_domain).lower())
+        effective = policy_record.get("sp") if inherited and policy_record.get("sp") else policy_record.get("p")
+    return effective if effective in {"reject", "quarantine"} else None

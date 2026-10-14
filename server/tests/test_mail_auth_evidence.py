@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+
 from app.models import Message
 from app.schemas import MessageResponse
 from app.services import mail_auth
@@ -71,4 +73,39 @@ def test_message_authentication_supports_legacy_and_structured_evidence():
     message.created_at = datetime.datetime.now(datetime.timezone.utc)
     response = MessageResponse.model_validate(message, from_attributes=True)
     assert response.authentication["dkim"] == [{"status": "pass", "domain": "example.com"}]
+
+
+@pytest.mark.parametrize(
+    ("dmarc_status", "policy", "expected"),
+    [
+        ("fail", {"p": "reject", "effective": "reject"}, "reject"),
+        ("fail", {"p": "none", "sp": "quarantine", "effective": "quarantine"}, "quarantine"),
+        ("none", {"p": "reject", "effective": "reject"}, None),
+        ("temperror", {"p": "reject", "effective": "reject"}, None),
+        ("unverified", {"p": "reject", "effective": "reject"}, None),
+        ("fail", {"p": "none", "effective": "none"}, None),
+    ],
+)
+def test_dmarc_disposition_only_applies_to_exact_failure(dmarc_status, policy, expected):
+    evidence = {"dmarc": {"status": dmarc_status, "policy": policy}}
+    assert mail_auth.inbound_dmarc_disposition(dmarc_status, evidence) == expected
+
+
+def test_dmarc_inherited_subdomain_policy_uses_sp(monkeypatch):
+    monkeypatch.setattr(
+        mail_auth,
+        "_dmarc_tree",
+        lambda domain, _deadline: (
+            [("example.com", "v=DMARC1; p=none; sp=reject", {"p": "none", "sp": "reject"})]
+            if domain == "sub.example.com"
+            else [(domain, "v=DMARC1; p=none", {"p": "none"})]
+        ),
+    )
+    details = {}
+    result = mail_auth._check_dmarc(
+        b"From: sender@sub.example.com\r\n\r\nbody", "bounce@other.net", "mx.other.net",
+        "fail", "none", [], details,
+    )
+    assert result == "fail"
+    assert details["policy"] == {"domain": "example.com", "p": "none", "sp": "reject", "effective": "reject"}
 

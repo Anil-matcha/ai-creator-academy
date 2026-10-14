@@ -108,6 +108,45 @@ async def test_ehlo_mail_rcpt_data_and_mime_attachments(client, smtp_listener, m
     }]
 
 
+async def test_dmarc_reject_policy_returns_550_without_persistence(client, smtp_listener, monkeypatch):
+    await make_agent(client, "reject@agents.local")
+    deliveries = _capture_delivery(monkeypatch)
+    evidence = {"dmarc": {"status": "fail", "policy": {"domain": "example.org", "p": "reject", "effective": "reject"}}}
+    monkeypatch.setattr(
+        smtp_receiver, "evaluate_inbound_authentication",
+        AsyncMock(return_value=("fail", "none", "fail", evidence)),
+    )
+    raw = b"From: sender@example.org\r\nSubject: reject\r\n\r\nbody\r\n"
+
+    def send(smtp):
+        smtp.mail("bounce@example.org")
+        smtp.rcpt("reject@agents.local")
+        return smtp.data(raw)
+
+    assert (await asyncio.to_thread(_smtp_call, smtp_listener, send))[0] == 550
+    assert deliveries == []
+
+
+async def test_dmarc_quarantine_policy_creates_pending_review(client, smtp_listener, monkeypatch):
+    await make_agent(client, "quarantine@agents.local")
+    deliveries = _capture_delivery(monkeypatch)
+    evidence = {"dmarc": {"status": "fail", "policy": {"domain": "example.org", "p": "quarantine", "effective": "quarantine"}}}
+    monkeypatch.setattr(
+        smtp_receiver, "evaluate_inbound_authentication",
+        AsyncMock(return_value=("fail", "none", "fail", evidence)),
+    )
+    raw = b"From: sender@example.org\r\nSubject: quarantine\r\n\r\nbody\r\n"
+
+    def send(smtp):
+        smtp.mail("bounce@example.org")
+        smtp.rcpt("quarantine@agents.local")
+        return smtp.data(raw)
+
+    assert (await asyncio.to_thread(_smtp_call, smtp_listener, send))[0] == 250
+    assert len(deliveries) == 1
+    assert deliveries[0]["force_review"] is True
+
+
 async def test_unknown_and_soft_deleted_recipients_are_rejected(client, smtp_listener):
     await make_agent(client, "deleted@agents.local")
     response = await client.delete("/v1/agents/deleted@agents.local", headers=ADMIN)
