@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN idempotency_key VARCHAR(128)"))
             if "request_hash" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN request_hash VARCHAR(64)"))
+            if "auth_evidence" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN auth_evidence JSON"))
             message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
             if "ix_messages_raw_message_id" not in message_indexes:
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))

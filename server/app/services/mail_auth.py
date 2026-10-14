@@ -1,6 +1,7 @@
 """Bounded SPF and DKIM checks for messages received by the SMTP listener."""
 
 import asyncio
+import datetime
 import email
 from email import policy
 from email.utils import getaddresses
@@ -257,7 +258,7 @@ async def evaluate_inbound_authentication(
     peer_ip: str | None,
     mail_from: str,
     helo_domain: str,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, dict]:
     """Evaluate SPF, DKIM, and DMARC away from the asyncio SMTP event loop."""
     spf_result, dkim_result = await asyncio.gather(
         asyncio.to_thread(_check_spf, peer_ip, mail_from, helo_domain),
@@ -267,4 +268,16 @@ async def evaluate_inbound_authentication(
     dmarc_result = await asyncio.to_thread(
         _check_dmarc, raw_message, mail_from, helo_domain, spf_result, dkim_status, dkim_domains
     )
-    return spf_result, dkim_status, dmarc_result
+    message = email.message_from_bytes(raw_message, policy=policy.default)
+    from_values = [str(value) for value in message.get_all("From", [])]
+    evidence = {
+        "evaluated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "peer_ip": peer_ip[:64] if peer_ip else None,
+        "smtp_mail_from": mail_from[:320],
+        "helo_domain": helo_domain[:253],
+        "from_header": [value[:512] for value in from_values[:1]],
+        "spf": {"status": spf_result, "identity": (mail_from or (f"postmaster@{helo_domain}" if helo_domain else ""))[:320] or None},
+        "dkim": {"status": dkim_status, "passing_domains": dkim_domains[:MAX_DKIM_SIGNATURES]},
+        "dmarc": {"status": dmarc_result},
+    }
+    return spf_result, dkim_status, dmarc_result, evidence

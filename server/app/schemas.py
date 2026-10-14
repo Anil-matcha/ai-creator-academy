@@ -86,6 +86,7 @@ class MessageResponse(BaseModel):
     spf_status: str
     dkim_status: str
     dmarc_status: str
+    auth_evidence: Optional[Dict[str, Any]] = None
     verified_domain: Optional[str]
     delivery_error: Optional[str] = None
     status: str

@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -46,6 +46,7 @@ class Message(Base):
     spf_status = Column(String(32), default="unverified")
     dkim_status = Column(String(32), default="unverified")
     dmarc_status = Column(String(32), default="unverified")
+    auth_evidence = Column(JSON, nullable=True)
     verified_domain = Column(String(255), nullable=True)
     delivery_error = Column(Text, nullable=True)
     idempotency_key = Column(String(128), nullable=True)

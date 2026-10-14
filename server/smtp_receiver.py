@@ -219,7 +219,7 @@ class SmtpSession:
         if not body_text and body_html:
             body_text = body_html
 
-        spf_status, dkim_status, dmarc_status = await evaluate_inbound_authentication(
+        spf_status, dkim_status, dmarc_status, auth_evidence = await evaluate_inbound_authentication(
             raw_message=raw_bytes,
             peer_ip=getattr(self, "peer_ip", None),
             mail_from=self.mail_from,
@@ -246,6 +246,7 @@ class SmtpSession:
                     spf_status=spf_status,
                     dkim_status=dkim_status,
                     dmarc_status=dmarc_status,
+                    auth_evidence=auth_evidence,
                     raw_message_id=raw_message_id,
                     in_reply_to=in_reply_to,
                     references=references,
