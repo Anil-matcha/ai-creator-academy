@@ -33,8 +33,20 @@ READ_TIMEOUT_SECONDS = float(os.environ.get("SMTP_READ_TIMEOUT_SECONDS", 60))
 DATA_TIMEOUT_SECONDS = float(os.environ.get("SMTP_DATA_TIMEOUT_SECONDS", 300))
 MAX_CONNECTIONS = int(os.environ.get("SMTP_MAX_CONNECTIONS", 100))
 STREAM_LINE_LIMIT = int(os.environ.get("SMTP_LINE_LIMIT_BYTES", 16 * 1024))
-if min(READ_TIMEOUT_SECONDS, DATA_TIMEOUT_SECONDS, MAX_CONNECTIONS, STREAM_LINE_LIMIT) <= 0:
-    raise ValueError("SMTP timeouts, connection count, and line limit must be greater than zero")
+if not 1 <= PORT <= 65535:
+    raise ValueError("SMTP_PORT must be between 1 and 65535")
+if min(
+    READ_TIMEOUT_SECONDS,
+    DATA_TIMEOUT_SECONDS,
+    MAX_CONNECTIONS,
+    STREAM_LINE_LIMIT,
+    MAX_MESSAGE_BYTES,
+    MAX_ATTACHMENT_BYTES,
+    MAX_ATTACHMENTS,
+) <= 0:
+    raise ValueError("SMTP limits and timeouts must be greater than zero")
+if MAX_ATTACHMENT_BYTES > MAX_MESSAGE_BYTES:
+    raise ValueError("SMTP_MAX_ATTACHMENT_BYTES cannot exceed SMTP_MAX_MESSAGE_BYTES")
 CONNECTIONS = asyncio.Semaphore(MAX_CONNECTIONS)
 
 def safe_attachment_name(filename: str) -> str:
