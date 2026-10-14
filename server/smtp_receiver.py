@@ -110,10 +110,13 @@ class SmtpSession:
                 else:
                     await self.send_response(550, "No active agent inbox for recipient")
             elif cmd_upper == "DATA":
-                data_mode = True
-                data_buffer.clear()
-                data_too_large = False
-                await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
+                if not self.rcpt_to:
+                    await self.send_response(503, "Specify at least one valid recipient before DATA")
+                else:
+                    data_mode = True
+                    data_buffer.clear()
+                    data_too_large = False
+                    await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
             elif cmd_upper == "QUIT":
                 await self.send_response(221, "Bye")
                 break
@@ -185,18 +188,16 @@ class SmtpSession:
         if not body_text and body_html:
             body_text = body_html
 
-        target_recipient = self.rcpt_to[0] if self.rcpt_to else ""
-        # Clean email string
-        if "<" in target_recipient:
-            target_recipient = target_recipient.split("<")[1].split(">")[0]
-
-        logger.info(f"Ingesting real SMTP mail from '{sender}' to '{target_recipient}'")
-
-        async with AsyncSessionLocal() as db:
-            # Match recipient agent
-            res = await db.execute(select(Agent).where(Agent.email == target_recipient))
-            agent = res.scalar_one_or_none()
-            if agent:
+        # An SMTP transaction can have multiple RCPT TO commands. Deliver one
+        # copy into each accepted inbox and avoid duplicate copies for repeated RCPTs.
+        for target_recipient in dict.fromkeys(self.rcpt_to):
+            logger.info(f"Ingesting real SMTP mail from '{sender}' to '{target_recipient}'")
+            async with AsyncSessionLocal() as db:
+                res = await db.execute(select(Agent).where(Agent.email == target_recipient))
+                agent = res.scalar_one_or_none()
+                if not agent:
+                    logger.warning(f"No configured agent found for recipient {target_recipient}. Dropping recipient copy.")
+                    continue
                 message, scan_result, review = await EmailService.process_inbound(
                     db=db,
                     agent=agent,
@@ -213,8 +214,6 @@ class SmtpSession:
                     attachments=attachments,
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
-            else:
-                logger.warning(f"No configured agent found for recipient {target_recipient}. Dropping message.")
 
 async def start_smtp_server(host: str = HOST, port: int = PORT):
     server = await asyncio.start_server(
