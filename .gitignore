@@ -30,3 +30,5 @@ npm-debug.log*
 .env
 .env.local
 .env*.local
+.claude/
+*.egg-info/
