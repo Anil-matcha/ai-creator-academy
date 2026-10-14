@@ -365,8 +365,13 @@ async def test_agent_admin_tools(client):
     updated = await ok(client, ADMIN, "update_agent", agent_email="new@agents.local", display_name="Renamed", hitl_enabled=True)
     assert updated["display_name"] == "Renamed" and updated["hitl_enabled"] is True
     assert "new@agents.local" in [a["email"] for a in await ok(client, ADMIN, "list_agents")]
-    await ok(client, ADMIN, "delete_agent", agent_email="new@agents.local")
+    soft = await ok(client, ADMIN, "delete_agent", agent_email="new@agents.local")
+    assert soft["purged"] is False
+    assert "new@agents.local" not in [a["email"] for a in await ok(client, ADMIN, "list_agents")]
+    assert (await ok(client, ADMIN, "get_agent", agent_email="new@agents.local"))["email"] == "new@agents.local"  # still stored
+    assert (await ok(client, ADMIN, "delete_agent", agent_email="new@agents.local", purge=True))["purged"] is True
     await fails(client, ADMIN, "get_agent", agent_email="new@agents.local")
+    await fails(client, ADMIN, "delete_agent", agent_email="new@agents.local", purge="yes")
     await fails(client, ADMIN, "create_agent", email="x@agents.local")          # display_name required
 
 

@@ -279,7 +279,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         if args.get("agent_email") != principal.agent_email:
             raise PermissionError("Token is not authorized for this agent inbox")
     if name == "list_agents":
-        res = await db.execute(select(Agent))
+        res = await db.execute(select(Agent).where(Agent.deleted_at.is_(None)))
         agents = res.scalars().all()
         return json.dumps([{"email": a.email, "display_name": a.display_name, "status": a.status} for a in agents], indent=2)
 

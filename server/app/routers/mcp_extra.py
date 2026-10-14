@@ -438,8 +438,11 @@ async def _h_update_agent(db, args, principal):
 
 async def _h_delete_agent(db, args, principal):
     _require(args, "agent_email")
-    await agents.delete_agent(args["agent_email"], db)
-    return {"deleted": True, "agent_email": args["agent_email"]}
+    purge = args.get("purge", False)
+    if not isinstance(purge, bool):
+        raise ValueError("purge must be a boolean")
+    await agents.delete_agent(args["agent_email"], purge, db)
+    return {"deleted": True, "purged": purge, "agent_email": args["agent_email"]}
 
 
 async def _h_get_account_metrics(db, args, principal):
@@ -561,8 +564,8 @@ _NEW_SPECS = [
      _AE, ["agent_email"], "admin", _h_get_agent),
     ("update_agent", "Administrator only: change an inbox's name, status, screening or approval settings.",
      {**_AE, "status": _ID, **_AGENT_FIELDS}, ["agent_email"], "admin", _h_update_agent),
-    ("delete_agent", "Administrator only: permanently delete an inbox with its messages, contacts and keys.",
-     _AE, ["agent_email"], "admin", _h_delete_agent),
+    ("delete_agent", "Administrator only: delete an inbox. By default it is soft-deleted (stops receiving mail, hidden, restorable); purge=true permanently removes it with its messages, contacts and keys.",
+     {**_AE, "purge": {"type": "boolean", "default": False}}, ["agent_email"], "admin", _h_delete_agent),
     ("get_account_metrics", "Administrator only: totals across all inboxes (agents, messages, unread, pending reviews, threats, live connections).",
      {}, [], "admin", _h_get_account_metrics),
     ("list_outbox", "Administrator only: durable outbound queue jobs, optionally by status.",
