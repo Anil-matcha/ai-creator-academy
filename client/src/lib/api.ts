@@ -15,6 +15,7 @@ import {
   OutboundRetryEvent,
   WebhookEndpoint,
   WebhookEndpointCreated,
+  WebhookEndpointSecretRotated,
   WebhookDelivery,
   WebhookDeliveryStatus,
   WebhookDeliveryPage,
@@ -206,6 +207,8 @@ export const api = {
   },
   createWebhook: (data: { agent_email: string; url: string; enabled?: boolean }) =>
     request<WebhookEndpointCreated>("/v1/webhooks", { method: "POST", body: JSON.stringify(data) }),
+  rotateWebhookSecret: (id: string) =>
+    request<WebhookEndpointSecretRotated>(`/v1/webhooks/${encodeURIComponent(id)}/rotate-secret`, { method: "POST" }),
   updateWebhook: (id: string, data: { url?: string; enabled?: boolean }) =>
     request<WebhookEndpoint>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
   testWebhook: (id: string) =>

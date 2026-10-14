@@ -176,6 +176,8 @@ export interface WebhookEndpointCreated extends WebhookEndpoint {
   signing_secret: string;
 }
 
+export interface WebhookEndpointSecretRotated extends WebhookEndpointCreated {}
+
 export interface WebhookDelivery {
   id: string;
   endpoint_id: string;

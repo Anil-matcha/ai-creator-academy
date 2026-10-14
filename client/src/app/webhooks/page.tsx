@@ -41,7 +41,7 @@ export default function WebhooksPage() {
   const [createAgent, setCreateAgent] = useState("");
   const [createUrl, setCreateUrl] = useState("");
   const [creating, setCreating] = useState(false);
-  const [createdSecret, setCreatedSecret] = useState<{ endpoint: WebhookEndpoint; secret: string } | null>(null);
+  const [secretNotice, setSecretNotice] = useState<{ endpoint: WebhookEndpoint; secret: string; kind: "created" | "rotated" } | null>(null);
   const [copied, setCopied] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editUrl, setEditUrl] = useState("");
@@ -107,7 +107,7 @@ export default function WebhooksPage() {
     try {
       const created = await api.createWebhook({ agent_email: createAgent, url: createUrl.trim() });
       // Keep the one-time secret only in this transient component state; never persist it.
-      setCreatedSecret({ endpoint: created, secret: created.signing_secret });
+      setSecretNotice({ endpoint: created, secret: created.signing_secret, kind: "created" });
       setCreateOpen(false);
       setCreateUrl("");
       setEndpointFilter(created.id);
@@ -120,9 +120,9 @@ export default function WebhooksPage() {
   };
 
   const copySecret = async () => {
-    if (!createdSecret) return;
+    if (!secretNotice) return;
     try {
-      await navigator.clipboard.writeText(createdSecret.secret);
+      await navigator.clipboard.writeText(secretNotice.secret);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -138,6 +138,21 @@ export default function WebhooksPage() {
       await loadEndpoints();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not update endpoint.");
+    } finally { setSavingId(""); }
+  };
+
+  const rotateSecret = async (endpoint: WebhookEndpoint) => {
+    if (!window.confirm(`Rotate the signing secret for ${endpoint.agent_email}? The new secret will be shown once and cannot be retrieved later. For 24 hours, requests will carry signatures made with both the old and new secrets; after that, requests will carry only the new signature. Update your receiver before the overlap ends.`)) return;
+    setSavingId(endpoint.id);
+    setActionError("");
+    setActionNotice("");
+    try {
+      const rotated = await api.rotateWebhookSecret(endpoint.id);
+      setCopied(false);
+      setSecretNotice({ endpoint: rotated, secret: rotated.signing_secret, kind: "rotated" });
+      await loadEndpoints();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not rotate webhook signing secret.");
     } finally { setSavingId(""); }
   };
 
@@ -211,13 +226,15 @@ export default function WebhooksPage() {
       {actionError && <div className="rounded border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#ff7b72]">{actionError}<button className="ml-2 underline" onClick={() => setActionError("")}>Dismiss</button></div>}
       {actionNotice && <div className="rounded border border-[#3fb950]/40 bg-[#3fb950]/10 p-3 text-xs text-[#3fb950]">{actionNotice}<button className="ml-2 underline" onClick={() => setActionNotice("")}>Dismiss</button></div>}
 
-      {createdSecret && <section className="card-simple space-y-3 border border-[#d29922]/40 p-4">
+      {secretNotice && <section className="card-simple space-y-3 border border-[#d29922]/40 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div><h3 className="text-sm font-semibold text-[#e6edf3]">Copy the signing secret now</h3><p className="mt-1 text-xs text-[#d29922]">This secret is shown once. Closing this notice clears it from the page.</p></div>
-          <button className={buttonClass} onClick={() => { setCreatedSecret(null); setCopied(false); }}>Done</button>
+          <div><h3 className="text-sm font-semibold text-[#e6edf3]">{secretNotice.kind === "rotated" ? "Copy the new signing secret now" : "Copy the signing secret now"}</h3><p className="mt-1 text-xs text-[#d29922]">This secret is shown once. Closing this notice clears it from the page.</p>
+            {secretNotice.kind === "rotated" && <p className="mt-1 text-xs text-[#8b949e]">For 24 hours after rotation, each request carries signatures for both the old and new secrets. After the overlap, requests carry only the new signature.</p>}
+          </div>
+          <button className={buttonClass} onClick={() => { setSecretNotice(null); setCopied(false); }}>Done</button>
         </div>
-        <div className="flex gap-2"><input readOnly value={createdSecret.secret} className={`${inputClass} font-mono`} aria-label="One-time webhook signing secret" /><button className={buttonClass} onClick={() => void copySecret()}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button></div>
-        <p className="text-[11px] text-[#8b949e]">Endpoint: {createdSecret.endpoint.agent_email} · {createdSecret.endpoint.url}</p>
+        <div className="flex gap-2"><input readOnly value={secretNotice.secret} className={`${inputClass} font-mono`} aria-label="One-time webhook signing secret" /><button className={buttonClass} onClick={() => void copySecret()}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button></div>
+        <p className="text-[11px] text-[#8b949e]">Endpoint: {secretNotice.endpoint.agent_email} · {secretNotice.endpoint.url}</p>
       </section>}
 
       <section className="card-simple overflow-hidden">
@@ -234,6 +251,7 @@ export default function WebhooksPage() {
               </div>
               <div className="flex shrink-0 flex-wrap gap-1.5">
                 <button className={buttonClass} onClick={() => void toggleEndpoint(endpoint)} disabled={savingId === endpoint.id}>{endpoint.enabled ? "Disable" : "Enable"}</button>
+                <button className={buttonClass} onClick={() => void rotateSecret(endpoint)} disabled={savingId === endpoint.id}><RefreshCw className="h-3.5 w-3.5" />Rotate secret</button>
                 <button className={buttonClass} onClick={() => void sendTestEvent(endpoint)} disabled={!endpoint.enabled || testingId === endpoint.id || savingId === endpoint.id} title={!endpoint.enabled ? "Enable endpoint to send a test event" : undefined}>{testingId === endpoint.id ? "Sending test…" : "Send test event"}</button>
                 {editingId !== endpoint.id && <button className={buttonClass} onClick={() => { setEditingId(endpoint.id); setEditUrl(""); }}>Edit URL</button>}
                 <button className="inline-flex items-center gap-1.5 rounded border border-[#da3633]/40 px-2.5 py-1.5 text-xs text-[#f85149] hover:bg-[#da3633]/10 disabled:opacity-50" onClick={() => void deleteEndpoint(endpoint)} disabled={savingId === endpoint.id}><Trash2 className="h-3.5 w-3.5" />Delete</button>

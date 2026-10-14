@@ -148,6 +148,8 @@ async def _deliver(delivery_id: str, lease_token: str) -> None:
             payload = json.dumps(delivery.payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
             endpoint_url = endpoint.url
             secret_stored = endpoint.signing_secret
+            previous_secret_stored = endpoint.previous_signing_secret
+            previous_secret_expires_at = endpoint.previous_secret_expires_at
             event_type = delivery.event_type
             event_id = delivery.id
 
@@ -158,10 +160,19 @@ async def _deliver(delivery_id: str, lease_token: str) -> None:
         try:
             secret = decrypt_secret(secret_stored, "webhook signing secret")
             signature = hmac.new(secret.encode("utf-8"), timestamp.encode() + b"." + event_id.encode() + b"." + payload, hashlib.sha256).hexdigest()
+            signatures = [f"sha256={signature}"]
+            if previous_secret_stored and previous_secret_expires_at:
+                expiry = previous_secret_expires_at
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=datetime.timezone.utc)
+                if expiry > datetime.datetime.now(datetime.timezone.utc):
+                    previous_secret = decrypt_secret(previous_secret_stored, "previous webhook signing secret")
+                    previous_signature = hmac.new(previous_secret.encode("utf-8"), timestamp.encode() + b"." + event_id.encode() + b"." + payload, hashlib.sha256).hexdigest()
+                    signatures.append(f"sha256={previous_signature}")
             status_code = await asyncio.wait_for(_post_pinned(endpoint_url, payload, {
                 "X-Webhook-Event-Id": event_id,
                 "X-Webhook-Timestamp": timestamp,
-                "X-Webhook-Signature": f"sha256={signature}",
+                "X-Webhook-Signature": ",".join(signatures),
                 "X-Webhook-Event": event_type,
             }), timeout=TOTAL_TIMEOUT_SECONDS + CONNECT_TIMEOUT_SECONDS + 2)
             error = None if 200 <= status_code < 300 else f"http_status_{status_code}"

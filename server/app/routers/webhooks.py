@@ -148,6 +148,45 @@ async def update_webhook(endpoint_id: str, payload: WebhookUpdate, db: AsyncSess
     return _endpoint_response(endpoint)
 
 
+@router.post("/{endpoint_id}/rotate-secret", response_model=WebhookCreated)
+async def rotate_webhook_secret(endpoint_id: str, db: AsyncSession = Depends(get_db)):
+    """Rotate a signing secret and return its plaintext exactly once.
+
+    The currently active secret remains valid for 24 hours. A repeated rotation
+    replaces any still-active overlap window with the immediately prior secret.
+    """
+    result = await db.execute(
+        select(WebhookEndpoint).where(WebhookEndpoint.id == endpoint_id).with_for_update()
+    )
+    endpoint = result.scalar_one_or_none()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+
+    try:
+        raw_secret = "whsec_" + secrets.token_urlsafe(32)
+        encrypted = encrypt_secret(raw_secret, "webhook signing secret")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    now = datetime.datetime.utcnow()
+    previous_expires_at = now + datetime.timedelta(hours=24)
+    result = await db.execute(update(WebhookEndpoint).where(
+        WebhookEndpoint.id == endpoint.id,
+        WebhookEndpoint.signing_secret == endpoint.signing_secret,
+    ).values(
+        previous_signing_secret=endpoint.signing_secret,
+        previous_secret_expires_at=previous_expires_at,
+        signing_secret=encrypted,
+        updated_at=now,
+    ))
+    if result.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Webhook secret changed; retry rotation")
+    await db.commit()
+    await db.refresh(endpoint)
+    return {**_endpoint_response(endpoint), "signing_secret": raw_secret}
+
+
 @router.post("/{endpoint_id}/test", status_code=202)
 async def send_test_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
     """Queue a signed synthetic event to verify an enabled endpoint."""

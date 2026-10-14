@@ -62,6 +62,13 @@ async def lifespan(app: FastAPI):
             }.items():
                 if name not in webhook_delivery_columns:
                     sync_conn.execute(text(f"ALTER TABLE webhook_deliveries ADD COLUMN {name} {definition}"))
+            webhook_endpoint_columns = {column["name"] for column in inspector.get_columns("webhook_endpoints")}
+            for name, definition in {
+                "previous_signing_secret": "TEXT",
+                "previous_secret_expires_at": timestamp_type,
+            }.items():
+                if name not in webhook_endpoint_columns:
+                    sync_conn.execute(text(f"ALTER TABLE webhook_endpoints ADD COLUMN {name} {definition}"))
             if sync_conn.dialect.name == "postgresql":
                 smtp_columns = {column["name"]: column for column in inspector.get_columns("smtp_configs")}
                 if str(smtp_columns.get("password", {}).get("type", "")).upper() != "TEXT":
@@ -97,11 +104,16 @@ async def lifespan(app: FastAPI):
                 logger.warning("SMTP relay credential remains plaintext; configure SMTP_CONFIG_ENCRYPTION_KEY to protect it")
         endpoints = (await db.execute(select(WebhookEndpoint))).scalars().all()
         for endpoint in endpoints:
-            if not endpoint.signing_secret:
-                continue
-            plaintext = decrypt_secret(endpoint.signing_secret, "webhook signing secret")
-            if decrypt_with_current_key(endpoint.signing_secret) is None:
-                endpoint.signing_secret = encrypt_secret(plaintext, "webhook signing secret")
+            for attribute, purpose in (
+                ("signing_secret", "webhook signing secret"),
+                ("previous_signing_secret", "previous webhook signing secret"),
+            ):
+                stored = getattr(endpoint, attribute)
+                if not stored:
+                    continue
+                plaintext = decrypt_secret(stored, purpose)
+                if decrypt_with_current_key(stored) is None:
+                    setattr(endpoint, attribute, encrypt_secret(plaintext, purpose))
         await db.commit()
     logger.info("Database schema ready.")
 

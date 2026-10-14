@@ -121,7 +121,7 @@ event = json.loads(raw_body)
 # Atomically record the event ID and apply the event; reject an already-recorded ID.
 ```
 
-The helper checks the timestamp window and compares the HMAC-SHA256 signature in constant time. The receiver still needs an atomic event-ID deduplication store to handle retries safely. Route on the payload's `event_type`; acknowledge `webhook.test` without treating it as an email.
+The helper checks the timestamp window and compares HMAC-SHA256 signatures in constant time. During a signing-secret rotation, the sender includes signatures for both the current and previous secret for a 24-hour overlap; receivers should accept a request when either listed signature matches a configured secret. After the overlap expires, only the current signature is sent. Install the new secret and retain the old one through the overlap before removing it. The receiver still needs an atomic event-ID deduplication store to handle retries safely. Route on the payload's `event_type`; acknowledge `webhook.test` without treating it as an email.
 
 ## Local install
 

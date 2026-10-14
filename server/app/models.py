@@ -116,6 +116,8 @@ class WebhookEndpoint(Base):
     agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
     url = Column(Text, nullable=False)
     signing_secret = Column(Text, nullable=False)
+    previous_signing_secret = Column(Text, nullable=True)
+    previous_secret_expires_at = Column(DateTime, nullable=True)
     enabled = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

@@ -41,11 +41,14 @@ def verify_webhook_signature(
         or not timestamp.isdigit()
     ):
         return False
-    if (
-        len(timestamp) > 12
-        or len(signature) != 71
-        or not signature.startswith("sha256=")
-        or any(char not in "0123456789abcdef" for char in signature[7:])
+    if len(timestamp) > 12:
+        return False
+    candidates = [candidate.strip() for candidate in signature.split(",")]
+    if not 1 <= len(candidates) <= 2 or any(
+        len(candidate) != 71
+        or not candidate.startswith("sha256=")
+        or any(char not in "0123456789abcdef" for char in candidate[7:])
+        for candidate in candidates
     ):
         return False
     try:
@@ -61,4 +64,5 @@ def verify_webhook_signature(
         return False
     digest = hmac.new(secret_bytes, message, hashlib.sha256).hexdigest()
     expected = f"sha256={digest}"
-    return hmac.compare_digest(expected, signature)
+    matches = [hmac.compare_digest(expected, candidate) for candidate in candidates]
+    return any(matches)
