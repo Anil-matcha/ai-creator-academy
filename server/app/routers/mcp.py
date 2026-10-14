@@ -38,7 +38,7 @@ MCP_TOOLS = [
     },
     {
         "name": "get_message",
-        "description": "Fetch full email body, RFC headers, and SPF/DKIM verification details",
+        "description": "Fetch full email body, RFC headers, and SPF/DKIM/DMARC authentication evidence",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -281,6 +281,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "spf": msg.spf_status,
             "dkim": msg.dkim_status,
             "dmarc": msg.dmarc_status,
+            "auth_evidence": msg.auth_evidence,
             "threat_score": msg.threat_score
         }, indent=2)
 
