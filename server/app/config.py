@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: str = ""
     # Fernet key used to encrypt configured SMTP relay passwords at rest.
     SMTP_CONFIG_ENCRYPTION_KEY: str = ""
+    # Optional old key during rotation; remove it after startup re-encrypts credentials.
+    SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS: str = ""
 
     # Per-process sliding-window limit for REST and MCP requests, keyed by socket peer IP.
     API_RATE_LIMIT_REQUESTS: int = 120

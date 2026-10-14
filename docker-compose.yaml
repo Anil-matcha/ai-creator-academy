@@ -15,6 +15,7 @@ services:
       - SHARED_DOMAIN=agents.local
       - ADMIN_API_KEY=${ADMIN_API_KEY:?Set ADMIN_API_KEY before starting the stack}
       - SMTP_CONFIG_ENCRYPTION_KEY=${SMTP_CONFIG_ENCRYPTION_KEY:-}
+      - SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS=${SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS:-}
     volumes:
       - ./server/open_agent_email.db:/app/open_agent_email.db
 

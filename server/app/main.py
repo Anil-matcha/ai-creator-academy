@@ -64,20 +64,25 @@ async def lifespan(app: FastAPI):
             if "uq_messages_agent_inbound_dedup_hash" not in message_indexes:
                 sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_inbound_dedup_hash ON messages (agent_email, inbound_dedup_hash)"))
         await conn.run_sync(apply_additive_schema_updates)
-    if settings.SMTP_CONFIG_ENCRYPTION_KEY:
-        from sqlalchemy import select
-        from app.models import SmtpConfig
-        from app.services.smtp_secrets import PREFIX, encrypt_password, decrypt_password
-        async with AsyncSessionLocal() as db:
-            configs = (await db.execute(select(SmtpConfig))).scalars().all()
-            for config in configs:
-                if config.password and config.password.startswith(PREFIX):
-                    # Fail startup when an encrypted value cannot be recovered.
-                    decrypt_password(config.password)
-                elif config.password:
-                    # Upgrade legacy plaintext values in the same database transaction.
-                    config.password = encrypt_password(config.password)
-            await db.commit()
+    from sqlalchemy import select
+    from app.models import SmtpConfig
+    from app.services.smtp_secrets import PREFIX, encrypt_password, decrypt_password, decrypt_with_current_key
+    async with AsyncSessionLocal() as db:
+        configs = (await db.execute(select(SmtpConfig))).scalars().all()
+        for config in configs:
+            if not config.password:
+                continue
+            if config.password.startswith(PREFIX):
+                # Fail fast on missing/wrong keys and migrate values from the previous key.
+                plaintext = decrypt_password(config.password)
+                if decrypt_with_current_key(config.password) is None:
+                    config.password = encrypt_password(plaintext)
+            elif settings.SMTP_CONFIG_ENCRYPTION_KEY:
+                # Upgrade legacy plaintext values in the same database transaction.
+                config.password = encrypt_password(config.password)
+            else:
+                logger.warning("SMTP relay credential remains plaintext; configure SMTP_CONFIG_ENCRYPTION_KEY to protect it")
+        await db.commit()
     logger.info("Database schema ready.")
 
     from app.services.outbound_worker import run_outbound_worker
