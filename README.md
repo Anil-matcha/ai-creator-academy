@@ -311,6 +311,20 @@ The built-in scanner guards agent inboxes against:
 
 ---
 
+## 🧭 Triage, scheduling and conversations
+
+- **Labels** – `PATCH /v1/agents/{email}/messages/{id}` with `{"labels": ["needs-human"]}`; filter with `?label=`.
+- **Trash / restore** – `DELETE` moves a message to trash (cancelling an unsubmitted scheduled send); `POST .../restore` brings it back; `?trashed=true` lists trash.
+- **Scheduled send** – add `send_at` (ISO-8601, up to 90 days ahead) to send/reply, REST or MCP. Status is `scheduled` until submitted.
+- **Conversations** – `GET /v1/agents/{email}/conversations[/{id}]` groups messages by thread with unread counts, participants and labels.
+- **Lifecycle** – `GET .../messages/{id}/lifecycle` returns the review, queue, retry and provider-delivery timeline.
+- **Metrics & protection** – `GET /v1/agents/{email}/metrics`; `GET/PUT /v1/agents/{email}/protection` (changing it is admin-only so an agent key cannot weaken its own approval gate).
+- **Events** – `GET /v1/events`, `GET /v1/events/{id}`, `POST /v1/events/{id}/redeliver` (admin) expose the webhook event log.
+- **Discovery** – `GET /v1/info` (public) and `GET /v1/whoami`.
+- **MCP** – the same capabilities are available as MCP tools (`list_conversations`, `update_message_labels`, `delete_message`, `get_message_lifecycle`, `whoami`, …); `GET /mcp/tools` lists them all.
+
+Operations (migrations, backup/restore, key rotation): see [docs/operations.md](docs/operations.md).
+
 ## 🧪 Tests
 
 ```bash

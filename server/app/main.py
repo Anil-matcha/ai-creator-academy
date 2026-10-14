@@ -20,6 +20,8 @@ logger = logging.getLogger("open_agent_email")
 async def lifespan(app: FastAPI):
     # 1. Startup: Create tables if not present
     logger.info("Initializing database schema...")
+    from app.migrate import database_state, run_migrations
+    migration_state = await database_state()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         def apply_additive_schema_updates(sync_conn):
@@ -141,6 +143,7 @@ async def lifespan(app: FastAPI):
                 if decrypt_with_current_key(stored) is None:
                     setattr(endpoint, attribute, encrypt_secret(plaintext, purpose))
         await db.commit()
+    await run_migrations(migration_state)
     logger.info("Database schema ready.")
 
     from app.services.outbound_worker import run_outbound_worker
