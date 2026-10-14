@@ -48,6 +48,9 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(apply_additive_schema_updates)
     logger.info("Database schema ready.")
 
+    from app.services.outbound_worker import run_outbound_worker
+    outbound_task = asyncio.create_task(run_outbound_worker(), name="outbound-mail-worker")
+
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
     try:
@@ -64,6 +67,12 @@ async def lifespan(app: FastAPI):
         logger.info("Shutting down inbound SMTP listener...")
         smtp_server.close()
         await smtp_server.wait_closed()
+
+    outbound_task.cancel()
+    try:
+        await outbound_task
+    except asyncio.CancelledError:
+        pass
 
     logger.info("Shutting down database connection...")
     await engine.dispose()

@@ -77,6 +77,19 @@ class MessageAttachment(Base):
     message = relationship("Message", back_populates="attachments")
 
 
+class OutboundJob(Base):
+    __tablename__ = "outbound_jobs"
+
+    id = Column(String(64), primary_key=True, index=True)
+    message_id = Column(String(64), ForeignKey("messages.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, complete, failed
+    attempts = Column(Integer, nullable=False, default=0)
+    available_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+    locked_at = Column(DateTime, nullable=True, index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+
 class ReviewItem(Base):
     __tablename__ = "review_items"
 

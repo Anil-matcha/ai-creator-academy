@@ -18,7 +18,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
-from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig
+from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
@@ -321,7 +321,6 @@ class EmailService:
                 created_at=datetime.datetime.utcnow()
             )
             db.add(review_item)
-
         await db.commit()
         await db.refresh(message)
 
@@ -469,6 +468,15 @@ class EmailService:
                 created_at=datetime.datetime.utcnow()
             )
             db.add(review_item)
+        else:
+            db.add(OutboundJob(
+                id=f"out_{uuid.uuid4().hex[:24]}",
+                message_id=msg_id,
+                status="pending",
+                attempts=0,
+                available_at=datetime.datetime.utcnow(),
+                created_at=datetime.datetime.utcnow(),
+            ))
 
         try:
             await db.commit()
@@ -507,22 +515,8 @@ class EmailService:
                 "reason": f"Outbound approval gate active for {agent.display_name}"
             })
         else:
-            # Actually dispatch via SMTP / local loopback
-            dispatch_status, delivery_info = await cls.dispatch_to_upstream(db, message, agent)
-            message.status = dispatch_status
-            if dispatch_status == "failed":
-                message.delivery_error = delivery_info
-            await db.commit()
-            await db.refresh(message)
-            event_data["status"] = message.status
-            event_data["delivery_error"] = message.delivery_error
-            event_name = {
-                "failed": "email.failed",
-                "accepted_by_relay": "email.accepted",
-                "delivered": "email.sent",
-            }[dispatch_status]
-            await ws_manager.send_agent_message(agent.email, event_name, event_data)
-            await ws_manager.broadcast_event(event_name, event_data)
+            await ws_manager.send_agent_message(agent.email, "email.queued", event_data)
+            await ws_manager.broadcast_event("email.queued", event_data)
 
         return message
 
