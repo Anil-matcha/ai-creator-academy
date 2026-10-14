@@ -48,12 +48,12 @@ async def test_404_not_found_including_unknown_route(client):
     assert_envelope(await client.get("/v1/definitely-not-a-route", headers=ADMIN), 404, "not_found")
 
 
-async def test_409_idempotency_reuse_and_422_validation(client):
+async def test_422_idempotency_reuse_and_validation(client):
     await make_agent(client, "a@agents.local")
     h = {**ADMIN, "Idempotency-Key": "k1"}
     base = "/v1/agents/a@agents.local/messages"
     assert (await client.post(base, headers=h, json=PAYLOAD)).status_code == 201
-    assert_envelope(await client.post(base, headers=h, json={**PAYLOAD, "body_text": "different"}), 409, "idempotency_key_reuse")
+    assert_envelope(await client.post(base, headers=h, json={**PAYLOAD, "body_text": "different"}), 422, "idempotency_key_reuse")
     assert_envelope(await client.post(base, headers={**ADMIN, "Idempotency-Key": "x" * 129}, json=PAYLOAD), 400, "idempotency_key_invalid")
 
 

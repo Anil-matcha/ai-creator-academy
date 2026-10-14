@@ -39,7 +39,7 @@ async def test_contact_create_replays_conflicts_and_reports_in_flight(client):
 
     changed = _raw_json({"email": "person@example.com", "name": "Different"})
     conflict = await client.post(path, content=changed, headers={**_headers("contact-1"), "content-type": "application/json"})
-    assert conflict.status_code == 409 and "different request" in conflict.json()["detail"]
+    assert conflict.status_code == 422 and "different request" in conflict.json()["detail"]
 
     pending_body = _raw_json({"email": "pending@example.com", "name": "Pending"})
     await reserve_idempotency(f"{ADMIN_ID}:contacts:create", "contact-pending",
@@ -66,7 +66,7 @@ async def test_csv_import_replays_conflicts_and_reports_in_flight(client):
     assert changed.status_code == 200 and changed.json() == first.json()
     other = b"email,name\none@example.com,Changed\n"
     conflict = await client.post(path, content=other, headers=headers)
-    assert conflict.status_code == 409 and "different request" in conflict.json()["detail"]
+    assert conflict.status_code == 422 and "different request" in conflict.json()["detail"]
 
     pending_body = b"email,name\npending@example.com,Pending\n"
     await reserve_idempotency(f"{ADMIN_ID}:contacts:imports:create", "import-pending",
@@ -94,7 +94,7 @@ async def test_domain_delete_replays_conflicts_and_reports_in_flight(client):
     assert await _count(Domain) == 1
 
     changed = await client.delete("/v1/domains/two.example.com", headers=_headers("domain-1"))
-    assert changed.status_code == 409 and "different request" in changed.json()["detail"]
+    assert changed.status_code == 422 and "different request" in changed.json()["detail"]
     assert await _count(Domain) == 1
 
     await reserve_idempotency(f"{ADMIN_ID}:domains:delete", "domain-pending",
@@ -126,7 +126,7 @@ async def test_review_approval_replays_conflicts_and_reports_in_flight(client):
     changed_body = _raw_json({"action": "approve", "notes": "changed"})
     changed = await client.post(path, content=changed_body,
                                 headers={**_headers("approve-1"), "content-type": "application/json"})
-    assert changed.status_code == 409 and "different request" in changed.json()["detail"]
+    assert changed.status_code == 422 and "different request" in changed.json()["detail"]
     assert await _count(OutboundJob) == 1
 
     pending_review = await _held(client, create_agent=False)
@@ -159,7 +159,7 @@ async def test_api_key_create_replays_secret_and_conflicts_on_body_change(client
     assert secret.startswith("oae_")
     await _assert_encrypted_receipt("api-key-secret-1", secret)
     changed = await client.post(path, headers=headers, json={**payload, "name": "changed"})
-    assert changed.status_code == 409 and "different request" in changed.json()["detail"]
+    assert changed.status_code == 422 and "different request" in changed.json()["detail"]
     assert await _count(ApiKey) == 1
 
 
@@ -176,7 +176,7 @@ async def test_webhook_create_replays_secret_and_conflicts_on_body_change(client
     assert secret.startswith("whsec_")
     await _assert_encrypted_receipt("webhook-secret-1", secret)
     changed = await client.post(path, headers=headers, json={**payload, "enabled": False})
-    assert changed.status_code == 409 and "different request" in changed.json()["detail"]
+    assert changed.status_code == 422 and "different request" in changed.json()["detail"]
     assert await _count(WebhookEndpoint) == 1
 
 
@@ -198,7 +198,7 @@ async def test_webhook_secret_rotation_replays_secret_and_conflicts_on_body_chan
     await _assert_encrypted_receipt("webhook-rotate-1", secret)
     changed = await client.post(path, content=b"{}",
                                 headers={**headers, "content-type": "application/json"})
-    assert changed.status_code == 409 and "different request" in changed.json()["detail"]
+    assert changed.status_code == 422 and "different request" in changed.json()["detail"]
 
 
 async def test_secret_bearing_idempotency_requires_encryption_before_side_effect(client, monkeypatch):

@@ -45,6 +45,15 @@ async def list_domains_page(
     next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
     return {"items": [DomainResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
+
+@router.get("/{domain_name}", response_model=DomainResponse)
+async def get_domain(domain_name: str, db: AsyncSession = Depends(get_db)):
+    clean_domain = domain_name.strip().lower().rstrip(".")
+    domain = await db.scalar(select(Domain).where(Domain.domain == clean_domain))
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    return domain
+
 @router.post("", response_model=DomainResponse, status_code=201)
 async def create_domain(payload: DomainCreate, db: AsyncSession = Depends(get_db)):
     clean_domain = payload.domain.strip().lower().rstrip(".")
@@ -154,7 +163,8 @@ async def delete_domain(domain_name: str, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
     res = await db.execute(select(Domain).where(Domain.domain == clean_domain))
     domain = res.scalar_one_or_none()
     if not domain:

@@ -191,7 +191,7 @@ Each inbox can maintain an explicit recipient suppression list. Read it with `GE
 
 Administrators can inspect bounded outbox history and manually retry failed or uncertain jobs. Retrying an uncertain job requires `confirm_duplicate_risk=true` because the SMTP relay may already have accepted the original attempt. Each manual retry records the actor, timestamp, previous status, previous attempt count, and previous error; retrieve it from `GET /v1/outbox/{job_id}/retries`. Expired worker leases are moved to `uncertain` for operator review rather than automatically reclaimed. Suppression-blocked jobs are terminal and cannot be retried from the outbox.
 
-REST send and reply requests accept an optional `Idempotency-Key` header (1–128 characters); MCP `send_message` and `reply_to_message` accept an optional `idempotency_key` argument. Repeating a request with the same key and content returns the original message; using that key with different content returns HTTP 409. Keys are scoped to the agent inbox and stored with a request digest.
+REST send, reply, forward, contact creation/import, domain deletion, review approval, API-key creation, webhook creation, and webhook-secret rotation accept an optional `Idempotency-Key` header (1–128 characters); MCP send, reply, and forward tools accept an optional `idempotency_key` argument. Repeating a request with the same key and content replays the original result; using that key with different content returns HTTP 422, while a matching request still in progress returns HTTP 409. Keys are scoped to the authenticated principal and stored with a request digest.
 
 REST send and reply requests can render a saved inbox template per message by supplying `template_id` and optional JSON `template_data` instead of direct `subject`/`body_text`/`body_html` content. For example, `POST /v1/agents/{email}/messages` accepts `{ "recipient": "person@example.com", "template_id": "tpl_…", "template_data": { "name": "Sam" } }`; `POST /v1/agents/{email}/messages/{message_id}/reply` accepts the same template fields. The template must belong to that inbox. Rendering uses the same bounded data, variable syntax, output limits, missing-value behavior, HTML escaping, and subject line-break checks as template preview. A reply uses the template subject with a `Re:` prefix when needed while keeping the original thread headers. Template selection creates only that requested message; it does not start a campaign or contact list. The API rejects requests that mix a template with direct content. The Python SDK `send_message` and `reply_message` methods accept the same `template_id` and `template_data` options.
 
@@ -288,19 +288,25 @@ claude mcp add --transport http open-agent-email http://127.0.0.1:8000/mcp/rpc -
 | `get_message` | Retrieves full RFC headers, body text, HTML, and security verification verdicts. |
 | `get_recent_otp` | Finds a recent contextual verification code from delivered inbound mail in the specified inbox. |
 | `send_message` | Dispatches outbound email from the agent address (relays via upstream SMTP). |
+| `send_email` | Compatibility name for `send_message`. |
 | `reply_to_message` | Replies in-thread preserving `In-Reply-To` and `References`. |
+| `forward_message` | Forwards a message with optional replacement body and extra attachments. Outbound approval rules still apply. |
 | `forward_to_human` | Forwards the original message and optional context to a human teammate. Outbound approval rules still apply. |
 | `list_reviews` | Lists emails held in the Human-in-the-Loop approval queue. |
+| `list_pending_messages` | Lists messages currently held in the review queue. |
 | `approve_review` | Approves a held email and triggers delivery. |
 | `reject_review` | Rejects and quarantines an email. |
+| `get_review`, `get_pending_message` | Fetch a review or its pending message details. |
+| `approve_pending_message`, `reject_pending_message` | Resolve a pending review using the message ID. |
+| `approve_message`, `reject_message` | Compatibility names for review approval and rejection. |
 
-**67 tools in total** (`GET /mcp/tools` returns every schema). Beyond the table above, grouped by the credential each needs:
+**91 tools in total** (`GET /mcp/tools` returns every schema). Beyond the table above, grouped by the credential each needs:
 
 - **Any credential:** `whoami`.
-- **Inbox read scope** (`read_only` or `full_access` key for that inbox, or admin): `list_conversations`, `get_conversation`, `get_message_lifecycle`, `get_agent_metrics`, `get_protection`, `get_attachment` (metadata), `get_attachment_data` (base64, 5 MB cap), `list_templates`, `get_template`, `preview_template`, `list_contacts`, `get_contact_consent`, `list_outreach_contacts`, `list_suppressions`.
-- **Inbox write scope** (`full_access` key for that inbox, or admin): `update_message_labels`, `delete_message`, `restore_message`, `create_template`, `update_template`, `delete_template`, `create_contact`, `update_contact`, `delete_contact`, `import_contacts` (CSV text), `delete_contact_import`, `record_contact_consent`, `set_outreach_contact`, `delete_outreach_contact`, `create_agent_suppression`, `delete_agent_suppression`. `send_message` and `reply_to_message` also accept `send_at`.
-- **Administrator only:** `create_agent`, `get_agent`, `update_agent`, `delete_agent`, `update_protection`, `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook`, `rotate_webhook_secret`, `test_webhook`, `list_webhook_deliveries`, `list_events`, `get_event`, `redeliver_event`, `list_api_keys`, `create_api_key`, `delete_api_key`, `list_domains`, `register_domain`, `verify_domain`, `delete_domain`, `get_account_metrics`, `list_outbox`, `retry_outbox_job`.
-- **Reviewer keys** can call only `list_reviews`, `approve_review`, `reject_review` and `whoami`.
+- **Inbox read scope** (`read_only` or `full_access` key for that inbox, or admin): `list_conversations`, `get_conversation`, `get_message_lifecycle`, `get_agent_metrics`, `get_protection`, `get_attachment` (metadata), `get_attachment_data` (base64, 5 MB cap), `list_templates`, `get_template`, `preview_template`, `list_contacts`, `get_contact`, `get_contact_consent`, `list_outreach_contacts`, `get_outreach_contact`, `list_suppressions`, `list_agent_suppressions`.
+- **Inbox write scope** (`full_access` key for that inbox, or admin): `update_message_labels`, `delete_message`, `restore_message`, `create_template`, `update_template`, `delete_template`, `create_contact`, `update_contact`, `delete_contact`, `import_contacts` (CSV text), `delete_contact_import`, `record_contact_consent`, `set_outreach_contact`, `delete_outreach_contact`, `create_agent_suppression`, `delete_agent_suppression`, `delete_suppression`. `send_message`, `send_email`, `reply_to_message`, `forward_message` and `forward_to_human` use the same inbox write scope.
+- **Administrator only:** `create_agent`, `get_agent`, `update_agent`, `delete_agent`, `update_protection`, `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook`, `rotate_webhook_secret`, `test_webhook`, `list_webhook_deliveries`, `list_events`, `get_event`, `redeliver_event`, `list_api_keys`, `create_api_key`, `delete_api_key`, `list_domains`, `get_domain`, `register_domain`, `verify_domain`, `delete_domain`, `get_account_metrics`, `list_outbox`, `retry_outbox_job`.
+- **Reviewer keys** can call only `list_reviews`, `list_pending_messages`, `get_review`, `get_pending_message`, the review approval/rejection tools (`approve_review`, `reject_review`, `approve_pending_message`, `reject_pending_message`, `approve_message`, `reject_message`) and `whoami`.
 
 Webhook signing secrets and newly created API keys are returned once, in the response that creates or rotates them; reads never include them. Each tool runs the same code as its REST route, so validation, idempotency, suppression checks and approval rules are identical.
 

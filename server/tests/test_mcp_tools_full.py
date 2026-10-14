@@ -14,9 +14,9 @@ from app.routers.mcp import MCP_TOOLS
 from tests.conftest import ADMIN, make_agent, make_key
 
 EXPECTED_TOOLS = sorted("""
-approve_review create_agent create_agent_suppression create_api_key create_contact create_template
+approve_review approve_message create_agent create_agent_suppression create_api_key create_contact create_template
 create_webhook delete_agent delete_agent_suppression delete_api_key delete_contact delete_contact_import
-delete_domain delete_message delete_outreach_contact delete_template delete_webhook forward_to_human
+delete_domain delete_message delete_outreach_contact delete_template delete_webhook forward_to_human forward_message
 get_account_metrics get_agent get_agent_metrics get_attachment get_attachment_data get_contact_consent
 get_conversation get_event get_message get_message_lifecycle get_protection get_recent_otp get_template
 get_webhook import_contacts list_agents list_api_keys list_contacts list_conversations list_domains
@@ -26,23 +26,27 @@ register_domain reject_review reply_to_message restore_message retry_outbox_job 
 send_message set_outreach_contact test_webhook update_agent update_contact update_message_labels
 update_protection update_template update_webhook verify_domain whoami
 list_account_suppressions delete_account_suppression export_account list_account_contacts restore_agent
-get_review_settings list_starter_templates get_starter_template validate_template copy_starter_template
+get_review_settings get_review get_pending_message get_contact get_domain get_outreach_contact list_pending_messages
+approve_pending_message reject_pending_message list_agent_suppressions delete_suppression send_email
+list_starter_templates get_starter_template validate_template copy_starter_template reject_message
 """.split())
 
 # Written out independently of the implementation so a misclassified tool fails here.
-REVIEW_TOOLS = {"list_reviews", "approve_review", "reject_review"}
+REVIEW_TOOLS = {"list_reviews", "approve_review", "reject_review", "get_review", "get_pending_message",
+                "list_pending_messages", "approve_pending_message", "reject_pending_message",
+                "approve_message", "reject_message"}
 ADMIN_TOOLS = {
     "list_agents", "create_agent", "get_agent", "update_agent", "delete_agent", "update_protection",
     "list_webhooks", "get_webhook", "create_webhook", "update_webhook", "delete_webhook",
     "rotate_webhook_secret", "test_webhook", "list_webhook_deliveries", "list_events", "get_event",
     "redeliver_event", "list_api_keys", "create_api_key", "delete_api_key", "list_domains",
     "register_domain", "verify_domain", "delete_domain", "get_account_metrics", "list_outbox",
-    "retry_outbox_job", "list_account_suppressions", "delete_account_suppression", "export_account",
+    "retry_outbox_job", "list_account_suppressions", "delete_account_suppression", "export_account", "get_domain",
     "list_account_contacts", "restore_agent", "get_review_settings",
 }
 INBOX_WRITE_TOOLS = {
-    "send_message", "reply_to_message", "forward_to_human", "update_message_labels", "delete_message",
-    "restore_message", "create_agent_suppression", "delete_agent_suppression", "create_template",
+    "send_message", "send_email", "reply_to_message", "forward_to_human", "forward_message", "update_message_labels", "delete_message",
+    "restore_message", "create_agent_suppression", "delete_agent_suppression", "delete_suppression", "create_template",
     "update_template", "delete_template", "create_contact", "update_contact", "delete_contact",
     "import_contacts", "delete_contact_import", "record_contact_consent", "set_outreach_contact",
     "delete_outreach_contact", "copy_starter_template",
@@ -51,7 +55,7 @@ INBOX_READ_TOOLS = {
     "list_messages", "get_message", "get_recent_otp", "list_conversations", "get_conversation",
     "get_message_lifecycle", "get_agent_metrics", "get_protection", "list_contacts", "list_templates",
     "list_suppressions", "get_attachment", "get_attachment_data", "get_template", "preview_template",
-    "get_contact_consent", "list_outreach_contacts",
+    "get_contact_consent", "list_outreach_contacts", "get_contact", "get_outreach_contact", "list_agent_suppressions",
 }
 ANY_CREDENTIAL_TOOLS = {"whoami", "list_starter_templates", "get_starter_template", "validate_template"}
 
@@ -254,6 +258,22 @@ async def test_contact_ids_do_not_cross_inboxes(client):
     await fails(client, key_b, "set_outreach_contact", agent_email=B, contact_id=cid)
 
 
+async def test_contact_and_outreach_detail_tools(client):
+    await make_agent(client, A)
+    contact = await ok(client, ADMIN, "create_contact", agent_email=A, email="detail@example.com", name="Detail")
+    assert (await ok(client, ADMIN, "get_contact", agent_email=A, contact_id=contact["id"]))["email"] == "detail@example.com"
+    engagement = await ok(client, ADMIN, "set_outreach_contact", agent_email=A, contact_id=contact["id"], stage="waiting")
+    detail = await ok(client, ADMIN, "get_outreach_contact", agent_email=A, engagement_id=engagement["id"])
+    assert detail["contact_id"] == contact["id"] and detail["stage"] == "waiting"
+
+
+async def test_suppression_compatibility_aliases(client):
+    await make_agent(client, A)
+    created = await ok(client, ADMIN, "create_agent_suppression", agent_email=A, email="blocked@example.com")
+    assert len(await ok(client, ADMIN, "list_agent_suppressions", agent_email=A)) == 1
+    assert (await ok(client, ADMIN, "delete_suppression", agent_email=A, suppression_id=created["id"]))["deleted"]
+
+
 async def test_suppression_create_and_delete(client):
     await make_agent(client, A)
     entry = await ok(client, ADMIN, "create_agent_suppression", agent_email=A, email="no@example.com")
@@ -361,6 +381,7 @@ async def test_domain_tools(client, monkeypatch):
     created = await ok(client, ADMIN, "register_domain", domain="Mail.Example.com")
     assert created["domain"] == "mail.example.com"
     assert [d["domain"] for d in await ok(client, ADMIN, "list_domains")] == ["mail.example.com"]
+    assert (await ok(client, ADMIN, "get_domain", domain="MAIL.EXAMPLE.COM"))["domain"] == "mail.example.com"
     await fails(client, ADMIN, "register_domain", domain="mail.example.com")
     await fails(client, ADMIN, "register_domain", domain="nodots")
     verified = await ok(client, ADMIN, "verify_domain", domain="mail.example.com")
@@ -418,6 +439,33 @@ async def test_mcp_forward_supports_idempotency_key(client):
 
     changed = {**arguments, "note": "Different context"}
     await fails(client, ADMIN, "forward_to_human", contains="different request", **changed)
+
+
+async def test_forward_message_extended_payload(client):
+    await make_agent(client, A)
+    original = await ok(client, ADMIN, "send_message", agent_email=A,
+                        recipient="to@example.com", subject="s", body_text="original body")
+    forwarded = await ok(client, ADMIN, "forward_message", agent_email=A, message_id=original["message_id"],
+                         recipient="human@example.com", note="Context", body_text="replacement body")
+    assert forwarded["recipient"] == "human@example.com"
+    message = await client.get(f"/v1/agents/{A}/messages/{forwarded['message_id']}", headers=ADMIN)
+    assert message.status_code == 200 and message.json()["body_text"] == "replacement body"
+
+
+async def test_review_tool_compatibility_aliases(client):
+    await make_agent(client, A)
+    sent = await ok(client, ADMIN, "send_email", agent_email=A,
+                    recipient="to@example.com", subject="s", body_text="b")
+    pending = await ok(client, ADMIN, "list_pending_messages")
+    assert pending and pending[0]["message_id"] == sent["message_id"]
+    assert (await ok(client, ADMIN, "get_review", review_id=pending[0]["review_id"]))["message_id"] == sent["message_id"]
+    detailed = await ok(client, ADMIN, "get_pending_message", message_id=sent["message_id"])
+    assert detailed["body_text"] == "b"
+    await ok(client, ADMIN, "approve_message", review_id=pending[0]["review_id"])
+
+    second = await ok(client, ADMIN, "send_message", agent_email=A,
+                      recipient="to@example.com", subject="s2", body_text="b2")
+    await ok(client, ADMIN, "reject_pending_message", message_id=second["message_id"])
 
 
 async def test_mcp_forwards_idempotency_for_parity_write_operations(client):

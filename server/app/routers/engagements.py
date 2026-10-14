@@ -135,6 +135,18 @@ async def list_engagements_page(
     return {"items": [await _response(row, db) for row in rows], "next_cursor": next_cursor}
 
 
+@router.get("/{engagement_id}", response_model=ContactEngagementResponse)
+async def get_engagement(email: str, engagement_id: str, db: AsyncSession = Depends(get_db)):
+    """Return an engagement enriched with contact and suppression state."""
+    result = await db.execute(select(ContactEngagement, Contact).join(
+        Contact, and_(Contact.id == ContactEngagement.contact_id, Contact.agent_email == email)
+    ).where(ContactEngagement.id == engagement_id, ContactEngagement.agent_email == email))
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return await _response(row, db)
+
+
 @router.post("", response_model=ContactEngagementResponse, status_code=201, dependencies=[Depends(require_write)])
 async def create_engagement(email: str, request: ContactEngagementWrite, db: AsyncSession = Depends(get_db)):
     await _get_agent(email, db)

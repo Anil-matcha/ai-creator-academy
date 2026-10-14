@@ -1241,6 +1241,45 @@
       },
       "MessageForwardRequest": {
         "properties": {
+          "attachments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MessageAttachmentInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachments"
+          },
+          "body_html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional HTML content for the forwarded email",
+            "title": "Body Html"
+          },
+          "body_text": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional plain-text content for the forwarded email",
+            "title": "Body Text"
+          },
           "note": {
             "anyOf": [
               {
@@ -3967,6 +4006,56 @@
           "Contacts"
         ]
       },
+      "get": {
+        "description": "Return a contact only when it belongs to the requested inbox.",
+        "operationId": "get_contact_v1_agents__email__contacts__contact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contact_id",
+            "required": true,
+            "schema": {
+              "title": "Contact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contact",
+        "tags": [
+          "Contacts"
+        ]
+      },
       "patch": {
         "operationId": "update_contact_v1_agents__email__contacts__contact_id__patch",
         "parameters": [
@@ -4548,6 +4637,56 @@
           }
         },
         "summary": "Delete Engagement",
+        "tags": [
+          "Contact Engagements"
+        ]
+      },
+      "get": {
+        "description": "Return an engagement enriched with contact and suppression state.",
+        "operationId": "get_engagement_v1_agents__email__engagements__engagement_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "engagement_id",
+            "required": true,
+            "schema": {
+              "title": "Engagement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactEngagementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Engagement",
         "tags": [
           "Contact Engagements"
         ]
@@ -7377,6 +7516,46 @@
           }
         },
         "summary": "Delete Domain",
+        "tags": [
+          "Domains"
+        ]
+      },
+      "get": {
+        "operationId": "get_domain_v1_domains__domain_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_name",
+            "required": true,
+            "schema": {
+              "title": "Domain Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Domain",
         "tags": [
           "Domains"
         ]

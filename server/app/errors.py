@@ -56,7 +56,7 @@ CATALOG: dict[str, ErrorCode] = {
     # conflicts and state
     "conflict": ErrorCode(409, "The request conflicts with the current state.", "Re-read the resource, then retry if still valid."),
     "already_exists": ErrorCode(409, "A resource with the same unique value already exists.", "Use the existing resource or a different value."),
-    "idempotency_key_reuse": ErrorCode(409, "The Idempotency-Key was already used with a different request.", "Use a fresh key for a different request."),
+    "idempotency_key_reuse": ErrorCode(422, "The Idempotency-Key was already used with a different request.", "Use a fresh key for a different request."),
     "review_already_resolved": ErrorCode(409, "The review was already approved or rejected.", "Do not retry."),
     "review_pending": ErrorCode(409, "The message is waiting for review and cannot be changed that way.", "Resolve the review first."),
     "send_in_progress": ErrorCode(409, "The scheduled message is already being submitted.", "Do not retry; check message status."),

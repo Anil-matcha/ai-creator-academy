@@ -81,6 +81,12 @@ async def list_contacts_page(email: str, limit: int = Query(50, ge=1, le=200),
     return {"items": [ContactResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 
+@router.get("/{contact_id}", response_model=ContactResponse)
+async def get_contact(email: str, contact_id: str, db: AsyncSession = Depends(get_db)):
+    """Return a contact only when it belongs to the requested inbox."""
+    return await _get_contact(email, contact_id, db)
+
+
 @router.post("", response_model=ContactResponse, status_code=201, dependencies=[Depends(require_write)])
 async def create_contact(email: str, payload: ContactCreate, request: Request,
                          principal: Principal = Depends(require_agent_access),
@@ -106,7 +112,8 @@ async def create_contact(email: str, payload: ContactCreate, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
     try:
         await _ensure_unique_email(email, payload.email, db)
     except HTTPException:
@@ -256,7 +263,8 @@ async def import_contacts(email: str, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
     addresses = [row.get("email", "").strip().lower() for row in normalized_rows if row.get("email", "").strip()]
     existing = set((await db.execute(select(Contact.email).where(Contact.agent_email == email, Contact.email.in_(addresses)))).scalars().all())
     suppressed = set((await db.execute(select(RecipientSuppression.email).where(RecipientSuppression.agent_email == email, RecipientSuppression.email.in_(addresses)))).scalars().all())

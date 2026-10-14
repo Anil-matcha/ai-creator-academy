@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import base64
 
 from app.models import (
-    Agent, ContactEngagement, EmailTemplate, Message, MessageAttachment, RecipientSuppression,
+    Agent, Contact, ContactEngagement, EmailTemplate, Message, MessageAttachment, RecipientSuppression,
 )
 from app.routers import (
     account, agents, api_keys, contacts, conversations, domains, engagements, events, messages, meta,
@@ -322,6 +322,11 @@ async def _h_get_contact_consent(db, args, principal):
     return _dump(await contacts.get_contact_consent(args["agent_email"], args["contact_id"], db))
 
 
+async def _h_get_contact(db, args, principal):
+    _require(args, "agent_email", "contact_id")
+    return _m(ContactResponse, await contacts._get_contact(args["agent_email"], args["contact_id"], db))
+
+
 async def _h_record_contact_consent(db, args, principal):
     _require(args, "agent_email", "contact_id")
     payload = ContactConsentWrite(**_fields(args, "action", "source", "evidence", "note"))
@@ -355,6 +360,22 @@ async def _h_delete_outreach_contact(db, args, principal):
     _require(args, "agent_email", "engagement_id")
     await engagements.delete_engagement(args["agent_email"], args["engagement_id"], db)
     return {"deleted": True, "engagement_id": args["engagement_id"]}
+
+
+async def _h_get_outreach_contact(db, args, principal):
+    _require(args, "agent_email", "engagement_id")
+    row = (await db.execute(select(ContactEngagement, Contact).join(
+        Contact, Contact.id == ContactEngagement.contact_id,
+    ).where(ContactEngagement.agent_email == args["agent_email"], Contact.agent_email == args["agent_email"],
+            ContactEngagement.id == args["engagement_id"])) ).one_or_none()
+    if not row:
+        raise ValueError("Outreach contact not found")
+    return (await engagements._response(row, db)).model_dump(mode="json")
+
+
+async def _h_get_domain(db, args, principal):
+    _require(args, "domain")
+    return _m(DomainResponse, await domains.get_domain(args["domain"], db))
 
 
 async def _h_delete_agent_suppression(db, args, principal):
@@ -565,6 +586,10 @@ _NEW_SPECS = [
      {**_AE, "engagement_id": _ID}, ["agent_email", "engagement_id"], "write", _h_delete_outreach_contact),
     ("delete_agent_suppression", "Remove a suppression so the inbox may email that recipient again.",
      {**_AE, "suppression_id": _ID}, ["agent_email", "suppression_id"], "write", _h_delete_agent_suppression),
+    ("get_contact", "Fetch one contact in an inbox.",
+     {**_AE, "contact_id": _ID}, ["agent_email", "contact_id"], "read", _h_get_contact),
+    ("get_outreach_contact", "Fetch one contact follow-up record by engagement_id.",
+     {**_AE, "engagement_id": _ID}, ["agent_email", "engagement_id"], "read", _h_get_outreach_contact),
     ("list_webhooks", "Administrator only: list webhook endpoints, optionally for one inbox. Signing secrets are never returned.",
      {**_AE, "limit": _limit(100, 200)}, [], "admin", _h_list_webhooks),
     ("get_webhook", "Administrator only: fetch one webhook endpoint (no secret).",
@@ -599,6 +624,8 @@ _NEW_SPECS = [
      {"key_id": _ID}, ["key_id"], "admin", _h_delete_api_key),
     ("list_domains", "Administrator only: list registered domains and their DNS record status.",
      {}, [], "admin", _h_list_domains),
+    ("get_domain", "Administrator only: fetch one registered domain and its DNS record status.",
+     {"domain": _ID}, ["domain"], "admin", _h_get_domain),
     ("register_domain", "Administrator only: register a domain, generate its DKIM key, and return the exact DNS records to publish.",
      {"domain": _ID}, ["domain"], "admin", _h_register_domain),
     ("verify_domain", "Administrator only: look up the domain's MX, SPF, DKIM and DMARC records and update their status (verified, pending, mismatch, error). The domain becomes verified when MX, SPF and DKIM all match.",

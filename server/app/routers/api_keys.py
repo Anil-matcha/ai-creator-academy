@@ -71,7 +71,8 @@ async def create_api_key(payload: ApiKeyCreate, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
 
     agent = await db.execute(select(Agent).where(Agent.email == payload.agent_email))
     if agent.scalar_one_or_none() is None:

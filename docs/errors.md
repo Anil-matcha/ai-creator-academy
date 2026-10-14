@@ -41,7 +41,6 @@ Every error keeps its HTTP status and the historical `detail` field, and adds a 
 | `concurrent_modification` | 409 | The resource changed while handling the request. | Retry once. |
 | `conflict` | 409 | The request conflicts with the current state. | Re-read the resource, then retry if still valid. |
 | `delivery_state_uncertain` | 409 | Delivery of the message is unknown; retrying may send a duplicate. | Retry only with confirm_duplicate_risk=true. |
-| `idempotency_key_reuse` | 409 | The Idempotency-Key was already used with a different request. | Use a fresh key for a different request. |
 | `invalid_state` | 409 | The resource is not in a state that allows this action. | Check its status first. |
 | `limit_exceeded` | 409 | A per-inbox limit was reached. | Remove an item or ask for a higher limit. |
 | `review_already_resolved` | 409 | The review was already approved or rejected. | Do not retry. |
@@ -50,6 +49,7 @@ Every error keeps its HTTP status and the historical `detail` field, and adds a 
 | `webhook_disabled` | 409 | The webhook endpoint is disabled. | Enable it, then retry. |
 | `attachment_limit_exceeded` | 413 | Too many or too large attachments. | Reduce attachments. |
 | `payload_too_large` | 413 | The request body or upload exceeds the size limit. | Send less data. |
+| `idempotency_key_reuse` | 422 | The Idempotency-Key was already used with a different request. | Use a fresh key for a different request. |
 | `invalid_attachment` | 422 | An attachment is missing fields, has a bad type, or is not valid base64. | Fix the attachment. |
 | `invalid_request` | 422 | The request is understood but semantically invalid. | Fix the request. |
 | `invalid_template` | 422 | A template has invalid placeholder syntax, data, or rendered size. | Fix the template or data. |

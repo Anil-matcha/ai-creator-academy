@@ -485,6 +485,9 @@ async def forward_message(email: str, message_id: str, req: MessageForwardReques
             original=original,
             recipient=req.recipient,
             note=req.note,
+            body_text=req.body_text,
+            body_html=req.body_html,
+            attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
             idempotency_key=request.headers.get("Idempotency-Key"),
         )
     except ValueError as exc:

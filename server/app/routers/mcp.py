@@ -124,6 +124,19 @@ MCP_TOOLS = [
         }
     },
     {
+        "name": "forward_message",
+        "description": "Forward a message to a human with optional context or replacement body and attachments. Outbound approval rules still apply.",
+        "inputSchema": {"type": "object", "properties": {
+            "agent_email": {"type": "string"}, "message_id": {"type": "string"},
+            "recipient": {"type": "string"}, "note": {"type": "string"},
+            "body_text": {"type": "string"}, "body_html": {"type": "string"},
+            "attachments": {"type": "array", "items": {"type": "object", "properties": {
+                "filename": {"type": "string", "maxLength": 255}, "content_type": {"type": "string", "maxLength": 255},
+                "content_base64": {"type": "string"}}, "required": ["filename", "content_base64"]}},
+            "idempotency_key": {"type": "string", "maxLength": 128}},
+            "required": ["agent_email", "message_id", "recipient"]}
+    },
+    {
         "name": "list_reviews",
         "description": "List items in the Human-in-the-Loop review queue held for threat or approval review",
         "inputSchema": {
@@ -168,6 +181,29 @@ for _tool_def in MCP_TOOLS:
         _tool_def["inputSchema"]["properties"]["scheduled_at"] = SCHEDULED_AT_PROP
         _tool_def["inputSchema"]["properties"]["send_at"] = SEND_AT_PROP
 MCP_TOOLS.extend(EXT_TOOLS)
+
+# Compatibility names retained for clients that use the older tool vocabulary.
+_MCP_ALIASES = {
+    "send_email": "send_message",
+    "list_agent_suppressions": "list_suppressions",
+    "delete_suppression": "delete_agent_suppression",
+    "list_pending_messages": "list_reviews",
+    "approve_message": "approve_review",
+    "reject_message": "reject_review",
+}
+for _alias, _target in _MCP_ALIASES.items():
+    _definition = next(t for t in MCP_TOOLS if t["name"] == _target)
+    MCP_TOOLS.append({**_definition, "name": _alias, "inputSchema": _definition["inputSchema"]})
+MCP_TOOLS.extend([
+    {"name": "get_review", "description": "Fetch one review queue item and its message details.",
+     "inputSchema": {"type": "object", "properties": {"review_id": {"type": "string"}}, "required": ["review_id"]}},
+    {"name": "get_pending_message", "description": "Fetch a message currently held in the review queue.",
+     "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]}},
+    {"name": "approve_pending_message", "description": "Approve a message by message_id from the review queue.",
+     "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string"}, "notes": {"type": "string"}, "idempotency_key": {"type": "string", "maxLength": 128}}, "required": ["message_id"]}},
+    {"name": "reject_pending_message", "description": "Reject a message by message_id from the review queue.",
+     "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string"}, "notes": {"type": "string"}}, "required": ["message_id"]}},
+])
 
 
 def _parse_send_at(value):
@@ -279,9 +315,15 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db), 
     }
 
 async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
+    original_name = name
+    name = _MCP_ALIASES.get(name, name)
+    if original_name == "list_pending_messages":
+        args = {**args, "status": "pending"}
     admin_tools = {"list_agents"} | EXT_ADMIN
-    review_tools = {"list_reviews", "approve_review", "reject_review"}
-    write_tools = {"send_message", "reply_to_message", "forward_to_human"} | EXT_WRITE
+    review_tools = {"list_reviews", "approve_review", "reject_review", "get_review",
+                    "get_pending_message", "list_pending_messages", "approve_pending_message",
+                    "reject_pending_message", "approve_message", "reject_message"}
+    write_tools = {"send_message", "send_email", "reply_to_message", "forward_to_human", "forward_message"} | EXT_WRITE
     if not principal.is_admin and principal.scope == "reviewer" and name not in review_tools | {"whoami"}:
         raise PermissionError("Reviewer credentials are limited to review tools")
     if name in admin_tools and not principal.is_admin:
@@ -293,6 +335,12 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
     if name in {"list_messages", "get_message", "get_recent_otp", *write_tools, *EXT_READ} and not principal.is_admin:
         if args.get("agent_email") != principal.agent_email:
             raise PermissionError("Token is not authorized for this agent inbox")
+    if original_name in {"approve_pending_message", "reject_pending_message"}:
+        review_id = await db.scalar(select(ReviewItem.id).where(
+            ReviewItem.message_id == args.get("message_id"), ReviewItem.status == "pending"))
+        if not review_id:
+            raise ValueError(f"Pending review for message {args.get('message_id')} not found")
+        args = {**args, "review_id": review_id}
     if name == "list_agents":
         res = await db.execute(select(Agent).where(Agent.deleted_at.is_(None)))
         agents = res.scalars().all()
@@ -427,7 +475,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "delivery_error": reply_msg.delivery_error,
         })
 
-    elif name == "forward_to_human":
+    elif name in {"forward_to_human", "forward_message"}:
         original_res = await db.execute(
             select(Message).where(
                 Message.id == args["message_id"],
@@ -447,6 +495,9 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             original=original,
             recipient=args["recipient"],
             note=args.get("note"),
+            body_text=args.get("body_text"),
+            body_html=args.get("body_html"),
+            attachments=decode_attachment_inputs(args.get("attachments")),
             idempotency_key=args.get("idempotency_key"),
         )
         return json.dumps({
@@ -477,7 +528,36 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "status": r.status
         } for r in reviews], indent=2)
 
-    elif name == "approve_review":
+    elif name == "get_review":
+        review_id = args["review_id"]
+        query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.id == review_id)
+        if not principal.is_admin:
+            query = query.where(ReviewItem.agent_email == principal.agent_email)
+        review = await db.scalar(query)
+        if not review:
+            raise ValueError(f"Review {review_id} not found")
+        message = review.message
+        return json.dumps({"review_id": review.id, "message_id": review.message_id, "agent_email": review.agent_email,
+                           "reason": review.reason, "threat_score": review.threat_score, "status": review.status,
+                           "message": {"id": message.id, "sender": message.sender, "recipient": message.recipient,
+                                       "subject": message.subject, "body_text": message.body_text,
+                                       "status": message.status} if message else None}, indent=2)
+
+    elif name == "get_pending_message":
+        query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(
+            ReviewItem.message_id == args["message_id"], ReviewItem.status == "pending")
+        if not principal.is_admin:
+            query = query.where(ReviewItem.agent_email == principal.agent_email)
+        review = await db.scalar(query)
+        if not review or not review.message:
+            raise ValueError(f"Pending message {args['message_id']} not found")
+        m = review.message
+        return json.dumps({"review_id": review.id, "message_id": m.id, "agent_email": review.agent_email,
+                           "reason": review.reason, "threat_score": review.threat_score, "status": review.status,
+                           "sender": m.sender, "recipient": m.recipient, "subject": m.subject,
+                           "body_text": m.body_text, "message_status": m.status}, indent=2)
+
+    elif name == "approve_review" or original_name == "approve_pending_message":
         if not principal.is_admin:
             agent_email = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == args["review_id"]))
             if agent_email != principal.agent_email:
@@ -493,7 +573,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         message_id = result.get("message_id") if isinstance(result, dict) else result.message_id
         return json.dumps({"status": "approved", "review_id": review_id, "message_id": message_id})
 
-    elif name == "reject_review":
+    elif name == "reject_review" or original_name == "reject_pending_message":
         if not principal.is_admin:
             agent_email = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == args["review_id"]))
             if agent_email != principal.agent_email:

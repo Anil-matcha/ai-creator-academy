@@ -188,7 +188,8 @@ async def create_webhook(payload: WebhookCreate, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
 
     agent_result = await db.execute(select(Agent).where(
         Agent.email == payload.agent_email.strip().lower(),
@@ -320,7 +321,8 @@ async def rotate_webhook_secret(endpoint_id: str, request: Request,
                 "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
                 "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
             }
-            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409,
+                                detail=messages[decision.outcome])
 
     result = await db.execute(
         select(WebhookEndpoint).where(WebhookEndpoint.id == endpoint_id).with_for_update()

@@ -420,6 +420,9 @@ class MessageReplyRequest(BaseModel):
 class MessageForwardRequest(BaseModel):
     recipient: str = Field(..., min_length=3, max_length=320, example="support-lead@example.com")
     note: Optional[str] = Field(None, max_length=5000, example="Please review the refund request before we reply.")
+    body_text: Optional[str] = Field(None, max_length=100_000, description="Optional plain-text content for the forwarded email")
+    body_html: Optional[str] = Field(None, description="Optional HTML content for the forwarded email")
+    attachments: Optional[List[MessageAttachmentInput]] = None
 
 class MessageResponse(BaseModel):
     id: str

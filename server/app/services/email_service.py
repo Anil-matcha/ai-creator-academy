@@ -657,7 +657,7 @@ class EmailService:
                     and existing.recipient == raw_recipient
                 )
                 if not matches_current and not matches_legacy:
-                    raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+                    raise HTTPException(status_code=422, detail="Idempotency-Key was already used with a different request")
                 return existing
 
         # Preserve idempotent retries of a message already accepted before the
@@ -764,7 +764,7 @@ class EmailService:
             if not existing:
                 raise
             if existing.request_hash != request_hash:
-                raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+                raise HTTPException(status_code=422, detail="Idempotency-Key was already used with a different request")
             return existing
         await db.refresh(message)
 
@@ -804,6 +804,9 @@ class EmailService:
         original: Message,
         recipient: str,
         note: Optional[str] = None,
+        body_text: Optional[str] = None,
+        body_html: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
         idempotency_key: Optional[str] = None,
     ) -> Message:
         recipient = recipient.strip()
@@ -813,34 +816,30 @@ class EmailService:
         original_sender = original.sender
         original_recipient = original.recipient
         timestamp = original.created_at.isoformat() if original.created_at else "unknown"
-        body_parts = [
-            f"{agent.display_name} is handing this email to you for human review.",
-        ]
+        body_parts = [f"{agent.display_name} is handing this email to you for human review."]
         if note and note.strip():
             body_parts.extend(["", "Context from the agent:", note.strip()])
         body_parts.extend([
-            "",
-            "---------- Forwarded message ----------",
-            f"From: {original_sender}",
-            f"To: {original_recipient}",
-            f"Date: {timestamp}",
-            f"Subject: {original.subject}",
-            f"Message-ID: {original.rfc_message_id}",
-            "",
-            original.body_text,
+            "", "---------- Forwarded message ----------", f"From: {original_sender}",
+            f"To: {original_recipient}", f"Date: {timestamp}", f"Subject: {original.subject}",
+            f"Message-ID: {original.rfc_message_id}", "", original.body_text,
         ])
         subject = original.subject if original.subject.lower().startswith("fwd:") else f"Fwd: {original.subject}"
         attachment_rows = (await db.execute(
             select(MessageAttachment).where(MessageAttachment.message_id == original.id)
         )).scalars().all()
+        retained_attachments = [
+            {"filename": a.filename, "content_type": a.content_type, "content": a.content}
+            for a in attachment_rows
+        ]
         return await cls.send_outbound(
             db=db,
             agent=agent,
             recipient=recipient,
             subject=subject,
-            body_text="\n".join(body_parts),
+            body_text=body_text if body_text is not None else "\n".join(body_parts),
+            body_html=body_html,
             thread_id=original.thread_id,
             idempotency_key=idempotency_key,
-            attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
-                         for a in attachment_rows],
+            attachments=retained_attachments + (attachments or []),
         )
