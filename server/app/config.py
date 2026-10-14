@@ -28,6 +28,18 @@ class Settings(BaseSettings):
     # Set explicitly in the environment; no built-in administrator credential.
     ADMIN_API_KEY: str = ""
 
+    # Per-process sliding-window limit for REST and MCP requests, keyed by socket peer IP.
+    API_RATE_LIMIT_REQUESTS: int = 120
+    API_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    API_RATE_LIMIT_MAX_CLIENTS: int = 8192
+
+    @field_validator("API_RATE_LIMIT_REQUESTS", "API_RATE_LIMIT_WINDOW_SECONDS", "API_RATE_LIMIT_MAX_CLIENTS")
+    @classmethod
+    def validate_rate_limits(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("API rate limit settings must be greater than zero")
+        return value
+
     @field_validator("CORS_ORIGINS")
     @classmethod
     def validate_cors_origins(cls, origins: List[str]) -> List[str]:

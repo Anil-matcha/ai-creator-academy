@@ -157,6 +157,8 @@ Inbound SMTP evaluates SPF against the connecting peer IP and SMTP envelope send
 
 Inbound MIME attachments are stored with their message and appear in the inbox with authenticated download links. Human handoff forwards those files along with the original message. The SMTP receiver defaults to a 20 MiB raw-message limit, 10 MiB per attachment, and 10 attachments per message; set `SMTP_MAX_MESSAGE_BYTES`, `SMTP_MAX_ATTACHMENT_BYTES`, and `SMTP_MAX_ATTACHMENTS` to adjust these bounds. Idle SMTP reads time out after 60 seconds, message input has a 5-minute limit, and at most 100 SMTP sessions run concurrently; configure these with `SMTP_READ_TIMEOUT_SECONDS`, `SMTP_DATA_TIMEOUT_SECONDS`, `SMTP_MAX_CONNECTIONS`, and `SMTP_LINE_LIMIT_BYTES`.
 
+REST and MCP requests are limited to 120 per socket peer IP per rolling minute by default. Configure `API_RATE_LIMIT_REQUESTS`, `API_RATE_LIMIT_WINDOW_SECONDS`, and `API_RATE_LIMIT_MAX_CLIENTS` for the single-process in-memory limiter. It uses the direct socket peer address and does not trust `X-Forwarded-For`; deployments behind a proxy should enforce client-aware limits at that proxy as well.
+
 ---
 
 ## 🤖 Coding Agent Integration (MCP)
