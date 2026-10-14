@@ -1,4 +1,4 @@
-"""Event log view over webhook deliveries (e2a-style /v1/events)."""
+"""Event log view over webhook deliveries (/v1/events)."""
 
 from typing import Optional
 
