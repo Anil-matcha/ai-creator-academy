@@ -160,6 +160,9 @@ async def lifespan(app: FastAPI):
     from app.services.review_expiry import run_review_expiry_sweeper
     review_expiry_task = asyncio.create_task(run_review_expiry_sweeper(), name="review-expiry-sweeper")
     app.state.review_expiry_task = review_expiry_task
+    from app.services.message_purge import run_trash_janitor
+    trash_janitor_task = asyncio.create_task(run_trash_janitor(), name="trash-retention-janitor")
+    app.state.trash_janitor_task = trash_janitor_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -200,6 +203,12 @@ async def lifespan(app: FastAPI):
     review_expiry_task.cancel()
     try:
         await review_expiry_task
+    except asyncio.CancelledError:
+        pass
+
+    trash_janitor_task.cancel()
+    try:
+        await trash_janitor_task
     except asyncio.CancelledError:
         pass
 

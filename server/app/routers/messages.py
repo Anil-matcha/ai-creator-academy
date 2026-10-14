@@ -14,8 +14,10 @@ from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentR
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
 from app.services.otp_finder import find_recent_otp
-from app.security import require_agent_access, require_write
+from app.security import Principal, get_principal, require_agent_access, require_write
+from app.services.message_purge import purge_blocker, purge_message
 from app.routers.templates import _preview
+from pydantic import BaseModel
 
 def _trash_filter(trashed: bool):
     return Message.deleted_at.is_not(None) if trashed else Message.deleted_at.is_(None)
@@ -257,10 +259,36 @@ async def update_message_labels(email: str, message_id: str, req: MessageLabelsU
     return message
 
 
-@router.delete("/{message_id}", response_model=MessageResponse, dependencies=[Depends(require_write)])
-async def trash_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
-    """Move a message to trash. A scheduled send that has not yet been submitted is canceled."""
+class PurgeResult(BaseModel):
+    deleted: bool
+    permanent: bool
+    message_id: str
+
+
+@router.delete("/{message_id}", response_model=MessageResponse | PurgeResult, dependencies=[Depends(require_write)])
+async def trash_message(
+    email: str,
+    message_id: str,
+    permanent: bool = Query(False, description="Delete for good instead of moving to trash"),
+    confirm: Optional[str] = Query(None, description="Must be DELETE when permanent=true"),
+    principal: Principal = Depends(get_principal),
+    db: AsyncSession = Depends(get_db),
+):
+    """Move a message to trash (cancelling an unsubmitted scheduled send), or delete it permanently.
+
+    Permanent deletion needs ``permanent=true&confirm=DELETE`` and is refused while a review is pending or
+    an outbound send is queued or in progress.
+    """
     message = await _owned_message(db, email, message_id)
+    if permanent:
+        if confirm != "DELETE":
+            raise HTTPException(status_code=422, detail="Permanent deletion requires confirm=DELETE")
+        blocker = await purge_blocker(db, message)
+        if blocker:
+            raise HTTPException(status_code=409, detail=blocker)
+        await purge_message(db, message, purged_by=principal.principal_id, reason="manual")
+        await db.commit()
+        return PurgeResult(deleted=True, permanent=True, message_id=message_id)
     if message.status == "pending_review":
         raise HTTPException(status_code=409, detail="Resolve the pending review before trashing this message")
     if message.status == "scheduled":
@@ -273,6 +301,7 @@ async def trash_message(email: str, message_id: str, db: AsyncSession = Depends(
             await db.rollback()
             raise HTTPException(status_code=409, detail="Scheduled message is already being submitted")
         message.status = "canceled"
+        message.canceled_by_trash = True
     if message.deleted_at is None:
         message.deleted_at = datetime.utcnow()
     await db.commit()
@@ -282,9 +311,22 @@ async def trash_message(email: str, message_id: str, db: AsyncSession = Depends(
 
 @router.post("/{message_id}/restore", response_model=MessageResponse, dependencies=[Depends(require_write)])
 async def restore_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
-    """Restore a trashed message to the inbox. A canceled scheduled send stays canceled."""
+    """Restore a trashed message. A send canceled by trashing is re-armed if its time has not passed."""
     message = await _owned_message(db, email, message_id)
+    if message.deleted_at is None:
+        raise HTTPException(status_code=409, detail="not_in_trash")
     message.deleted_at = None
+    if message.status == "canceled" and message.canceled_by_trash and message.scheduled_for:
+        if message.scheduled_for > datetime.utcnow():
+            rearmed = await db.execute(
+                update(OutboundJob)
+                .where(OutboundJob.message_id == message.id, OutboundJob.status == "cancelled")
+                .values(status="pending", last_error=None, available_at=message.scheduled_for)
+            )
+            if rearmed.rowcount == 1:
+                message.status = "scheduled"
+                message.canceled_by_trash = None
+        # Otherwise the time has passed: the send stays canceled rather than firing late.
     await db.commit()
     await db.refresh(message)
     return message

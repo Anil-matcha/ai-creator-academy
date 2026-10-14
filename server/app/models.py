@@ -186,6 +186,7 @@ class Message(Base):
     labels = Column(JSON, nullable=False, default=list)
     deleted_at = Column(DateTime, nullable=True, index=True)  # trash; restorable
     scheduled_for = Column(DateTime, nullable=True)  # deferred outbound submission time (UTC)
+    canceled_by_trash = Column(Boolean, nullable=True)  # a scheduled send canceled by trashing; restore may re-arm it
     
     # State & Threat
     status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed
@@ -197,6 +198,18 @@ class Message(Base):
     agent = relationship("Agent", back_populates="messages")
     review_item = relationship("ReviewItem", back_populates="message", uselist=False, cascade="all, delete-orphan")
     attachments = relationship("MessageAttachment", back_populates="message", cascade="all, delete-orphan")
+
+
+class MessagePurgeLog(Base):
+    """Audit trail of permanent message deletions. Never stores message content."""
+    __tablename__ = "message_purge_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_email = Column(String(255), nullable=False, index=True)
+    message_id = Column(String(64), nullable=False, index=True)
+    purged_by = Column(String(128), nullable=False)
+    reason = Column(String(16), nullable=False)  # manual, retention
+    purged_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
 
 
 class MessageAttachment(Base):

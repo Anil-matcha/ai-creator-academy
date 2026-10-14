@@ -326,7 +326,8 @@ The built-in scanner guards agent inboxes against:
 ## 🧭 Triage, scheduling and conversations
 
 - **Labels** – `PATCH /v1/agents/{email}/messages/{id}` with `{"labels": ["needs-human"]}`; filter with `?label=`.
-- **Trash / restore** – `DELETE` moves a message to trash (cancelling an unsubmitted scheduled send); `POST .../restore` brings it back; `?trashed=true` lists trash.
+- **Trash / restore** – `DELETE` moves a message to trash (cancelling an unsubmitted scheduled send); `POST .../restore` brings it back (409 `not_in_trash` if it isn't in trash, and a send canceled by trashing is re-armed if its `send_at` has not passed); `?trashed=true` lists trash. Trashed messages stay readable by direct `GET`.
+- **Permanent delete & retention** – `DELETE .../messages/{id}?permanent=true&confirm=DELETE` deletes a message and its attachments, queue job and review record for good (refused with 409 while a review is pending or a send is queued or in progress). Trash is purged automatically after `TRASH_RETENTION_DAYS` (default 30, `0` disables). Each purge leaves a content-free audit row.
 - **Scheduled send** – add `send_at` (ISO-8601, up to 90 days ahead) to send/reply, REST or MCP. Status is `scheduled` until submitted.
 - **Conversations** – `GET /v1/agents/{email}/conversations[/{id}]` groups messages by thread with unread counts, participants and labels.
 - **Lifecycle** – `GET .../messages/{id}/lifecycle` returns the review, queue, retry and provider-delivery timeline.

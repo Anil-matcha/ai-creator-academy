@@ -50,6 +50,15 @@ Rehearse a restore into a scratch environment on a schedule; an untested backup 
 
 `send_at` (UTC, at most 90 days ahead) on send/reply defers submission. A scheduled message has status `scheduled`; trashing it before submission (`DELETE /v1/agents/{email}/messages/{id}`) cancels it. With the approval gate on, the message is held for review first and the deferral is honored on approval. Delivery time is best-effort within the worker poll interval, and a message whose time passes while the service is down is sent on recovery.
 
+Restoring a message from trash before its `send_at` re-arms the send (the canceled queue job returns to pending, using an atomic compare-and-set so a job that has since changed is never touched). Restoring after `send_at` has passed leaves it canceled rather than sending late.
+
+## Trash, permanent deletion and retention
+
+- **Trash** is a soft delete: the message disappears from lists but stays readable by id and restorable. Restoring a message that is not in trash returns 409 `not_in_trash`.
+- **Permanent delete**: `DELETE /v1/agents/{email}/messages/{id}?permanent=true&confirm=DELETE` (full-access key or admin). It removes the message, attachments, queue job, retry history, review record and any emailed review links. It is refused with 409 while a review is pending or the message has a queued (`pending`) or in-progress outbound job, so a send can never be dropped silently. A scheduled send must be canceled (trashed) first.
+- **Retention**: a background janitor purges messages that have been in trash longer than `TRASH_RETENTION_DAYS` (default 30; `0` disables; maximum 3650). Each sweep handles at most 100 messages every 5 minutes and skips any message with a queued or in-progress send, so a large backlog drains over several sweeps and the job is safe to run on multiple instances.
+- **Audit**: every purge, manual or by retention, writes a row to `message_purge_log` (inbox, message id, who, `manual` or `retention`, time). No subject, body, address or attachment data is kept. Backups taken before a purge still contain the message, so apply your backup retention policy accordingly.
+
 ## Custom domains and DKIM
 
 1. Register a domain: `POST /v1/domains {"domain": "agents.example.com"}`. This generates a 2048-bit DKIM key (the private key is stored encrypted with `SMTP_CONFIG_ENCRYPTION_KEY`; registration is refused with 503 when no key is configured) and returns the exact records to publish.

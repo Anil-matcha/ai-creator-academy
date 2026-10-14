@@ -55,8 +55,10 @@ EXT_TOOLS = [
     _tool("update_message_labels", "Replace a message's labels (triage tags such as needs-human).",
           {**_MSG, "labels": {"type": "array", "items": {"type": "string"}, "maxItems": 20}},
           ["agent_email", "message_id", "labels"]),
-    _tool("delete_message", "Move a message to trash; cancels a scheduled send that has not been submitted.",
-          _MSG, ["agent_email", "message_id"]),
+    _tool("delete_message", "Move a message to trash (cancelling a scheduled send that has not been submitted). With permanent=true and confirm=DELETE it is deleted for good instead; that is refused while a review is pending or a send is queued.",
+          {**_MSG, "permanent": {"type": "boolean", "default": False},
+           "confirm": {"type": "string", "enum": ["DELETE"], "description": "Required when permanent is true"}},
+          ["agent_email", "message_id"]),
     _tool("restore_message", "Restore a trashed message to the inbox.", _MSG, ["agent_email", "message_id"]),
     _tool("list_contacts", "List the inbox's contacts.",
           {**_EMAIL, "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}}, ["agent_email"]),
@@ -119,7 +121,11 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
         req = MessageLabelsUpdate(labels=args["labels"])
         return json.dumps(_dump(await messages.update_message_labels(email, args["message_id"], req, db)))
     if name == "delete_message":
-        return json.dumps(_dump(await messages.trash_message(email, args["message_id"], db)))
+        permanent = args.get("permanent", False)
+        if not isinstance(permanent, bool):
+            raise ValueError("permanent must be a boolean")
+        return json.dumps(_dump(await messages.trash_message(
+            email, args["message_id"], permanent, args.get("confirm"), principal, db)))
     if name == "restore_message":
         return json.dumps(_dump(await messages.restore_message(email, args["message_id"], db)))
     if name == "list_contacts":

@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     OUTBOUND_MAX_ATTACHMENT_BYTES: int = 10 * 1024 * 1024
     OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES: int = 20 * 1024 * 1024
     WEBHOOK_DELIVERY_RETENTION_DAYS: int = 30
+    # Trashed messages are permanently purged after this many days; 0 keeps them until deleted by hand.
+    TRASH_RETENTION_DAYS: int = 30
 
     @field_validator("API_RATE_LIMIT_REQUESTS", "API_RATE_LIMIT_WINDOW_SECONDS", "API_RATE_LIMIT_MAX_CLIENTS")
     @classmethod
@@ -71,6 +73,13 @@ class Settings(BaseSettings):
     def validate_http_limits(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("Server and API limits must be greater than zero")
+        return value
+
+    @field_validator("TRASH_RETENTION_DAYS")
+    @classmethod
+    def validate_trash_retention(cls, value: int) -> int:
+        if not 0 <= value <= 3650:
+            raise ValueError("TRASH_RETENTION_DAYS must be between 0 and 3650")
         return value
 
     @field_validator("PORT")

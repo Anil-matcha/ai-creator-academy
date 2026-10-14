@@ -1910,6 +1910,29 @@
         "title": "ProtectionUpdate",
         "type": "object"
       },
+      "PurgeResult": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "permanent": {
+            "title": "Permanent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "permanent",
+          "message_id"
+        ],
+        "title": "PurgeResult",
+        "type": "object"
+      },
       "RecentOtpResponse": {
         "properties": {
           "code": {
@@ -4526,7 +4549,7 @@
     },
     "/v1/agents/{email}/messages/{message_id}": {
       "delete": {
-        "description": "Move a message to trash. A scheduled send that has not yet been submitted is canceled.",
+        "description": "Move a message to trash (cancelling an unsubmitted scheduled send), or delete it permanently.\n\nPermanent deletion needs ``permanent=true&confirm=DELETE`` and is refused while a review is pending or\nan outbound send is queued or in progress.",
         "operationId": "trash_message_v1_agents__email__messages__message_id__delete",
         "parameters": [
           {
@@ -4546,6 +4569,36 @@
               "title": "Message Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Delete for good instead of moving to trash",
+            "in": "query",
+            "name": "permanent",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Delete for good instead of moving to trash",
+              "title": "Permanent",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Must be DELETE when permanent=true",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Must be DELETE when permanent=true",
+              "title": "Confirm"
+            }
           }
         ],
         "responses": {
@@ -4553,7 +4606,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PurgeResult"
+                    }
+                  ],
+                  "title": "Response Trash Message V1 Agents  Email  Messages  Message Id  Delete"
                 }
               }
             },
@@ -5023,7 +5084,7 @@
     },
     "/v1/agents/{email}/messages/{message_id}/restore": {
       "post": {
-        "description": "Restore a trashed message to the inbox. A canceled scheduled send stays canceled.",
+        "description": "Restore a trashed message. A send canceled by trashing is re-armed if its time has not passed.",
         "operationId": "restore_message_v1_agents__email__messages__message_id__restore_post",
         "parameters": [
           {

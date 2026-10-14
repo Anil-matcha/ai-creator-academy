@@ -62,8 +62,8 @@ async def test_scheduled_send_defers_job_and_can_be_canceled(client):
     assert canceled["status"] == "canceled"
     async with AsyncSessionLocal() as db:
         assert (await db.scalar(select(OutboundJob.status).where(OutboundJob.message_id == mid))) == "cancelled"
-    # restoring visibility never resurrects a canceled send
-    assert (await client.post(f"{BASE}/messages/{mid}/restore", headers=ADMIN)).json()["status"] == "canceled"
+    # restoring before the scheduled time re-arms the send (see tests/test_trash_lifecycle.py for the late case)
+    assert (await client.post(f"{BASE}/messages/{mid}/restore", headers=ADMIN)).json()["status"] == "scheduled"
 
 
 async def test_send_at_validation(client):
