@@ -32,6 +32,7 @@ class Message(Base):
     id = Column(String(64), primary_key=True, index=True)
     agent_email = Column(String(255), ForeignKey("agents.email"), index=True, nullable=False)
     direction = Column(String(16), nullable=False)  # inbound, outbound
+    is_read = Column(Boolean, nullable=False, default=False, index=True)
     sender = Column(String(255), nullable=False)
     recipient = Column(String(255), nullable=False)
     subject = Column(String(512), default="(No Subject)")

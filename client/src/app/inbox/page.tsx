@@ -23,7 +23,9 @@ export default function InboxPage() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [threadMessages, setThreadMessages] = useState<Message[]>([]);
   const [threadAttachments, setThreadAttachments] = useState<Record<string, MessageAttachment[]>>({});
-  const [filterDirection, setFilterDirection] = useState<string>("");
+  const [filterDirection, setFilterDirection] = useState<"" | "inbound" | "outbound">("");
+  const [filterReadStatus, setFilterReadStatus] = useState<"unread" | "read" | "all">("all");
+  const [markingRead, setMarkingRead] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [listError, setListError] = useState<string>("");
@@ -31,6 +33,8 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const messageRequestId = useRef(0);
+  const activeMessageView = useRef("");
+  activeMessageView.current = `${selectedAgentEmail}\u0000${filterDirection}\u0000${filterReadStatus}\u0000${searchQuery}`;
 
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
@@ -76,6 +80,7 @@ export default function InboxPage() {
       const page = await api.getMessagePage(selectedAgentEmail, {
         q: searchQuery || undefined,
         direction: filterDirection || undefined,
+        read_status: filterReadStatus,
         limit: 50,
         cursor,
       });
@@ -109,7 +114,7 @@ export default function InboxPage() {
     setMessages([]);
     setNextCursor(null);
     loadMessages();
-  }, [selectedAgentEmail, filterDirection, searchQuery]);
+  }, [selectedAgentEmail, filterDirection, filterReadStatus, searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -130,6 +135,36 @@ export default function InboxPage() {
     }
     return () => { active = false; };
   }, [selectedAgentEmail, selectedMessage?.id]);
+
+  // Mark inbound mail as read and keep the visible list and thread in sync.
+  const handleMarkRead = async () => {
+    if (!selectedMessage || selectedMessage.direction !== "inbound" || selectedMessage.is_read || markingRead) return;
+    const previousSelected = selectedMessage;
+    const viewAtStart = activeMessageView.current;
+    const mark = (message: Message) => message.id === previousSelected.id ? { ...message, is_read: true } : message;
+    setMarkingRead(true);
+    setSelectedMessage({ ...previousSelected, is_read: true });
+    setMessages((current) => current.map(mark));
+    setThreadMessages((current) => current.map(mark));
+    try {
+      const updated = await api.markMessageRead(selectedAgentEmail, previousSelected.id);
+      if (activeMessageView.current === viewAtStart) {
+        setSelectedMessage((current) => current?.id === updated.id ? updated : current);
+        setMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
+        setThreadMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
+        await loadMessages();
+      }
+    } catch (error) {
+      if (activeMessageView.current === viewAtStart) {
+        setSelectedMessage((current) => current?.id === previousSelected.id ? previousSelected : current);
+        setMessages((current) => current.map((message) => message.id === previousSelected.id ? previousSelected : message));
+        setThreadMessages((current) => current.map((message) => message.id === previousSelected.id ? previousSelected : message));
+        setListError(error instanceof Error ? error.message : "Could not mark this message as read.");
+      }
+    } finally {
+      setMarkingRead(false);
+    }
+  };
 
   // Handle Send Reply
   const handleSendReply = async () => {
@@ -258,6 +293,11 @@ export default function InboxPage() {
     { value: "inbound", label: "Inbound Only" },
     { value: "outbound", label: "Outbound Only" },
   ];
+  const readStatusOptions = [
+    { value: "all", label: "All Read Statuses" },
+    { value: "unread", label: "Unread" },
+    { value: "read", label: "Read" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -281,7 +321,14 @@ export default function InboxPage() {
             <Dropdown
               options={directionOptions}
               value={filterDirection}
-              onChange={setFilterDirection}
+              onChange={(value) => setFilterDirection(value as "" | "inbound" | "outbound")}
+            />
+          </div>
+          <div className="w-40">
+            <Dropdown
+              options={readStatusOptions}
+              value={filterReadStatus}
+              onChange={(value) => setFilterReadStatus(value as "unread" | "read" | "all")}
             />
           </div>
           <input
@@ -340,7 +387,7 @@ export default function InboxPage() {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-medium text-[#e6edf3] truncate">
+                      <span className={`truncate ${msg.direction === "inbound" && !msg.is_read ? "font-semibold text-white" : "font-medium text-[#e6edf3]"}`}>
                         {msg.direction === "inbound" ? msg.sender : `To: ${msg.recipient}`}
                       </span>
                       <span className="text-[10px] font-mono text-[#8b949e] shrink-0">
@@ -354,6 +401,10 @@ export default function InboxPage() {
                     <div className="text-[#e6edf3] font-medium truncate mb-1">
                       {msg.subject || "(No Subject)"}
                     </div>
+
+                    {msg.direction === "inbound" && !msg.is_read && (
+                      <span className="inline-flex mb-1 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-300">Unread</span>
+                    )}
 
                     <p className="text-[11px] text-[#8b949e] line-clamp-2">
                       {msg.body_text}
@@ -427,6 +478,17 @@ export default function InboxPage() {
                     {selectedMessage.status.replace("_", " ")}
                   </span>
                 </div>
+
+                {selectedMessage.direction === "inbound" && !selectedMessage.is_read && (
+                  <button
+                    type="button"
+                    onClick={handleMarkRead}
+                    disabled={markingRead}
+                    className="rounded border border-[#30363d] bg-[#21262d] px-2.5 py-1.5 text-[11px] text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-50"
+                  >
+                    {markingRead ? "Marking read…" : "Mark read"}
+                  </button>
+                )}
 
                 <div className="bg-[#0d1117] p-2.5 rounded border border-[#30363d] space-y-1 text-xs">
                   <div className="flex justify-between">

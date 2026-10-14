@@ -81,6 +81,7 @@ class MessageResponse(BaseModel):
     id: str
     agent_email: str
     direction: str
+    is_read: bool
     sender: str
     recipient: str
     subject: str

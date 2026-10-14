@@ -78,11 +78,12 @@ export const api = {
 
   getMessagePage: (
     agentEmail: string,
-    filters?: { q?: string; direction?: string; limit?: number; cursor?: string }
+    filters?: { q?: string; direction?: "inbound" | "outbound"; read_status?: "unread" | "read" | "all"; limit?: number; cursor?: string }
   ) => {
     const params = new URLSearchParams();
     if (filters?.q) params.set("q", filters.q);
     if (filters?.direction) params.set("direction", filters.direction);
+    if (filters?.read_status) params.set("read_status", filters.read_status);
     if (filters?.limit) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
     return request<MessagePage>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/page?${params.toString()}`);
@@ -90,6 +91,11 @@ export const api = {
 
   getMessage: (agentEmail: string, messageId: string) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}`),
+
+  markMessageRead: (agentEmail: string, messageId: string) =>
+    request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/read`, {
+      method: "POST",
+    }),
 
   getMessageAttachments: (agentEmail: string, messageId: string) =>
     request<MessageAttachment[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/attachments`),

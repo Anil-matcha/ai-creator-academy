@@ -31,6 +31,7 @@ export interface Message {
   id: string;
   agent_email: string;
   direction: "inbound" | "outbound";
+  is_read: boolean;
   sender: string;
   recipient: string;
   subject: string;

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -21,6 +21,7 @@ class Message(TypedDict, total=False):
     id: str
     agent_email: str
     direction: str
+    is_read: bool
     sender: str
     recipient: str
     subject: str
@@ -169,25 +170,37 @@ class AgentEmailClient:
             "GET", f"/v1/agents/{self._inbox_path(inbox)}/messages/{quote(message_id, safe='')}"
         )
 
+    def mark_message_read(self, inbox: str, message_id: str) -> Message:
+        """Mark an inbound message as read and return its updated representation."""
+        return self._request(
+            "POST",
+            f"/v1/agents/{self._inbox_path(inbox)}/messages/{quote(message_id, safe='')}/read",
+        )
+
     def get_message_page(
         self,
         inbox: str,
         *,
         direction: str | None = None,
+        read_status: Literal["unread", "read", "all"] = "all",
         query: str | None = None,
         limit: int = 50,
         cursor: str | None = None,
     ) -> MessagePage:
-        """Fetch a stable, cursor-paginated inbox page, optionally searching sender/subject."""
+        """Fetch a stable inbox page, optionally filtering read state or searching sender/subject."""
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         if direction is not None and direction not in {"inbound", "outbound"}:
             raise ValueError("direction must be 'inbound' or 'outbound'")
+        if read_status not in {"unread", "read", "all"}:
+            raise ValueError("read_status must be 'unread', 'read', or 'all'")
         if query is not None and len(query) > 200:
             raise ValueError("query must be no more than 200 characters")
         params: dict[str, str | int | float] = {"limit": limit}
         if direction is not None:
             params["direction"] = direction
+        if read_status != "all":
+            params["read_status"] = read_status
         if query:
             params["q"] = query
         if cursor:

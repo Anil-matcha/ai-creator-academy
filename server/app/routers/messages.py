@@ -26,6 +26,7 @@ def _encode_message_cursor(
     inbox: str,
     direction: str | None,
     query: str,
+    read_status: str,
 ) -> str:
     payload = json.dumps(
         {
@@ -35,6 +36,7 @@ def _encode_message_cursor(
             "inbox": inbox,
             "direction": direction,
             "query": query,
+            "read_status": read_status,
         },
         separators=(",", ":"),
     ).encode("utf-8")
@@ -47,6 +49,7 @@ def _decode_message_cursor(
     inbox: str,
     direction: str | None,
     query: str,
+    read_status: str,
 ) -> tuple[datetime, str]:
     if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
         raise HTTPException(status_code=400, detail="Invalid message cursor")
@@ -57,7 +60,8 @@ def _decode_message_cursor(
         message_id = payload["id"]
         if payload.get("v") != 1 or not isinstance(message_id, str) or not message_id or len(message_id) > 64:
             raise ValueError("invalid cursor fields")
-        if payload.get("inbox") != inbox or payload.get("direction") != direction or payload.get("query") != query:
+        if (payload.get("inbox") != inbox or payload.get("direction") != direction
+                or payload.get("query") != query or payload.get("read_status", "all") != read_status):
             raise ValueError("cursor filters changed")
         if created_at.tzinfo is not None:
             raise ValueError("cursor timestamp must be naive")
@@ -108,6 +112,7 @@ async def page_messages(
     email: str,
     limit: int = Query(50, ge=1, le=100),
     direction: Optional[str] = Query(None, pattern="^(inbound|outbound)$"),
+    read_status: str = Query("all", pattern="^(unread|read|all)$"),
     q: Optional[str] = Query(None, max_length=200, description="Search sender and subject"),
     cursor: Optional[str] = Query(None, max_length=512),
     db: AsyncSession = Depends(get_db),
@@ -116,6 +121,10 @@ async def page_messages(
     normalized_query = (q or "").strip()
     if direction:
         query = query.where(Message.direction == direction)
+    if read_status == "unread":
+        query = query.where(Message.is_read.is_(False))
+    elif read_status == "read":
+        query = query.where(Message.is_read.is_(True))
     if normalized_query:
         search = normalized_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{search}%"
@@ -128,6 +137,7 @@ async def page_messages(
             inbox=email,
             direction=direction,
             query=normalized_query,
+            read_status=read_status,
         )
         query = query.where(
             or_(
@@ -146,8 +156,27 @@ async def page_messages(
         inbox=email,
         direction=direction,
         query=normalized_query,
+        read_status=read_status,
     ) if has_more and items else None
     return {"items": items, "next_cursor": next_cursor}
+
+
+@router.post("/{message_id}/read", response_model=MessageResponse, dependencies=[Depends(require_write)])
+async def mark_message_read(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Message).where(
+            Message.id == message_id,
+            Message.agent_email == email,
+            Message.direction == "inbound",
+        )
+    )
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Inbound message not found")
+    message.is_read = True
+    await db.commit()
+    await db.refresh(message)
+    return message
 
 @router.get("/{message_id}", response_model=MessageResponse)
 async def get_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):

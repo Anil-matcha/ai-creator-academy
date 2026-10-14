@@ -488,6 +488,7 @@ class EmailService:
             id=msg_id,
             agent_email=agent.email,
             direction="outbound",
+            is_read=True,
             sender=agent.email,
             recipient=recipient,
             subject=subject,
