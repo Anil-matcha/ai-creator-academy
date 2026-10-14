@@ -5,7 +5,7 @@ from sqlalchemy import select, and_
 
 from app.database import get_db
 from app.models import Agent, Message
-from app.schemas import MessageResponse, MessageSendRequest, MessageReplyRequest
+from app.schemas import MessageResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest
 from app.services.email_service import EmailService
 from app.security import require_agent_access, require_write
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], depe
 async def list_messages(
     email: str,
     direction: Optional[str] = Query(None, description="inbound or outbound"),
-    status: Optional[str] = Query(None, description="delivered, pending_review, rejected, blocked"),
+    status: Optional[str] = Query(None, description="delivered, pending_review, rejected, blocked, failed"),
     thread_id: Optional[str] = Query(None),
     limit: int = 50,
     db: AsyncSession = Depends(get_db)
@@ -90,6 +90,31 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, d
         references=f"{original_msg.references or ''} {original_msg.rfc_message_id}".strip()
     )
     return reply_msg
+
+@router.post("/{message_id}/forward", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
+async def forward_message(email: str, message_id: str, req: MessageForwardRequest, db: AsyncSession = Depends(get_db)):
+    agent_res = await db.execute(select(Agent).where(Agent.email == email))
+    agent = agent_res.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    original_res = await db.execute(
+        select(Message).where(and_(Message.id == message_id, Message.agent_email == email))
+    )
+    original = original_res.scalar_one_or_none()
+    if not original:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    try:
+        return await EmailService.forward_to_human(
+            db=db,
+            agent=agent,
+            original=original,
+            recipient=req.recipient,
+            note=req.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @router.get("/thread/{thread_id}", response_model=List[MessageResponse])
 async def get_thread(email: str, thread_id: str, db: AsyncSession = Depends(get_db)):

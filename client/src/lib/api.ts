@@ -84,6 +84,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  forwardMessage: (agentEmail: string, messageId: string, data: { recipient: string; note?: string }) =>
+    request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/forward`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   getThread: (agentEmail: string, threadId: string) =>
     request<Message[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/thread/${threadId}`),
 

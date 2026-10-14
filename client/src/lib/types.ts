@@ -44,7 +44,8 @@ export interface Message {
   dkim_status: "pass" | "fail" | "none" | "unverified";
   dmarc_status: "pass" | "fail" | "none" | "unverified";
   verified_domain?: string;
-  status: "delivered" | "pending_review" | "rejected" | "blocked";
+  delivery_error?: string | null;
+  status: "delivered" | "pending_review" | "rejected" | "blocked" | "failed";
   threat_score: number;
   threat_details: string; // JSON string
   created_at: string;

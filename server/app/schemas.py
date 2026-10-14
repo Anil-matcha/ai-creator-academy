@@ -65,6 +65,10 @@ class MessageReplyRequest(BaseModel):
     body_text: str = Field(..., example="Thank you for confirming. I am closing this ticket now.")
     body_html: Optional[str] = None
 
+class MessageForwardRequest(BaseModel):
+    recipient: str = Field(..., min_length=3, max_length=320, example="support-lead@example.com")
+    note: Optional[str] = Field(None, max_length=5000, example="Please review the refund request before we reply.")
+
 class MessageResponse(BaseModel):
     id: str
     agent_email: str
@@ -82,6 +86,7 @@ class MessageResponse(BaseModel):
     dkim_status: str
     dmarc_status: str
     verified_domain: Optional[str]
+    delivery_error: Optional[str] = None
     status: str
     threat_score: float
     threat_details: str

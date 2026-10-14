@@ -45,9 +45,10 @@ class Message(Base):
     dkim_status = Column(String(32), default="unverified")
     dmarc_status = Column(String(32), default="unverified")
     verified_domain = Column(String(255), nullable=True)
+    delivery_error = Column(Text, nullable=True)
     
     # State & Threat
-    status = Column(String(32), default="delivered", index=True)  # delivered, pending_review, rejected, blocked
+    status = Column(String(32), default="delivered", index=True)  # delivered, pending_review, rejected, blocked, failed
     threat_score = Column(Float, default=0.0)
     threat_details = Column(Text, default="[]")  # JSON encoded list of threats detected
     

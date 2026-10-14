@@ -146,6 +146,9 @@ When an agent has `hitl_enabled: true` or when the Threat Scanner detects suspic
 - Outbound mail is held before dispatching to upstream SMTP.
 - Operators review reason, threat score, and diffs in the review queue and click **Approve** or **Reject**.
 
+### 4. Human Handoff (`/inbox`)
+Open an inbound message and use **Hand off to a person** to forward the original email and an optional note to a teammate. The agent's outbound approval policy applies. A send is shown as failed when no outbound SMTP relay is configured or the relay rejects it.
+
 ---
 
 ## 🤖 Coding Agent Integration (MCP)
@@ -181,6 +184,7 @@ claude mcp add --transport http open-agent-email http://127.0.0.1:8000/mcp/rpc -
 | `get_message` | Retrieves full RFC headers, body text, HTML, and security verification verdicts. |
 | `send_message` | Dispatches outbound email from the agent address (relays via upstream SMTP). |
 | `reply_to_message` | Replies in-thread preserving `In-Reply-To` and `References`. |
+| `forward_to_human` | Forwards the original message and optional context to a human teammate. Outbound approval rules still apply. |
 | `list_reviews` | Lists emails held in the Human-in-the-Loop approval queue. |
 | `approve_review` | Approves a held email and triggers delivery. |
 | `reject_review` | Rejects and quarantines an email. |

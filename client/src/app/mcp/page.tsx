@@ -81,6 +81,11 @@ export default function McpPage() {
       sampleParams: '{"agent_email": "support@agents.local", "message_id": "msg_...", "body_text": "Got it!"}',
     },
     {
+      name: "forward_to_human",
+      description: "Hand an email to a human teammate with optional context; outbound approval rules still apply.",
+      sampleParams: '{"agent_email": "support@agents.local", "message_id": "msg_...", "recipient": "teammate@example.com", "note": "Please review this request"}',
+    },
+    {
       name: "list_reviews",
       description: "Fetches emails held in the Human-in-the-Loop review queue.",
       sampleParams: '{"status": "pending"}',

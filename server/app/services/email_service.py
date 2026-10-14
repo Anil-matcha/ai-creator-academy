@@ -32,6 +32,7 @@ def _send_smtp_sync(
     body_html: Optional[str] = None,
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
+    reply_to: Optional[str] = None,
     custom_msg_id: Optional[str] = None
 ) -> Tuple[bool, str]:
     try:
@@ -39,6 +40,8 @@ def _send_smtp_sync(
         msg["From"] = from_addr
         msg["To"] = to_addr
         msg["Subject"] = subject
+        if reply_to:
+            msg["Reply-To"] = reply_to
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = custom_msg_id or make_msgid()
         if in_reply_to:
@@ -88,7 +91,7 @@ class EmailService:
         Dispatches an accepted outbound email:
         - If recipient is a local agent, performs local loopback delivery.
         - If recipient is external and Upstream SMTP is configured, relays via SMTP.
-        - If upstream SMTP is not configured, logs gateway acceptance.
+        - If upstream SMTP is unavailable, returns a delivery failure.
         """
         # 1. Local loopback check
         recip_agent_res = await db.execute(select(Agent).where(Agent.email == message.recipient))
@@ -112,8 +115,8 @@ class EmailService:
         smtp_res = await db.execute(select(SmtpConfig).where(SmtpConfig.id == "default"))
         config = smtp_res.scalar_one_or_none()
         if not config or not config.enabled or not config.host:
-            logger.info(f"Upstream SMTP relay not configured. Message stored locally for {message.recipient}")
-            return True, "Gateway accepted (Upstream SMTP relay not enabled in Settings)"
+            logger.info(f"Upstream SMTP relay not configured. Could not deliver to {message.recipient}")
+            return False, "Upstream SMTP relay is not configured or enabled"
 
         from_addr = config.from_email or agent.email
         port_num = int(config.port) if str(config.port).isdigit() else 587
@@ -132,6 +135,7 @@ class EmailService:
             body_html=message.body_html,
             in_reply_to=message.in_reply_to,
             references=message.references,
+            reply_to=agent.email,
             custom_msg_id=message.rfc_message_id
         )
         return success, info
@@ -145,9 +149,9 @@ class EmailService:
         subject: str,
         body_text: str,
         body_html: Optional[str] = None,
-        spf_status: str = "pass",
-        dkim_status: str = "pass",
-        dmarc_status: str = "pass",
+        spf_status: str = "unverified",
+        dkim_status: str = "unverified",
+        dmarc_status: str = "unverified",
         verified_domain: Optional[str] = None
     ) -> Tuple[Message, ThreatScanResult, Optional[ReviewItem]]:
         """
@@ -353,8 +357,57 @@ class EmailService:
             })
         else:
             # Actually dispatch via SMTP / local loopback
-            await cls.dispatch_to_upstream(db, message, agent)
-            await ws_manager.send_agent_message(agent.email, "email.sent", event_data)
-            await ws_manager.broadcast_event("email.sent", event_data)
+            delivered, delivery_info = await cls.dispatch_to_upstream(db, message, agent)
+            if not delivered:
+                message.status = "failed"
+                message.delivery_error = delivery_info
+                await db.commit()
+                await db.refresh(message)
+            event_data["status"] = message.status
+            event_data["delivery_error"] = message.delivery_error
+            event_name = "email.sent" if delivered else "email.failed"
+            await ws_manager.send_agent_message(agent.email, event_name, event_data)
+            await ws_manager.broadcast_event(event_name, event_data)
 
         return message
+
+    @classmethod
+    async def forward_to_human(
+        cls,
+        db: AsyncSession,
+        agent: Agent,
+        original: Message,
+        recipient: str,
+        note: Optional[str] = None,
+    ) -> Message:
+        recipient = recipient.strip()
+        local_part, separator, domain = recipient.rpartition("@")
+        if not separator or not local_part or "." not in domain or any(ch.isspace() for ch in recipient):
+            raise ValueError("Enter a valid human recipient email address")
+        original_sender = original.sender
+        original_recipient = original.recipient
+        timestamp = original.created_at.isoformat() if original.created_at else "unknown"
+        body_parts = [
+            f"{agent.display_name} is handing this email to you for human review.",
+        ]
+        if note and note.strip():
+            body_parts.extend(["", "Context from the agent:", note.strip()])
+        body_parts.extend([
+            "",
+            "---------- Forwarded message ----------",
+            f"From: {original_sender}",
+            f"To: {original_recipient}",
+            f"Date: {timestamp}",
+            f"Subject: {original.subject}",
+            f"Message-ID: {original.rfc_message_id}",
+            "",
+            original.body_text,
+        ])
+        subject = original.subject if original.subject.lower().startswith("fwd:") else f"Fwd: {original.subject}"
+        return await cls.send_outbound(
+            db=db,
+            agent=agent,
+            recipient=recipient,
+            subject=subject,
+            body_text="\n".join(body_parts),
+        )

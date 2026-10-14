@@ -19,12 +19,16 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database schema...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        def add_api_key_agent_column(sync_conn):
+        def apply_additive_schema_updates(sync_conn):
             from sqlalchemy import inspect, text
-            columns = {column["name"] for column in inspect(sync_conn).get_columns("api_keys")}
-            if "agent_email" not in columns:
+            inspector = inspect(sync_conn)
+            key_columns = {column["name"] for column in inspector.get_columns("api_keys")}
+            message_columns = {column["name"] for column in inspector.get_columns("messages")}
+            if "agent_email" not in key_columns:
                 sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN agent_email VARCHAR(255)"))
-        await conn.run_sync(add_api_key_agent_column)
+            if "delivery_error" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN delivery_error TEXT"))
+        await conn.run_sync(apply_additive_schema_updates)
     logger.info("Database schema ready.")
 
     # 2. Start inbound SMTP server daemon on port 2525

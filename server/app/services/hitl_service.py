@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException
 
-from app.models import ReviewItem, Message
+from app.models import Agent, ReviewItem, Message
 from app.services.ws_manager import ws_manager
 
 class HitlService:
@@ -58,9 +58,15 @@ class HitlService:
                 if message.direction == "outbound" and agent:
                     # Dispatch to upstream SMTP relay or local loopback
                     from app.services.email_service import EmailService
-                    await EmailService.dispatch_to_upstream(db, message, agent)
-                    await ws_manager.send_agent_message(message.agent_email, "email.sent", msg_payload)
-                    await ws_manager.broadcast_event("email.sent", msg_payload)
+                    delivered, delivery_info = await EmailService.dispatch_to_upstream(db, message, agent)
+                    if not delivered:
+                        message.status = "failed"
+                        message.delivery_error = delivery_info
+                    msg_payload["status"] = message.status
+                    msg_payload["delivery_error"] = message.delivery_error
+                    event_name = "email.sent" if delivered else "email.failed"
+                    await ws_manager.send_agent_message(message.agent_email, event_name, msg_payload)
+                    await ws_manager.broadcast_event(event_name, msg_payload)
                 else:
                     # Inbound email approved by reviewer - deliver to agent
                     await ws_manager.send_agent_message(message.agent_email, "email.received", msg_payload)

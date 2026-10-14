@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Reply,
+  Forward,
   Plus,
   Bot
 } from "lucide-react";
@@ -26,6 +27,10 @@ export default function InboxPage() {
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
   const [sendingReply, setSendingReply] = useState<boolean>(false);
+  const [handoffRecipient, setHandoffRecipient] = useState<string>("");
+  const [handoffNote, setHandoffNote] = useState<string>("");
+  const [sendingHandoff, setSendingHandoff] = useState<boolean>(false);
+  const [handoffResult, setHandoffResult] = useState<string>("");
 
   // New Compose Outbound Modal
   const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
@@ -90,6 +95,31 @@ export default function InboxPage() {
       alert(`Failed to send reply: ${err.message}`);
     } finally {
       setSendingReply(false);
+    }
+  };
+
+  const handleHandoff = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedMessage || !handoffRecipient.trim()) return;
+    try {
+      setSendingHandoff(true);
+      setHandoffResult("");
+      const forwarded = await api.forwardMessage(selectedAgentEmail, selectedMessage.id, {
+        recipient: handoffRecipient.trim(),
+        note: handoffNote.trim() || undefined,
+      });
+      setHandoffResult(forwarded.status === "pending_review"
+        ? "Handoff is waiting for outbound approval."
+        : forwarded.status === "failed"
+          ? `Delivery failed: ${forwarded.delivery_error || "Check the SMTP relay settings."}`
+          : `Forwarded to ${forwarded.recipient}.`);
+      setHandoffRecipient("");
+      setHandoffNote("");
+      await loadMessages();
+    } catch (err) {
+      setHandoffResult(err instanceof Error ? err.message : "Could not forward this message.");
+    } finally {
+      setSendingHandoff(false);
     }
   };
 
@@ -250,7 +280,7 @@ export default function InboxPage() {
                       >
                         {msg.status.replace("_", " ")}
                       </span>
-                      {msg.spf_status === "pass" && msg.dkim_status === "pass" && (
+                      {msg.spf_status === "pass" && msg.dkim_status === "pass" && msg.dmarc_status === "pass" && (
                         <span className="text-[9px] font-mono text-[#2ea043] flex items-center gap-0.5 ml-auto">
                           <ShieldCheck className="w-3 h-3" /> VERIFIED
                         </span>
@@ -325,7 +355,29 @@ export default function InboxPage() {
               {/* Message Body */}
               <div className="p-4 flex-1 overflow-y-auto text-xs text-[#e6edf3] whitespace-pre-wrap leading-relaxed font-sans">
                 {selectedMessage.body_text}
+                {selectedMessage.delivery_error && (
+                  <div className="mt-4 rounded border border-[#f85149]/30 bg-[#f85149]/10 p-3 text-[#f85149]">
+                    Delivery failed: {selectedMessage.delivery_error}
+                  </div>
+                )}
               </div>
+
+              <form onSubmit={handleHandoff} className="p-3 border-t border-[#30363d] bg-[#0d1117] space-y-2">
+                <div className="text-[11px] text-[#e6edf3] flex items-center gap-1.5">
+                  <Forward className="w-3 h-3 text-amber-400" /> Hand off to a person
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input type="email" required value={handoffRecipient} onChange={(e) => setHandoffRecipient(e.target.value)} placeholder="Teammate email address" className="w-full bg-[#161b22] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] placeholder-[#8b949e]" />
+                  <input type="text" value={handoffNote} onChange={(e) => setHandoffNote(e.target.value)} placeholder="Context for your teammate (optional)" className="w-full bg-[#161b22] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] placeholder-[#8b949e]" />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] text-[#8b949e]">Forwards the original email and your context. Agent approval settings still apply.</p>
+                  <button type="submit" disabled={sendingHandoff || !handoffRecipient.trim()} className="shrink-0 px-3 py-1.5 rounded border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] disabled:opacity-50 text-[#e6edf3] text-xs flex items-center gap-1.5">
+                    <Forward className="w-3 h-3" /> {sendingHandoff ? "Forwarding…" : "Forward"}
+                  </button>
+                </div>
+                {handoffResult && <p className="text-[11px] text-[#d29922]">{handoffResult}</p>}
+              </form>
 
               {/* In-Thread Reply */}
               <div className="p-3 border-t border-[#30363d] bg-[#161b22] space-y-2">

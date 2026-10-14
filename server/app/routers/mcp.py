@@ -30,7 +30,7 @@ MCP_TOOLS = [
             "properties": {
                 "agent_email": {"type": "string", "description": "Agent email address"},
                 "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Optional filter"},
-                "status": {"type": "string", "enum": ["delivered", "pending_review", "rejected", "blocked"]}
+                "status": {"type": "string", "enum": ["delivered", "pending_review", "rejected", "blocked", "failed"]}
             },
             "required": ["agent_email"]
         }
@@ -72,6 +72,20 @@ MCP_TOOLS = [
                 "body_text": {"type": "string"}
             },
             "required": ["agent_email", "message_id", "body_text"]
+        }
+    },
+    {
+        "name": "forward_to_human",
+        "description": "Hand an email conversation to a human teammate by forwarding the original message with optional context. Outbound approval rules still apply.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_email": {"type": "string"},
+                "message_id": {"type": "string"},
+                "recipient": {"type": "string", "description": "Human teammate email address"},
+                "note": {"type": "string", "description": "Optional context for the human"}
+            },
+            "required": ["agent_email", "message_id", "recipient"]
         }
     },
     {
@@ -203,7 +217,7 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db), 
 
 async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
     admin_tools = {"list_agents", "list_reviews", "approve_review", "reject_review"}
-    write_tools = {"send_message", "reply_to_message"}
+    write_tools = {"send_message", "reply_to_message", "forward_to_human"}
     if name in admin_tools and not principal.is_admin:
         raise PermissionError("Administrator token required")
     if name in write_tools and not principal.is_admin and principal.scope != "full_access":
@@ -267,7 +281,12 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             subject=args["subject"],
             body_text=args["body_text"]
         )
-        return json.dumps({"status": "sent", "message_id": msg.id, "rfc_id": msg.rfc_message_id})
+        return json.dumps({
+            "status": msg.status,
+            "message_id": msg.id,
+            "rfc_id": msg.rfc_message_id,
+            "delivery_error": msg.delivery_error,
+        })
 
     elif name == "reply_to_message":
         res = await db.execute(select(Agent).where(Agent.email == args["agent_email"]))
@@ -290,7 +309,40 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             thread_id=orig.thread_id,
             in_reply_to=orig.rfc_message_id
         )
-        return json.dumps({"status": "replied", "message_id": reply_msg.id, "thread_id": reply_msg.thread_id})
+        return json.dumps({
+            "status": reply_msg.status,
+            "message_id": reply_msg.id,
+            "thread_id": reply_msg.thread_id,
+            "delivery_error": reply_msg.delivery_error,
+        })
+
+    elif name == "forward_to_human":
+        original_res = await db.execute(
+            select(Message).where(
+                Message.id == args["message_id"],
+                Message.agent_email == args["agent_email"],
+            )
+        )
+        original = original_res.scalar_one_or_none()
+        if not original:
+            raise ValueError(f"Message {args['message_id']} not found")
+        agent_res = await db.execute(select(Agent).where(Agent.email == args["agent_email"]))
+        agent = agent_res.scalar_one_or_none()
+        if not agent:
+            raise ValueError(f"Agent {args['agent_email']} not found")
+        forwarded = await EmailService.forward_to_human(
+            db=db,
+            agent=agent,
+            original=original,
+            recipient=args["recipient"],
+            note=args.get("note"),
+        )
+        return json.dumps({
+            "status": forwarded.status,
+            "message_id": forwarded.id,
+            "recipient": forwarded.recipient,
+            "delivery_error": forwarded.delivery_error,
+        })
 
     elif name == "list_reviews":
         status_filter = args.get("status", "pending")
