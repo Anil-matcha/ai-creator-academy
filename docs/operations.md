@@ -114,3 +114,10 @@ Passing unit tests and `/ready` checks do not prove a production mail deployment
 | Operational monitoring | Confirm alerts cover readiness failures, database/worker errors, growing outbox and webhook backlogs, uncertain SMTP outcomes, and attachment scanner failures. `/ready` provides point-in-time health and queue counts; deployment-specific dashboards and alert delivery must be verified separately. |
 
 These are operator-run release gates, not claims established by the repository test suite. Do not enable production inbound or outbound mail until the applicable exercises pass and their records are reviewed.
+
+## Running the validation drills locally
+
+- **PostgreSQL test run:** `TEST_DATABASE_URL=postgresql+asyncpg://user:pw@host:port/db python -m pytest -q` (from `server/`; the suite creates and drops tables in that database, so use a scratch one). `pytest.ini` runs all tests on one event loop because asyncpg connections cannot move between loops.
+- **Migration paths:** `DATABASE_URL=... alembic upgrade head` on an empty database, and `alembic upgrade 0001` plus seeded rows then `upgrade head` for the upgrade path. A drift check (`alembic.autogenerate.compare_metadata`) should report no differences.
+- **Backup/restore and key rotation:** `python scripts/ops_drill.py` boots the real server on PostgreSQL, creates a message with an attachment, a webhook secret and a domain DKIM key, dumps and restores into a fresh database, checks it refuses to start with a missing or wrong `SMTP_CONFIG_ENCRYPTION_KEY`, verifies the data and secrets after restore, then rotates the key using `SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS`. It prints PASS/FAIL per step. CI runs it on every push (`server-postgres` job).
+- These drills use a throwaway local server. They do not replace the staging exercises in the production validation record (live DNS, provider feedback, SMTP ambiguity, monitoring).
