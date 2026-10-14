@@ -12,7 +12,11 @@ import {
   ApiKeyCreated,
   OutboundJob,
   OutboundJobStatus,
-  OutboundRetryEvent
+  OutboundRetryEvent,
+  WebhookEndpoint,
+  WebhookEndpointCreated,
+  WebhookDelivery,
+  WebhookDeliveryStatus
 } from "./types";
 
 const API_BASE = "/api/backend";
@@ -29,6 +33,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const errorText = await response.text();
     throw new Error(errorText || `Request failed with status ${response.status}`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 
@@ -190,6 +195,27 @@ export const api = {
     const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 200)) });
     return request<OutboundRetryEvent[]>(`/v1/outbox/${encodeURIComponent(jobId)}/retries?${params.toString()}`);
   },
+
+  // Inbound email webhooks (admin)
+  getWebhooks: (agentEmail?: string) => {
+    const params = new URLSearchParams({ limit: "200" });
+    if (agentEmail) params.set("agent_email", agentEmail);
+    return request<WebhookEndpoint[]>(`/v1/webhooks?${params.toString()}`);
+  },
+  createWebhook: (data: { agent_email: string; url: string; enabled?: boolean }) =>
+    request<WebhookEndpointCreated>("/v1/webhooks", { method: "POST", body: JSON.stringify(data) }),
+  updateWebhook: (id: string, data: { url?: string; enabled?: boolean }) =>
+    request<WebhookEndpoint>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteWebhook: (id: string) =>
+    request<void>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getWebhookDeliveries: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; limit?: number }) => {
+    const params = new URLSearchParams({ limit: String(Math.min(Math.max(filters?.limit ?? 100, 1), 200)) });
+    if (filters?.endpoint_id) params.set("endpoint_id", filters.endpoint_id);
+    if (filters?.status) params.set("status", filters.status);
+    return request<WebhookDelivery[]>(`/v1/webhooks/deliveries?${params.toString()}`);
+  },
+  replayWebhookDelivery: (deliveryId: string) =>
+    request<{ id: string; status: "pending"; replayed_at: string }>(`/v1/webhooks/deliveries/${encodeURIComponent(deliveryId)}/replay`, { method: "POST" }),
 
   // MCP Info
   getMcpInfo: () => request<Record<string, unknown>>("/mcp/info"),

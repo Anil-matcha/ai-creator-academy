@@ -19,15 +19,35 @@ from app.security import require_agent_access, require_write
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
 
 
-def _encode_message_cursor(created_at: datetime, message_id: str) -> str:
+def _encode_message_cursor(
+    created_at: datetime,
+    message_id: str,
+    *,
+    inbox: str,
+    direction: str | None,
+    query: str,
+) -> str:
     payload = json.dumps(
-        {"v": 1, "created_at": created_at.isoformat(), "id": message_id},
+        {
+            "v": 1,
+            "created_at": created_at.isoformat(),
+            "id": message_id,
+            "inbox": inbox,
+            "direction": direction,
+            "query": query,
+        },
         separators=(",", ":"),
     ).encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
-def _decode_message_cursor(cursor: str) -> tuple[datetime, str]:
+def _decode_message_cursor(
+    cursor: str,
+    *,
+    inbox: str,
+    direction: str | None,
+    query: str,
+) -> tuple[datetime, str]:
     if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
         raise HTTPException(status_code=400, detail="Invalid message cursor")
     try:
@@ -37,6 +57,8 @@ def _decode_message_cursor(cursor: str) -> tuple[datetime, str]:
         message_id = payload["id"]
         if payload.get("v") != 1 or not isinstance(message_id, str) or not message_id or len(message_id) > 64:
             raise ValueError("invalid cursor fields")
+        if payload.get("inbox") != inbox or payload.get("direction") != direction or payload.get("query") != query:
+            raise ValueError("cursor filters changed")
         if created_at.tzinfo is not None:
             raise ValueError("cursor timestamp must be naive")
         return created_at, message_id
@@ -91,16 +113,22 @@ async def page_messages(
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Message).where(Message.agent_email == email)
+    normalized_query = (q or "").strip()
     if direction:
         query = query.where(Message.direction == direction)
-    if q and q.strip():
-        search = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    if normalized_query:
+        search = normalized_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{search}%"
         query = query.where(
             or_(Message.sender.ilike(pattern, escape="\\"), Message.subject.ilike(pattern, escape="\\"))
         )
     if cursor:
-        cursor_created_at, cursor_id = _decode_message_cursor(cursor)
+        cursor_created_at, cursor_id = _decode_message_cursor(
+            cursor,
+            inbox=email,
+            direction=direction,
+            query=normalized_query,
+        )
         query = query.where(
             or_(
                 Message.created_at < cursor_created_at,
@@ -112,7 +140,13 @@ async def page_messages(
     messages = result.scalars().all()
     has_more = len(messages) > limit
     items = messages[:limit]
-    next_cursor = _encode_message_cursor(items[-1].created_at, items[-1].id) if has_more and items else None
+    next_cursor = _encode_message_cursor(
+        items[-1].created_at,
+        items[-1].id,
+        inbox=email,
+        direction=direction,
+        query=normalized_query,
+    ) if has_more and items else None
     return {"items": items, "next_cursor": next_cursor}
 
 @router.get("/{message_id}", response_model=MessageResponse)

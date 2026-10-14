@@ -12,7 +12,8 @@ import {
   Key,
   Bot,
   Cpu,
-  Archive
+  Archive,
+  Webhook
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -44,6 +45,7 @@ export function Sidebar() {
       badge: pendingReviews > 0 ? pendingReviews : undefined,
     },
     { name: "Outbox", href: "/outbox", icon: Archive },
+    { name: "Webhooks", href: "/webhooks", icon: Webhook },
     { name: "Domains & DNS", href: "/domains", icon: Globe },
     { name: "Upstream SMTP", href: "/settings", icon: Sliders },
     { name: "API Keys", href: "/api-keys", icon: Key },

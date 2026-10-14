@@ -161,6 +161,37 @@ export interface OutboundRetryEvent {
   previous_status?: string | null;
 }
 
+export type WebhookDeliveryStatus = "pending" | "processing" | "delivered" | "failed";
+
+export interface WebhookEndpoint {
+  id: string;
+  agent_email: string;
+  url: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookEndpointCreated extends WebhookEndpoint {
+  signing_secret: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  endpoint_id: string;
+  agent_email: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  last_error?: string | null;
+  created_at: string;
+  delivered_at?: string | null;
+  replayed_by?: string | null;
+  replayed_at?: string | null;
+  replay_count: number;
+}
+
 export interface Stats {
   total_agents: number;
   total_messages: number;

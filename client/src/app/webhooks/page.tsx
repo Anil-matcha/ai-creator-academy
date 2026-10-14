@@ -1,0 +1,240 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Copy, ExternalLink, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { Agent } from "@/lib/types";
+import { WebhookDelivery, WebhookDeliveryStatus, WebhookEndpoint } from "@/lib/types";
+
+const inputClass = "w-full rounded border border-[#30363d] bg-[#0d1117] px-2.5 py-2 text-xs text-[#e6edf3] placeholder:text-[#6e7681] focus:border-blue-400 focus:outline-none";
+const buttonClass = "inline-flex items-center gap-1.5 rounded border border-[#30363d] px-2.5 py-1.5 text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50";
+const statuses: (WebhookDeliveryStatus | "")[] = ["", "pending", "processing", "delivered", "failed"];
+
+function date(value?: string | null) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function statusStyle(status: WebhookDeliveryStatus) {
+  if (status === "delivered") return "text-[#3fb950] border-[#3fb950]/40 bg-[#3fb950]/10";
+  if (status === "failed") return "text-[#f85149] border-[#f85149]/40 bg-[#f85149]/10";
+  return "text-[#d29922] border-[#d29922]/40 bg-[#d29922]/10";
+}
+
+export default function WebhooksPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
+  const [endpointFilter, setEndpointFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<WebhookDeliveryStatus | "">("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createAgent, setCreateAgent] = useState("");
+  const [createUrl, setCreateUrl] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createdSecret, setCreatedSecret] = useState<{ endpoint: WebhookEndpoint; secret: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [editingId, setEditingId] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [savingId, setSavingId] = useState("");
+  const [replayingId, setReplayingId] = useState("");
+
+  const loadEndpoints = useCallback(async () => {
+    setError("");
+    try {
+      const [items, inboxes] = await Promise.all([api.getWebhooks(agentFilter || undefined), api.getAgents()]);
+      setEndpoints(items);
+      setAgents(inboxes);
+      if (!createAgent && inboxes.length) setCreateAgent(inboxes[0].email);
+      setEndpointFilter((current) => current && items.some((item) => item.id === current) ? current : "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load webhook endpoints.");
+    }
+  }, [agentFilter, createAgent]);
+
+  const loadDeliveries = useCallback(async () => {
+    try {
+      setDeliveries(await api.getWebhookDeliveries({ endpoint_id: endpointFilter || undefined, status: statusFilter || undefined, limit: 200 }));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not load webhook deliveries.");
+    }
+  }, [endpointFilter, statusFilter]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    await loadEndpoints();
+    setLoading(false);
+  }, [loadEndpoints]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void loadDeliveries(); }, [loadDeliveries]);
+
+  const endpointById = useMemo(() => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])), [endpoints]);
+
+  const createEndpoint = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setCreating(true);
+    setActionError("");
+    try {
+      const created = await api.createWebhook({ agent_email: createAgent, url: createUrl.trim() });
+      // Keep the one-time secret only in this transient component state; never persist it.
+      setCreatedSecret({ endpoint: created, secret: created.signing_secret });
+      setCreateOpen(false);
+      setCreateUrl("");
+      setEndpointFilter(created.id);
+      await loadEndpoints();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not create webhook endpoint.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copySecret = async () => {
+    if (!createdSecret) return;
+    try {
+      await navigator.clipboard.writeText(createdSecret.secret);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setActionError("Clipboard access was blocked. Select and copy the secret manually.");
+    }
+  };
+
+  const toggleEndpoint = async (endpoint: WebhookEndpoint) => {
+    setSavingId(endpoint.id);
+    setActionError("");
+    try {
+      await api.updateWebhook(endpoint.id, { enabled: !endpoint.enabled });
+      await loadEndpoints();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update endpoint.");
+    } finally { setSavingId(""); }
+  };
+
+  const saveUrl = async (endpoint: WebhookEndpoint) => {
+    if (!editUrl.trim()) return;
+    setSavingId(endpoint.id);
+    setActionError("");
+    try {
+      await api.updateWebhook(endpoint.id, { url: editUrl.trim() });
+      setEditingId("");
+      await loadEndpoints();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update endpoint URL.");
+    } finally { setSavingId(""); }
+  };
+
+  const deleteEndpoint = async (endpoint: WebhookEndpoint) => {
+    if (!window.confirm(`Delete endpoint for ${endpoint.agent_email}? Its delivery history will also be removed.`)) return;
+    setSavingId(endpoint.id);
+    setActionError("");
+    try {
+      await api.deleteWebhook(endpoint.id);
+      if (endpointFilter === endpoint.id) setEndpointFilter("");
+      await loadEndpoints();
+      await loadDeliveries();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not delete endpoint.");
+    } finally { setSavingId(""); }
+  };
+
+  const replay = async (delivery: WebhookDelivery) => {
+    if (!window.confirm(`Replay ${delivery.event_type} event ${delivery.id}? The receiver may process it again.`)) return;
+    setReplayingId(delivery.id);
+    setActionError("");
+    try {
+      await api.replayWebhookDelivery(delivery.id);
+      await loadDeliveries();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not replay webhook event.");
+    } finally { setReplayingId(""); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <section className="card-simple flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-sm font-semibold text-[#e6edf3]">Inbound email webhooks</h2>
+          <p className="mt-1 text-xs text-[#8b949e]">Configure signed HTTPS notifications for delivered inbound messages and inspect event delivery history.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => void refresh()} className={buttonClass} disabled={loading}><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
+          <button onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded bg-[#238636] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2ea043]"><Plus className="h-3.5 w-3.5" />Add endpoint</button>
+        </div>
+      </section>
+
+      {error && <div className="rounded border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#ff7b72]">{error}</div>}
+      {actionError && <div className="rounded border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#ff7b72]">{actionError}<button className="ml-2 underline" onClick={() => setActionError("")}>Dismiss</button></div>}
+
+      {createdSecret && <section className="card-simple space-y-3 border border-[#d29922]/40 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><h3 className="text-sm font-semibold text-[#e6edf3]">Copy the signing secret now</h3><p className="mt-1 text-xs text-[#d29922]">This secret is shown once. Closing this notice clears it from the page.</p></div>
+          <button className={buttonClass} onClick={() => { setCreatedSecret(null); setCopied(false); }}>Done</button>
+        </div>
+        <div className="flex gap-2"><input readOnly value={createdSecret.secret} className={`${inputClass} font-mono`} aria-label="One-time webhook signing secret" /><button className={buttonClass} onClick={() => void copySecret()}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button></div>
+        <p className="text-[11px] text-[#8b949e]">Endpoint: {createdSecret.endpoint.agent_email} · {createdSecret.endpoint.url}</p>
+      </section>}
+
+      <section className="card-simple overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-[#30363d] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h3 className="text-xs font-semibold text-[#e6edf3]">Endpoints <span className="font-mono text-[#8b949e]">({endpoints.length})</span></h3><p className="mt-0.5 text-[11px] text-[#8b949e]">URL query values are redacted by the API. Enter the full destination URL when editing.</p></div>
+          <select className={`${inputClass} sm:w-64`} value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}><option value="">All inboxes</option>{agents.map((agent) => <option key={agent.id} value={agent.email}>{agent.email}</option>)}</select>
+        </div>
+        {loading ? <div className="p-8 text-center text-xs text-[#8b949e]">Loading endpoints…</div> : endpoints.length === 0 ? <div className="p-8 text-center text-xs text-[#8b949e]">No webhook endpoints configured.</div> : <div className="divide-y divide-[#30363d]">
+          {endpoints.map((endpoint) => <div key={endpoint.id} className="space-y-2 p-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0"><div className="flex items-center gap-2"><span className="text-xs font-semibold text-[#e6edf3]">{endpoint.agent_email}</span><span className={`rounded border px-1.5 py-0.5 text-[10px] ${endpoint.enabled ? "border-[#3fb950]/40 bg-[#3fb950]/10 text-[#3fb950]" : "border-[#8b949e]/30 text-[#8b949e]"}`}>{endpoint.enabled ? "Enabled" : "Disabled"}</span></div>
+                {editingId === endpoint.id ? <div className="mt-2 flex gap-2"><input className={inputClass} value={editUrl} onChange={(event) => setEditUrl(event.target.value)} placeholder="Enter the full URL, including query values" /><button className={buttonClass} onClick={() => void saveUrl(endpoint)} disabled={savingId === endpoint.id || !editUrl.trim()}>Save URL</button><button className={buttonClass} onClick={() => setEditingId("")}>Cancel</button></div> : <div className="mt-1 break-all font-mono text-[11px] text-[#8b949e]">{endpoint.url}</div>}
+                <div className="mt-1 text-[10px] text-[#6e7681]">Created {date(endpoint.created_at)} · Updated {date(endpoint.updated_at)}</div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-1.5">
+                <button className={buttonClass} onClick={() => void toggleEndpoint(endpoint)} disabled={savingId === endpoint.id}>{endpoint.enabled ? "Disable" : "Enable"}</button>
+                {editingId !== endpoint.id && <button className={buttonClass} onClick={() => { setEditingId(endpoint.id); setEditUrl(""); }}>Edit URL</button>}
+                <button className="inline-flex items-center gap-1.5 rounded border border-[#da3633]/40 px-2.5 py-1.5 text-xs text-[#f85149] hover:bg-[#da3633]/10 disabled:opacity-50" onClick={() => void deleteEndpoint(endpoint)} disabled={savingId === endpoint.id}><Trash2 className="h-3.5 w-3.5" />Delete</button>
+              </div>
+            </div>
+          </div>)}
+        </div>}
+      </section>
+
+      <section className="card-simple overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-[#30363d] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h3 className="text-xs font-semibold text-[#e6edf3]">Delivery history <span className="font-mono text-[#8b949e]">({deliveries.length})</span></h3><p className="mt-0.5 text-[11px] text-[#8b949e]">Event payloads contain message metadata only, without body or attachments.</p></div>
+          <div className="flex gap-2"><select className={`${inputClass} sm:w-52`} value={endpointFilter} onChange={(event) => setEndpointFilter(event.target.value)}><option value="">All endpoints</option>{endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.agent_email} · {endpoint.id.slice(-8)}</option>)}</select><select className={`${inputClass} sm:w-36`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as WebhookDeliveryStatus | "")}><option value="">All statuses</option>{statuses.filter(Boolean).map((status) => <option key={status} value={status}>{status}</option>)}</select></div>
+        </div>
+        {!deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">No delivery events match these filters.</div> : <div className="divide-y divide-[#30363d]">
+          {deliveries.map((delivery) => <DeliveryRow key={delivery.id} delivery={delivery} endpoint={endpointById.get(delivery.endpoint_id)} replaying={replayingId === delivery.id} onReplay={() => void replay(delivery)} />)}
+        </div>}
+      </section>
+
+      {createOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createEndpoint} className="w-full max-w-lg space-y-4 rounded-lg border border-[#30363d] bg-[#161b22] p-5 shadow-xl">
+        <div><h3 className="text-sm font-semibold text-[#e6edf3]">Add webhook endpoint</h3><p className="mt-1 text-xs text-[#8b949e]">Only HTTPS destinations on port 443 are accepted. A new signing secret is generated for each endpoint.</p></div>
+        <label className="block space-y-1 text-xs text-[#8b949e]">Inbox<select required className={inputClass} value={createAgent} onChange={(event) => setCreateAgent(event.target.value)}><option value="" disabled>Select inbox</option>{agents.map((agent) => <option key={agent.id} value={agent.email}>{agent.email}</option>)}</select></label>
+        <label className="block space-y-1 text-xs text-[#8b949e]">HTTPS URL<input required type="url" pattern="https://.*" className={`${inputClass} font-mono`} placeholder="https://example.com/hooks/email" value={createUrl} onChange={(event) => setCreateUrl(event.target.value)} /></label>
+        <div className="flex justify-end gap-2"><button type="button" className={buttonClass} onClick={() => setCreateOpen(false)}>Cancel</button><button type="submit" disabled={creating || !createAgent} className="rounded bg-[#238636] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50">{creating ? "Creating…" : "Create endpoint"}</button></div>
+      </form></div>}
+    </div>
+  );
+}
+
+function DeliveryRow({ delivery, endpoint, replaying, onReplay }: { delivery: WebhookDelivery; endpoint?: WebhookEndpoint; replaying: boolean; onReplay: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const canReplay = (delivery.status === "failed" || delivery.status === "delivered") && endpoint?.enabled;
+  return <div className="p-3">
+    <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-[11px] text-[#e6edf3]">{delivery.id}</span><span className={`rounded border px-1.5 py-0.5 text-[10px] ${statusStyle(delivery.status)}`}>{delivery.status}</span><span className="text-[10px] text-[#8b949e]">{delivery.event_type}</span></div>
+        <div className="mt-1 text-[11px] text-[#8b949e]">{delivery.agent_email} · {endpoint?.url ?? delivery.endpoint_id} · {date(delivery.created_at)} · {delivery.attempts} attempts{delivery.replay_count > 0 ? ` · ${delivery.replay_count} replays` : ""}</div>
+        {delivery.last_error && <div className="mt-1 break-words text-[11px] text-[#f85149]">{delivery.last_error}</div>}
+        {delivery.replayed_at && <div className="mt-1 text-[10px] text-[#8b949e]">Last replay {date(delivery.replayed_at)}{delivery.replayed_by ? ` by ${delivery.replayed_by}` : ""}</div>}
+      </div>
+      <div className="flex shrink-0 gap-1.5"><button className="inline-flex items-center gap-1.5 rounded border border-[#30363d] px-2.5 py-1.5 text-xs text-[#c9d1d9] hover:bg-[#21262d]" onClick={() => setExpanded((value) => !value)}>{expanded ? "Hide event" : "View event"}<ExternalLink className="h-3 w-3" /></button><button className={buttonClass} disabled={!canReplay || replaying} title={!endpoint?.enabled ? "Enable endpoint to replay" : undefined} onClick={onReplay}><RotateCcw className="h-3.5 w-3.5" />{replaying ? "Replaying…" : "Replay"}</button></div>
+    </div>
+    {expanded && <pre className="mt-3 max-h-64 overflow-auto rounded border border-[#30363d] bg-[#0d1117] p-3 text-[11px] text-[#c9d1d9]">{JSON.stringify(delivery.payload, null, 2)}</pre>}
+  </div>;
+}
