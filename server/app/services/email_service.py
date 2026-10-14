@@ -26,6 +26,7 @@ from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
 from app.services.webhook_events import (
+    build_payload,
     enqueue_email_webhook_event,
     enqueue_inbound_security_webhook_event,
 )
@@ -479,7 +480,7 @@ class EmailService:
                     endpoint_id=endpoint.id,
                     agent_email=agent.email,
                     event_type="email.received",
-                    payload={"id": event_id, "message_id": msg_id, **event_metadata},
+                    payload=build_payload("email.received", {"id": event_id, "message_id": msg_id, **event_metadata}),
                     status="pending",
                     attempts=0,
                     available_at=message.created_at,

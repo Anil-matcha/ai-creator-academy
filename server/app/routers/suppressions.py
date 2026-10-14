@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import List
 
@@ -10,6 +11,7 @@ from app.database import get_db
 from app.models import Agent, RecipientSuppression
 from app.schemas import RecipientSuppressionCreate, RecipientSuppressionResponse
 from app.security import require_agent_access, require_write
+from app.services.webhook_events import enqueue_suppression_added_webhook_event
 
 router = APIRouter(
     prefix="/v1/agents/{email}/suppressions",
@@ -58,6 +60,10 @@ async def add_suppression(
         reason=request.reason,
     )
     db.add(entry)
+    await enqueue_suppression_added_webhook_event(
+        db, agent_email=email, recipient=str(request.email), source="operator",
+        reason=request.reason, created_at=datetime.datetime.utcnow(),
+    )
     try:
         await db.commit()
     except IntegrityError:

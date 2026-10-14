@@ -237,7 +237,21 @@ except AgentEmailError as exc:
 
 ## Verify inbound webhooks
 
-Verify the signature against the exact raw request body before decoding JSON. Then deduplicate the event ID in durable storage; retries and manual replays reuse that ID.
+`construct_event` authenticates a delivery and returns the parsed event. It uses the `Webhook-Signature` header (`t=<unix>,v1=<hex>`) when present and otherwise the legacy `X-Webhook-*` headers, enforces a 5-minute window, and accepts a list of secrets while one is being rotated.
+
+```python
+from open_agent_email import WebhookSignatureError, construct_event
+
+try:
+    event = construct_event(raw_body, request.headers, [current_secret, previous_secret])
+except WebhookSignatureError:
+    return Response(status_code=401)
+
+if event["type"] == "email.received":
+    ...  # event["payload"]["data"] holds the event fields; event["id"] is the dedup key
+```
+
+The lower-level `verify_webhook_signature` below still works for the legacy headers. Verify against the exact raw request body before decoding JSON, then deduplicate the event ID in durable storage; retries and manual replays reuse that ID.
 
 ```python
 from open_agent_email import verify_webhook_signature

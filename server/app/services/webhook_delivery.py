@@ -28,6 +28,40 @@ TOTAL_TIMEOUT_SECONDS = 10
 MAX_RESPONSE_HEADERS = 16 * 1024
 
 
+# Eight attempts in total. Entry n is the wait after the nth failed attempt before attempt n+1;
+# entry 0 is unused because the first attempt is immediate. The last wait is 16 hours.
+RETRY_DELAYS_SECONDS = (0, 60, 300, 900, 3600, 14400, 28800, 57600)
+
+
+def retry_delay_seconds(failed_attempts: int) -> int:
+    """Seconds to wait after `failed_attempts` consecutive failures (1-based) before retrying."""
+    return RETRY_DELAYS_SECONDS[max(0, min(failed_attempts, len(RETRY_DELAYS_SECONDS) - 1))]
+
+
+def sign_legacy(secret: str, timestamp: str, event_id: str, body: bytes) -> str:
+    """`X-Webhook-Signature` value for one secret: HMAC-SHA256 over `<ts>.<event id>.<body>`."""
+    mac = hmac.new(secret.encode("utf-8"), timestamp.encode() + b"." + event_id.encode() + b"." + body, hashlib.sha256)
+    return f"sha256={mac.hexdigest()}"
+
+
+def sign_v1(secret: str, timestamp: str, body: bytes) -> str:
+    """`v1` signature for one secret: HMAC-SHA256 over `<ts>.<body>`, lowercase hex."""
+    return hmac.new(secret.encode("utf-8"), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+
+
+def signature_headers(timestamp: str, event_id: str, event_type: str, body: bytes, secrets: list[str]) -> dict[str, str]:
+    """Every signing header for a delivery; `secrets` is the current secret then any unexpired previous one."""
+    return {
+        "X-Webhook-Event-Id": event_id,
+        "X-Webhook-Timestamp": timestamp,
+        "X-Webhook-Signature": ",".join(sign_legacy(s, timestamp, event_id, body) for s in secrets),
+        "X-Webhook-Event": event_type,
+        "Webhook-Signature": f"t={timestamp}," + ",".join(f"v1={sign_v1(s, timestamp, body)}" for s in secrets),
+        "Webhook-Event-Type": event_type,
+        "Webhook-Schema-Version": "1",
+    }
+
+
 def validate_webhook_url(url: str) -> str:
     """Normalize an HTTPS URL and reject syntactically unsafe destinations."""
     if not isinstance(url, str) or len(url) > 2048 or any(ord(ch) < 32 or ord(ch) == 127 for ch in url):
@@ -158,23 +192,17 @@ async def _deliver(delivery_id: str, lease_token: str) -> None:
     else:
         timestamp = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
         try:
-            secret = decrypt_secret(secret_stored, "webhook signing secret")
-            signature = hmac.new(secret.encode("utf-8"), timestamp.encode() + b"." + event_id.encode() + b"." + payload, hashlib.sha256).hexdigest()
-            signatures = [f"sha256={signature}"]
+            secrets = [decrypt_secret(secret_stored, "webhook signing secret")]
             if previous_secret_stored and previous_secret_expires_at:
                 expiry = previous_secret_expires_at
                 if expiry.tzinfo is None:
                     expiry = expiry.replace(tzinfo=datetime.timezone.utc)
                 if expiry > datetime.datetime.now(datetime.timezone.utc):
-                    previous_secret = decrypt_secret(previous_secret_stored, "previous webhook signing secret")
-                    previous_signature = hmac.new(previous_secret.encode("utf-8"), timestamp.encode() + b"." + event_id.encode() + b"." + payload, hashlib.sha256).hexdigest()
-                    signatures.append(f"sha256={previous_signature}")
-            status_code = await asyncio.wait_for(_post_pinned(endpoint_url, payload, {
-                "X-Webhook-Event-Id": event_id,
-                "X-Webhook-Timestamp": timestamp,
-                "X-Webhook-Signature": ",".join(signatures),
-                "X-Webhook-Event": event_type,
-            }), timeout=TOTAL_TIMEOUT_SECONDS + CONNECT_TIMEOUT_SECONDS + 2)
+                    secrets.append(decrypt_secret(previous_secret_stored, "previous webhook signing secret"))
+            status_code = await asyncio.wait_for(
+                _post_pinned(endpoint_url, payload, signature_headers(timestamp, event_id, event_type, payload, secrets)),
+                timeout=TOTAL_TIMEOUT_SECONDS + CONNECT_TIMEOUT_SECONDS + 2,
+            )
             error = None if 200 <= status_code < 300 else f"http_status_{status_code}"
         except Exception as exc:
             # Never persist URL/query, response bodies, exception messages, or secrets.
@@ -197,7 +225,7 @@ async def _deliver(delivery_id: str, lease_token: str) -> None:
                 WebhookDelivery.lease_token == lease_token,
             ).values(status="failed", locked_at=None, lease_token=None, last_error=error))
         elif current.attempts < MAX_ATTEMPTS:
-            delay = min(3600, 2 ** min(current.attempts, 10))
+            delay = retry_delay_seconds(current.attempts)
             result = await db.execute(update(WebhookDelivery).where(
                 WebhookDelivery.id == delivery_id, WebhookDelivery.status == "processing",
                 WebhookDelivery.lease_token == lease_token,

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import RecipientSuppression, UnsubscribeToken
+from app.services.webhook_events import enqueue_suppression_added_webhook_event
 
 router = APIRouter(tags=["Public unsubscribe"])
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
@@ -106,6 +107,10 @@ async def unsubscribe_submit(token: str, request: Request, db: AsyncSession = De
             email=capability.recipient,
             reason="Recipient unsubscribed",
         ))
+        await enqueue_suppression_added_webhook_event(
+            db, agent_email=capability.agent_email, recipient=capability.recipient,
+            source="unsubscribe", reason="Recipient unsubscribed", created_at=datetime.datetime.utcnow(),
+        )
     if capability.used_at is None:
         capability.used_at = datetime.datetime.utcnow()
     try:
