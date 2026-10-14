@@ -272,6 +272,8 @@ claude mcp add --transport http open-agent-email http://127.0.0.1:8000/mcp/rpc -
 
 ---
 
+A first-party TypeScript SDK (`@open-agent-email/sdk`, zero runtime dependencies) lives in [sdks/typescript](sdks/typescript): typed REST client, cursor iterators, webhook signature verification, and a real-time `listen()` stream.
+
 ## 📡 Python SDK & WebSockets Example
 
 Connect an autonomous agent to stream incoming emails over WebSockets without opening firewall ports or using ngrok:
