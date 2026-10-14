@@ -47,7 +47,13 @@ class HitlService:
         review = await db.get(ReviewItem, review_id)
         message = await db.get(Message, review.message_id)
         if message:
-            message.status = ("sending" if message.direction == "outbound" else "delivered") if action == "approve" else "rejected"
+            deferred = (
+                action == "approve" and message.direction == "outbound"
+                and message.scheduled_for is not None and message.scheduled_for > datetime.datetime.utcnow()
+            )
+            message.status = (
+                ("scheduled" if deferred else "sending") if message.direction == "outbound" else "delivered"
+            ) if action == "approve" else "rejected"
             await enqueue_email_webhook_event(
                 db,
                 agent_email=message.agent_email,
@@ -75,7 +81,7 @@ class HitlService:
                     message_id=message.id,
                     status="pending",
                     attempts=0,
-                    available_at=datetime.datetime.utcnow(),
+                    available_at=max(datetime.datetime.utcnow(), message.scheduled_for or datetime.datetime.min),
                     created_at=datetime.datetime.utcnow(),
                 ))
         # Commit the approval and delivery job together so a retry cannot double-dispatch.

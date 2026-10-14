@@ -6,16 +6,20 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, update
 
 from app.database import get_db
-from app.models import Agent, EmailTemplate, Message, MessageAttachment
-from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
+from app.models import Agent, EmailTemplate, Message, MessageAttachment, OutboundJob, OutboundRetryEvent, ReviewItem
+from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageLabelsUpdate, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
 from app.services.otp_finder import find_recent_otp
 from app.security import require_agent_access, require_write
 from app.routers.templates import _preview
+
+def _trash_filter(trashed: bool):
+    return Message.deleted_at.is_not(None) if trashed else Message.deleted_at.is_(None)
+
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
 
@@ -110,10 +114,12 @@ async def list_messages(
     direction: Optional[str] = Query(None, description="inbound or outbound"),
     status: Optional[str] = Query(None, description="delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed"),
     thread_id: Optional[str] = Query(None),
+    label: Optional[str] = Query(None, max_length=64, description="Only messages carrying this label"),
+    trashed: bool = Query(False, description="List trashed messages instead of active ones"),
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Message).where(Message.agent_email == email)
+    query = select(Message).where(Message.agent_email == email, _trash_filter(trashed))
     if direction:
         query = query.where(Message.direction == direction)
     if status:
@@ -121,8 +127,12 @@ async def list_messages(
     if thread_id:
         query = query.where(Message.thread_id == thread_id)
     
-    query = query.order_by(Message.created_at.desc()).limit(limit)
-    result = await db.execute(query)
+    query = query.order_by(Message.created_at.desc())
+    if label:
+        # Labels are a small JSON list; filter in Python to stay portable across SQLite/PostgreSQL.
+        rows = (await db.execute(query.limit(5000))).scalars().all()
+        return [m for m in rows if label in (m.labels or [])][:limit]
+    result = await db.execute(query.limit(limit))
     return result.scalars().all()
 
 
@@ -157,7 +167,7 @@ async def page_messages(
     cursor: Optional[str] = Query(None, max_length=512),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Message).where(Message.agent_email == email)
+    query = select(Message).where(Message.agent_email == email, Message.deleted_at.is_(None))
     normalized_query = (q or "").strip()
     if direction:
         query = query.where(Message.direction == direction)
@@ -230,6 +240,85 @@ async def get_message(email: str, message_id: str, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=404, detail="Message not found")
     return msg
 
+async def _owned_message(db: AsyncSession, email: str, message_id: str) -> Message:
+    message = await db.scalar(select(Message).where(Message.id == message_id, Message.agent_email == email))
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message
+
+
+@router.patch("/{message_id}", response_model=MessageResponse, dependencies=[Depends(require_write)])
+async def update_message_labels(email: str, message_id: str, req: MessageLabelsUpdate, db: AsyncSession = Depends(get_db)):
+    """Replace the message's labels (free-form triage tags such as `needs-human`)."""
+    message = await _owned_message(db, email, message_id)
+    message.labels = req.labels
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+@router.delete("/{message_id}", response_model=MessageResponse, dependencies=[Depends(require_write)])
+async def trash_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    """Move a message to trash. A scheduled send that has not yet been submitted is canceled."""
+    message = await _owned_message(db, email, message_id)
+    if message.status == "pending_review":
+        raise HTTPException(status_code=409, detail="Resolve the pending review before trashing this message")
+    if message.status == "scheduled":
+        canceled = await db.execute(
+            update(OutboundJob)
+            .where(OutboundJob.message_id == message.id, OutboundJob.status == "pending")
+            .values(status="cancelled", last_error="Canceled before submission")
+        )
+        if canceled.rowcount != 1:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Scheduled message is already being submitted")
+        message.status = "canceled"
+    if message.deleted_at is None:
+        message.deleted_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+@router.post("/{message_id}/restore", response_model=MessageResponse, dependencies=[Depends(require_write)])
+async def restore_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    """Restore a trashed message to the inbox. A canceled scheduled send stays canceled."""
+    message = await _owned_message(db, email, message_id)
+    message.deleted_at = None
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+@router.get("/{message_id}/lifecycle")
+async def get_message_lifecycle(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    """Chronological, derived timeline of what happened to a message."""
+    message = await _owned_message(db, email, message_id)
+    events = [{"type": "created", "at": message.created_at, "detail": f"{message.direction} message recorded"}]
+    if message.scheduled_for:
+        events.append({"type": "scheduled", "at": message.created_at, "detail": f"Send deferred until {message.scheduled_for.isoformat()}Z"})
+    review = await db.scalar(select(ReviewItem).where(ReviewItem.message_id == message.id))
+    if review:
+        events.append({"type": "review_requested", "at": review.created_at, "detail": review.reason})
+        if review.resolved_at:
+            events.append({"type": f"review_{review.status}", "at": review.resolved_at,
+                           "detail": review.reviewed_by or "", "notes": review.reviewer_notes})
+    job = await db.scalar(select(OutboundJob).where(OutboundJob.message_id == message.id))
+    if job:
+        events.append({"type": "queued", "at": job.created_at, "detail": f"Outbound job {job.status}, {job.attempts} attempt(s)",
+                       "last_error": job.last_error})
+        for retry in (await db.execute(select(OutboundRetryEvent).where(OutboundRetryEvent.job_id == job.id)
+                                       .order_by(OutboundRetryEvent.requested_at))).scalars():
+            events.append({"type": "operator_retry", "at": retry.requested_at, "detail": retry.actor})
+    if message.provider_delivery_status:
+        events.append({"type": f"provider_{message.provider_delivery_status}", "at": None,
+                       "detail": message.provider_delivery_error or ""})
+    if message.deleted_at:
+        events.append({"type": "trashed", "at": message.deleted_at, "detail": ""})
+    events.sort(key=lambda e: (e["at"] is None, e["at"] or datetime.min))
+    return {"message_id": message.id, "status": message.status, "events": events}
+
+
 @router.get("/{message_id}/attachments", response_model=List[MessageAttachmentResponse])
 async def list_message_attachments(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
     message_result = await db.execute(
@@ -279,6 +368,7 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
         thread_id=req.thread_id,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
+        send_at=req.send_at,
     )
     return message
 
@@ -315,6 +405,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
         references=references,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
+        send_at=req.send_at,
     )
     return reply_msg
 

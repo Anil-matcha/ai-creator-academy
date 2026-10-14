@@ -8,7 +8,7 @@ import asyncio
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback, engagements
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback, engagements, conversations, meta
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -58,6 +58,13 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN auth_evidence JSON"))
             if "inbound_dedup_hash" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN inbound_dedup_hash VARCHAR(64)"))
+            if "labels" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN labels JSON NOT NULL DEFAULT '[]'"))
+            if "deleted_at" not in message_columns:
+                sync_conn.execute(text(f"ALTER TABLE messages ADD COLUMN deleted_at {timestamp_type}"))
+                sync_conn.execute(text("CREATE INDEX ix_messages_deleted_at ON messages (deleted_at)"))
+            if "scheduled_for" not in message_columns:
+                sync_conn.execute(text(f"ALTER TABLE messages ADD COLUMN scheduled_for {timestamp_type}"))
             if "is_read" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN is_read BOOLEAN NOT NULL DEFAULT FALSE"))
                 sync_conn.execute(text("UPDATE messages SET is_read = TRUE WHERE direction = 'outbound'"))
@@ -252,6 +259,8 @@ app.include_router(public_unsubscribe.router)
 app.include_router(ses_feedback.router)
 app.include_router(templates.router)
 app.include_router(messages.router)
+app.include_router(conversations.router)
+app.include_router(meta.router)
 app.include_router(reviews.router)
 app.include_router(domains.router)
 app.include_router(settings_router.router)

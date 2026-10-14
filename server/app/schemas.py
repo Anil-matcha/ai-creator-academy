@@ -1,6 +1,22 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+MAX_SEND_AT_DAYS = 90
+
+
+def normalize_send_at(value):
+    """Return a naive-UTC send time that is in the future and within the scheduling horizon."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    now = datetime.utcnow()
+    if value <= now:
+        raise ValueError("send_at must be in the future")
+    if value > now + timedelta(days=MAX_SEND_AT_DAYS):
+        raise ValueError(f"send_at must be within {MAX_SEND_AT_DAYS} days")
+    return value
 
 # --- Agent Schemas ---
 class AgentCreate(BaseModel):
@@ -356,6 +372,12 @@ class MessageSendRequest(BaseModel):
     template_data: Dict[str, Any] = Field(default_factory=dict)
     thread_id: Optional[str] = None
     attachments: Optional[List[MessageAttachmentInput]] = None
+    send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
+
+    @field_validator("send_at")
+    @classmethod
+    def _validate_send_at(cls, value):
+        return normalize_send_at(value)
 
 class MessageReplyRequest(BaseModel):
     body_text: Optional[str] = Field(None, max_length=100_000, example="Thank you for confirming. I am closing this ticket now.")
@@ -363,6 +385,12 @@ class MessageReplyRequest(BaseModel):
     template_id: Optional[str] = Field(None, min_length=1, max_length=64)
     template_data: Dict[str, Any] = Field(default_factory=dict)
     attachments: Optional[List[MessageAttachmentInput]] = None
+    send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
+
+    @field_validator("send_at")
+    @classmethod
+    def _validate_send_at(cls, value):
+        return normalize_send_at(value)
 
 class MessageForwardRequest(BaseModel):
     recipient: str = Field(..., min_length=3, max_length=320, example="support-lead@example.com")
@@ -394,10 +422,29 @@ class MessageResponse(BaseModel):
     status: str
     threat_score: float
     threat_details: str
+    labels: List[str] = Field(default_factory=list)
+    scheduled_for: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class MessageLabelsUpdate(BaseModel):
+    labels: List[str] = Field(..., max_length=20)
+
+    @field_validator("labels")
+    @classmethod
+    def _clean_labels(cls, value):
+        cleaned = []
+        for label in value:
+            label = label.strip()
+            if not label or len(label) > 64 or any(ord(c) < 32 for c in label):
+                raise ValueError("Labels must be 1-64 printable characters")
+            if label not in cleaned:
+                cleaned.append(label)
+        return cleaned
 
 
 class MessagePageResponse(BaseModel):

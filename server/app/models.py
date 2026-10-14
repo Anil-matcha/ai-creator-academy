@@ -166,6 +166,9 @@ class Message(Base):
     idempotency_key = Column(String(128), nullable=True)
     request_hash = Column(String(64), nullable=True)
     inbound_dedup_hash = Column(String(64), nullable=True)
+    labels = Column(JSON, nullable=False, default=list)
+    deleted_at = Column(DateTime, nullable=True, index=True)  # trash; restorable
+    scheduled_for = Column(DateTime, nullable=True)  # deferred outbound submission time (UTC)
     
     # State & Threat
     status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed

@@ -555,6 +555,7 @@ class EmailService:
         references: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         idempotency_key: Optional[str] = None,
+        send_at: Optional[datetime.datetime] = None,
     ) -> Message:
         """
         Sends an outbound email as the agent.
@@ -579,6 +580,7 @@ class EmailService:
                 "thread_id": thread_id,
                 "in_reply_to": in_reply_to,
                 "references": references,
+                **({"send_at": send_at.isoformat()} if send_at else {}),
                 "attachments": [
                     {"filename": item["filename"], "content_type": item["content_type"],
                      "content_sha256": hashlib.sha256(item["content"]).hexdigest()}
@@ -627,6 +629,8 @@ class EmailService:
         # Check HITL approval gate
         if agent.hitl_enabled:
             status = "pending_review"
+        elif send_at:
+            status = "scheduled"
         else:
             status = "sending"
 
@@ -655,6 +659,8 @@ class EmailService:
         )
         message.idempotency_key = idempotency_key
         message.request_hash = request_hash
+        message.scheduled_for = send_at
+        message.labels = []
         db.add(message)
 
         for attachment in attachments or []:
@@ -692,7 +698,7 @@ class EmailService:
                 message_id=msg_id,
                 status="pending",
                 attempts=0,
-                available_at=datetime.datetime.utcnow(),
+                available_at=send_at or datetime.datetime.utcnow(),
                 created_at=datetime.datetime.utcnow(),
             ))
 
