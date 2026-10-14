@@ -6,6 +6,8 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - HOST=0.0.0.0
+      - PORT=8000
       - DATABASE_URL=sqlite+aiosqlite:///./open_agent_email.db
       - SHARED_DOMAIN=agents.local
       - ADMIN_API_KEY=${ADMIN_API_KEY:?Set ADMIN_API_KEY before starting the stack}
