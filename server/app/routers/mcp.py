@@ -12,6 +12,8 @@ from app.services.attachment_utils import decode_attachment_inputs
 from app.services.hitl_service import HitlService
 from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal
+from app.schemas import normalize_send_at
+from app.routers.mcp_extra import EXT_ADMIN, EXT_NAMES, EXT_READ, EXT_TOOLS, EXT_WRITE, run_ext_tool
 
 router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
 
@@ -153,6 +155,23 @@ MCP_TOOLS = [
     }
 ]
 
+SEND_AT_PROP = {"type": "string", "format": "date-time", "description": "Defer submission until this UTC time (at most 90 days ahead)"}
+for _tool_def in MCP_TOOLS:
+    if _tool_def["name"] in {"send_message", "reply_to_message"}:
+        _tool_def["inputSchema"]["properties"]["send_at"] = SEND_AT_PROP
+MCP_TOOLS.extend(EXT_TOOLS)
+
+
+def _parse_send_at(value):
+    if value is None:
+        return None
+    from datetime import datetime
+    try:
+        return normalize_send_at(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
+    except ValueError as exc:
+        raise ValueError(f"send_at: {exc}") from exc
+
+
 @router.get("")
 @router.get("/info")
 async def mcp_info(principal: Principal = Depends(get_principal)):
@@ -245,10 +264,10 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db), 
     }
 
 async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
-    admin_tools = {"list_agents"}
+    admin_tools = {"list_agents"} | EXT_ADMIN
     review_tools = {"list_reviews", "approve_review", "reject_review"}
-    write_tools = {"send_message", "reply_to_message", "forward_to_human"}
-    if not principal.is_admin and principal.scope == "reviewer" and name not in review_tools:
+    write_tools = {"send_message", "reply_to_message", "forward_to_human"} | EXT_WRITE
+    if not principal.is_admin and principal.scope == "reviewer" and name not in review_tools | {"whoami"}:
         raise PermissionError("Reviewer credentials are limited to review tools")
     if name in admin_tools and not principal.is_admin:
         raise PermissionError("Administrator token required")
@@ -256,7 +275,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         raise PermissionError("Reviewer credential required")
     if name in write_tools and not principal.is_admin and principal.scope != "full_access":
         raise PermissionError("Token does not permit sending messages")
-    if name in {"list_messages", "get_message", "get_recent_otp", *write_tools} and not principal.is_admin:
+    if name in {"list_messages", "get_message", "get_recent_otp", *write_tools, *EXT_READ} and not principal.is_admin:
         if args.get("agent_email") != principal.agent_email:
             raise PermissionError("Token is not authorized for this agent inbox")
     if name == "list_agents":
@@ -341,9 +360,11 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             body_text=args["body_text"],
             attachments=decode_attachment_inputs(args.get("attachments")),
             idempotency_key=args.get("idempotency_key"),
+            send_at=_parse_send_at(args.get("send_at")),
         )
         return json.dumps({
             "status": msg.status,
+            "scheduled_for": msg.scheduled_for.isoformat() if msg.scheduled_for else None,
             "message_id": msg.id,
             "rfc_id": msg.rfc_message_id,
             "delivery_error": msg.delivery_error,
@@ -373,6 +394,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             in_reply_to=in_reply_to,
             references=references,
             idempotency_key=args.get("idempotency_key"),
+            send_at=_parse_send_at(args.get("send_at")),
         )
         return json.dumps({
             "status": reply_msg.status,
@@ -449,5 +471,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             db, args["review_id"], "reject", args.get("notes", "Rejected via MCP"), principal.principal_id
         )
         return json.dumps({"status": "rejected", "review_id": rev.id, "message_id": rev.message_id})
+
+    elif name in EXT_NAMES:
+        return await run_ext_tool(db, name, args, principal)
 
     raise ValueError(f"Unknown tool: {name}")
