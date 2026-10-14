@@ -9,6 +9,7 @@ import { Key, Plus, Trash2, Copy, Check, ShieldCheck, AlertCircle } from "lucide
 const SCOPE_OPTIONS = [
   { value: "full_access", label: "Read and send" },
   { value: "read_only", label: "Read only" },
+  { value: "reviewer", label: "Review only" },
 ];
 
 export default function ApiKeysPage() {

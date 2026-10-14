@@ -8,15 +8,16 @@ from app.database import get_db
 from app.models import ReviewItem
 from app.schemas import ReviewItemResponse, ReviewDecisionRequest
 from app.services.hitl_service import HitlService
-from app.security import Principal, require_admin
+from app.security import Principal, require_reviewer
 
-router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"])
 
 @router.get("", response_model=List[ReviewItemResponse])
 async def list_reviews(
     status: Optional[str] = Query(None, description="pending, approved, rejected"),
     agent_email: Optional[str] = Query(None),
     limit: int = 50,
+    principal: Principal = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     query = select(ReviewItem).options(selectinload(ReviewItem.message))
@@ -24,13 +25,15 @@ async def list_reviews(
         query = query.where(ReviewItem.status == status)
     if agent_email:
         query = query.where(ReviewItem.agent_email == agent_email)
+    if not principal.is_admin:
+        query = query.where(ReviewItem.agent_email == principal.agent_email)
     
     query = query.order_by(ReviewItem.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
 @router.get("/{review_id}", response_model=ReviewItemResponse)
-async def get_review(review_id: str, db: AsyncSession = Depends(get_db)):
+async def get_review(review_id: str, principal: Principal = Depends(require_reviewer), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ReviewItem)
         .options(selectinload(ReviewItem.message))
@@ -39,16 +42,22 @@ async def get_review(review_id: str, db: AsyncSession = Depends(get_db)):
     rev = result.scalar_one_or_none()
     if not rev:
         raise HTTPException(status_code=404, detail="Review item not found")
+    if not principal.is_admin and rev.agent_email != principal.agent_email:
+        raise HTTPException(status_code=404, detail="Review item not found")
     return rev
 
 @router.post("/{review_id}/approve", response_model=ReviewItemResponse)
 async def approve_review(
     review_id: str,
     body: Optional[ReviewDecisionRequest] = None,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     notes = body.notes if body else "Approved by human reviewer"
+    if not principal.is_admin:
+        review_agent = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == review_id))
+        if review_agent != principal.agent_email:
+            raise HTTPException(status_code=404, detail="Review item not found")
     review = await HitlService.resolve_review(
         db=db,
         review_id=review_id,
@@ -66,10 +75,14 @@ async def approve_review(
 async def reject_review(
     review_id: str,
     body: Optional[ReviewDecisionRequest] = None,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     notes = body.notes if body else "Rejected by human reviewer"
+    if not principal.is_admin:
+        review_agent = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == review_id))
+        if review_agent != principal.agent_email:
+            raise HTTPException(status_code=404, detail="Review item not found")
     review = await HitlService.resolve_review(
         db=db,
         review_id=review_id,

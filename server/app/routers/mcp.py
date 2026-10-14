@@ -216,10 +216,15 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db), 
     }
 
 async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
-    admin_tools = {"list_agents", "list_reviews", "approve_review", "reject_review"}
+    admin_tools = {"list_agents"}
+    review_tools = {"list_reviews", "approve_review", "reject_review"}
     write_tools = {"send_message", "reply_to_message", "forward_to_human"}
+    if not principal.is_admin and principal.scope == "reviewer" and name not in review_tools:
+        raise PermissionError("Reviewer credentials are limited to review tools")
     if name in admin_tools and not principal.is_admin:
         raise PermissionError("Administrator token required")
+    if name in review_tools and not principal.is_admin and principal.scope != "reviewer":
+        raise PermissionError("Reviewer credential required")
     if name in write_tools and not principal.is_admin and principal.scope != "full_access":
         raise PermissionError("Token does not permit sending messages")
     if name in {"list_messages", "get_message", *write_tools} and not principal.is_admin:
@@ -351,9 +356,10 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
 
     elif name == "list_reviews":
         status_filter = args.get("status", "pending")
-        res = await db.execute(
-            select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.status == status_filter)
-        )
+        query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.status == status_filter)
+        if not principal.is_admin:
+            query = query.where(ReviewItem.agent_email == principal.agent_email)
+        res = await db.execute(query)
         reviews = res.scalars().all()
         return json.dumps([{
             "review_id": r.id,
@@ -365,11 +371,23 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         } for r in reviews], indent=2)
 
     elif name == "approve_review":
-        rev = await HitlService.resolve_review(db, args["review_id"], "approve", args.get("notes", "Approved via MCP"))
+        if not principal.is_admin:
+            agent_email = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == args["review_id"]))
+            if agent_email != principal.agent_email:
+                raise PermissionError("Review item is outside this reviewer's inbox scope")
+        rev = await HitlService.resolve_review(
+            db, args["review_id"], "approve", args.get("notes", "Approved via MCP"), principal.principal_id
+        )
         return json.dumps({"status": "approved", "review_id": rev.id, "message_id": rev.message_id})
 
     elif name == "reject_review":
-        rev = await HitlService.resolve_review(db, args["review_id"], "reject", args.get("notes", "Rejected via MCP"))
+        if not principal.is_admin:
+            agent_email = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == args["review_id"]))
+            if agent_email != principal.agent_email:
+                raise PermissionError("Review item is outside this reviewer's inbox scope")
+        rev = await HitlService.resolve_review(
+            db, args["review_id"], "reject", args.get("notes", "Rejected via MCP"), principal.principal_id
+        )
         return json.dumps({"status": "rejected", "review_id": rev.id, "message_id": rev.message_id})
 
     raise ValueError(f"Unknown tool: {name}")

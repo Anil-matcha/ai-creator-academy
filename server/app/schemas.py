@@ -204,7 +204,7 @@ class SmtpTestResponse(BaseModel):
 class ApiKeyCreate(BaseModel):
     name: str = Field(..., example="Cursor AI Integration")
     agent_email: str
-    scope: str = Field("full_access", example="full_access", pattern="^(read_only|full_access)$")
+    scope: str = Field("full_access", example="full_access", pattern="^(read_only|full_access|reviewer)$")
     expires_in_days: Optional[int] = Field(90, ge=1, le=3650)
 
 class ApiKeyResponse(BaseModel):

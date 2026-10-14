@@ -56,7 +56,7 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
         not api_key
         or (api_key.expires_at is not None and api_key.expires_at <= datetime.datetime.utcnow())
         or not api_key.agent_email
-        or api_key.scope not in {"read_only", "full_access"}
+        or api_key.scope not in {"read_only", "full_access", "reviewer"}
     ):
         raise _unauthorized()
 
@@ -71,6 +71,12 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
 async def require_admin(principal: Principal = Depends(get_principal)) -> Principal:
     if not principal.is_admin:
         raise HTTPException(status_code=403, detail="Administrator token required")
+    return principal
+
+
+async def require_reviewer(principal: Principal = Depends(get_principal)) -> Principal:
+    if not principal.is_admin and principal.scope != "reviewer":
+        raise HTTPException(status_code=403, detail="Reviewer credential required")
     return principal
 
 
