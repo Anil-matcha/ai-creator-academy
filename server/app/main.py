@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import asyncio
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
 
     from app.services.outbound_worker import run_outbound_worker
     outbound_task = asyncio.create_task(run_outbound_worker(), name="outbound-mail-worker")
+    app.state.outbound_worker_task = outbound_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -61,6 +63,7 @@ async def lifespan(app: FastAPI):
         logger.info("Inbound SMTP listener active on port 2525.")
     except Exception as e:
         logger.warning(f"Could not bind SMTP port 2525 on startup: {e}")
+    app.state.smtp_server = smtp_server
 
     yield
 
@@ -149,6 +152,42 @@ async def health_check():
         "version": settings.VERSION,
         "shared_domain": settings.SHARED_DOMAIN
     }
+
+
+@app.get("/ready")
+async def readiness_check():
+    from sqlalchemy import func, select, text
+    from app.models import OutboundJob
+
+    database_ready = False
+    pending_jobs = None
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+            pending_jobs = await db.scalar(
+                select(func.count()).select_from(OutboundJob).where(OutboundJob.status == "pending")
+            )
+            database_ready = True
+    except Exception:
+        logger.exception("Readiness check could not access the database")
+
+    smtp_server = getattr(app.state, "smtp_server", None)
+    smtp_ready = bool(smtp_server and smtp_server.is_serving())
+    worker = getattr(app.state, "outbound_worker_task", None)
+    worker_ready = bool(worker and not worker.done())
+    ready = database_ready and smtp_ready and worker_ready
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "components": {
+                "database": "ready" if database_ready else "unavailable",
+                "smtp_listener": "ready" if smtp_ready else "unavailable",
+                "outbound_worker": "ready" if worker_ready else "unavailable",
+            },
+            "outbox_pending": pending_jobs,
+        },
+    )
 
 @app.get("/")
 async def root():
