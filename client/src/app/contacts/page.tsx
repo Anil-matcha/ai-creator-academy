@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Contact, Agent, ContactImportBatch, ContactImportResult } from "@/lib/types";
+import { Contact, Agent, ContactConsentHistory, ContactImportBatch, ContactImportResult } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ContactRound, Pencil, Plus, Trash2, X } from "lucide-react";
 
@@ -22,6 +22,12 @@ export default function ContactsPage() {
   const [imports, setImports] = useState<ContactImportBatch[]>([]);
   const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
   const [importing, setImporting] = useState(false);
+  const [consent, setConsent] = useState<Record<string, ContactConsentHistory>>({});
+  const [consentOpen, setConsentOpen] = useState<string | null>(null);
+  const [consentAction, setConsentAction] = useState<"granted" | "revoked">("granted");
+  const [consentSource, setConsentSource] = useState("");
+  const [consentEvidence, setConsentEvidence] = useState("");
+  const [consentNote, setConsentNote] = useState("");
 
   useEffect(() => {
     api.getAgents().then((items) => {
@@ -93,6 +99,27 @@ export default function ContactsPage() {
     } catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not reverse import"); }
   };
 
+  const toggleConsent = async (contactId: string) => {
+    if (!agentEmail) return;
+    if (consentOpen === contactId) { setConsentOpen(null); return; }
+    setConsentOpen(contactId);
+    try {
+      const history = await api.getContactConsent(agentEmail, contactId);
+      setConsent((previous) => ({ ...previous, [contactId]: history }));
+    }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not load consent history"); }
+  };
+
+  const saveConsent = async (event: React.FormEvent, contactId: string) => {
+    event.preventDefault();
+    if (!agentEmail || !consentSource.trim()) return;
+    try {
+      const result = await api.recordContactConsent(agentEmail, contactId, { action: consentAction, source: consentSource, evidence: consentEvidence, note: consentNote });
+      setConsent((previous) => ({ ...previous, [contactId]: result }));
+      setConsentSource(""); setConsentEvidence(""); setConsentNote(""); setError(null);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not record consent change"); }
+  };
+
   const visibleContacts = contacts.filter((contact) =>
     `${contact.name} ${contact.email} ${contact.company}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -143,12 +170,25 @@ export default function ContactsPage() {
         </div>
         {loading ? <p className="p-8 text-center text-xs text-[#8b949e]">Loading contacts…</p>
           : visibleContacts.length === 0 ? <div className="p-10 text-center"><ContactRound className="mx-auto mb-2 h-6 w-6 text-[#8b949e]"/><p className="text-xs text-[#8b949e]">{contacts.length ? "No contacts match your search." : "No contacts saved for this inbox yet."}</p></div>
-          : <div className="divide-y divide-[#30363d]">{visibleContacts.map((contact) => <article key={contact.id} className="flex items-start justify-between gap-4 px-4 py-3">
+          : <div className="divide-y divide-[#30363d]">{visibleContacts.map((contact) => <div key={contact.id}>
+          <article className="flex items-start justify-between gap-4 px-4 py-3">
             <div className="min-w-0"><p className="truncate text-sm font-medium text-[#e6edf3]">{contact.name}</p><a className="mt-0.5 block truncate text-xs text-[#58a6ff] hover:underline" href={`mailto:${contact.email}`}>{contact.email}</a>{contact.company && <p className="mt-1 text-xs text-[#8b949e]">{contact.company}</p>}{contact.notes && <p className="mt-1 whitespace-pre-wrap text-xs text-[#8b949e]">{contact.notes}</p>}</div>
-            <div className="flex shrink-0 gap-1"><button aria-label={`Edit ${contact.name}`} onClick={() => editContact(contact)} className="rounded p-2 text-[#8b949e] hover:bg-[#21262d] hover:text-white"><Pencil className="h-3.5 w-3.5"/></button><button aria-label={`Delete ${contact.name}`} onClick={() => void removeContact(contact)} className="rounded p-2 text-[#8b949e] hover:bg-[#3d1f1f] hover:text-[#ff7b72]"><Trash2 className="h-3.5 w-3.5"/></button></div>
-          </article>)}</div>}
+            <div className="flex shrink-0 gap-1"><button aria-label={`Consent for ${contact.name}`} onClick={() => void toggleConsent(contact.id)} className="rounded px-2 py-1 text-xs text-[#8b949e] hover:bg-[#21262d] hover:text-white">Consent{consent[contact.id] && <span className="ml-1 text-[#c9d1d9]">· {consent[contact.id].current}</span>}</button><button aria-label={`Edit ${contact.name}`} onClick={() => editContact(contact)} className="rounded p-2 text-[#8b949e] hover:bg-[#21262d] hover:text-white"><Pencil className="h-3.5 w-3.5"/></button><button aria-label={`Delete ${contact.name}`} onClick={() => void removeContact(contact)} className="rounded p-2 text-[#8b949e] hover:bg-[#3d1f1f] hover:text-[#ff7b72]"><Trash2 className="h-3.5 w-3.5"/></button></div>
+          </article>
+          {consentOpen === contact.id && <div className="space-y-3 border-t border-[#30363d] bg-[#0d1117] px-4 py-4">
+            <p className="text-xs text-[#8b949e]">Recorded state: <strong className="text-[#c9d1d9]">{consent[contact.id]?.current ?? "loading"}</strong>. This record does not enable or block sending.</p>
+            <form onSubmit={(event) => void saveConsent(event, contact.id)} className="grid gap-2 sm:grid-cols-2">
+              <label className="text-xs text-[#8b949e]">Change<select className={`${inputClass} mt-1`} value={consentAction} onChange={(event) => setConsentAction(event.target.value as "granted" | "revoked")}><option value="granted">Record grant</option><option value="revoked">Record revocation</option></select></label>
+              <label className="text-xs text-[#8b949e]">Source (required)<input required maxLength={255} placeholder="e.g. verbal confirmation" className={`${inputClass} mt-1`} value={consentSource} onChange={(event) => setConsentSource(event.target.value)}/></label>
+              <label className="text-xs text-[#8b949e]">Evidence reference<input maxLength={1000} placeholder="Optional URL or reference" className={`${inputClass} mt-1`} value={consentEvidence} onChange={(event) => setConsentEvidence(event.target.value)}/></label>
+              <label className="text-xs text-[#8b949e]">Note<input maxLength={1000} className={`${inputClass} mt-1`} value={consentNote} onChange={(event) => setConsentNote(event.target.value)}/></label>
+              <button className="w-fit rounded bg-[#238636] px-3 py-2 text-xs text-white">Append consent record</button>
+            </form>
+            {(consent[contact.id]?.events ?? []).map((item) => <p key={item.id} className="text-xs text-[#8b949e]">{item.action} · {new Date(item.created_at).toLocaleString()} · {item.source}{item.evidence && ` · ${item.evidence}`}{item.note && ` · ${item.note}`}</p>)}
+          </div>}
+          </div>)}</div>}
       </section>
-      <p className="text-[11px] text-[#8b949e]">Contacts are stored per inbox. Saving a contact does not send email or start outreach.</p>
+      <p className="text-[11px] text-[#8b949e]">Contacts and consent history are stored per inbox. Consent entries are operator-entered records only; they do not authorize, block, or trigger email.</p>
     </div>
   );
 }

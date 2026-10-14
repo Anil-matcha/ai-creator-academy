@@ -69,6 +69,19 @@ client.delete_contact("agent@example.com", contact["id"])
 
 The list limit is 1–500 (default 100). Email and name are limited to 255 characters, company to 255, and notes to 4,000. The SDK checks these bounds before sending requests. Contacts are inert records; creating one does not send an email.
 
+Consent changes are operator-entered, append-only records for a contact in one inbox. Read recorded state and up to 100 history entries with `get_contact_consent` (read access); append a grant or revocation with `record_contact_consent` (full access):
+
+```python
+history = client.get_contact_consent("agent@example.com", contact["id"])
+history = client.record_contact_consent(
+    "agent@example.com", contact["id"], action="granted",
+    source="Web signup form", evidence="signup-4821", note="Product updates",
+)
+print(history["current"], history["events"])
+```
+
+`source` is required. These entries are an audit trail only: they do not verify evidence, establish legal consent, change send policy, remove suppression, or send email. CSV import does not create consent records.
+
 ## Follow-ups
 
 Follow-up records track a contact's stage (`new`, `contacted`, `waiting`, or `closed`), optional due time, and notes. Listing works with a read-access key; creating, updating, and deleting requires full access. A contact can have one follow-up per inbox. Use `due=True` to list only overdue records that are open, unreplied, and not suppressed. A due time must be an ISO 8601/RFC 3339 datetime string; set it to `None` in `update_engagement` to clear it. The SDK checks stage, due-time parsing, and the 4,000-character notes bound before sending.

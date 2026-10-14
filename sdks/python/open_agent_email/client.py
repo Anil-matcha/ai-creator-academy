@@ -472,6 +472,28 @@ class AgentEmailClient:
             query={"confirm": "DELETE"},
         )
 
+    def get_contact_consent(self, inbox: str, contact_id: str) -> dict[str, Any]:
+        """Return current recorded consent state and up to 100 append-only changes."""
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}/consent"
+        )
+
+    def record_contact_consent(
+        self, inbox: str, contact_id: str, *, action: Literal["granted", "revoked"],
+        source: str, evidence: str = "", note: str = "",
+    ) -> dict[str, Any]:
+        """Append an operator-entered consent grant/revocation record; requires full access."""
+        if action not in ("granted", "revoked"):
+            raise ValueError("action must be 'granted' or 'revoked'")
+        if not source.strip() or len(source.strip()) > 255:
+            raise ValueError("source must contain 1–255 characters")
+        if len(evidence) > 1000 or len(note) > 1000:
+            raise ValueError("evidence and note must be at most 1,000 characters")
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}/consent",
+            payload={"action": action, "source": source, "evidence": evidence, "note": note},
+        )
+
     @staticmethod
     def _validate_template_fields(
         *, name: str | None = None, subject: str | None = None,

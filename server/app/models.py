@@ -60,6 +60,20 @@ class ContactEngagement(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 
+class ContactConsentEvent(Base):
+    """Append-only inbox-scoped record of an operator-entered consent change."""
+    __tablename__ = "contact_consent_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(String(64), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    action = Column(String(16), nullable=False)  # granted, revoked
+    source = Column(String(255), nullable=False)
+    evidence = Column(String(1000), nullable=False, default="")
+    note = Column(String(1000), nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+
+
 class EmailTemplate(Base):
     """Reusable, inbox-scoped message content; templates never send by themselves."""
     __tablename__ = "email_templates"

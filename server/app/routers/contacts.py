@@ -10,8 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Agent, Contact, ContactImportBatch, RecipientSuppression
-from app.schemas import ContactCreate, ContactResponse, ContactUpdate
+from app.models import Agent, Contact, ContactConsentEvent, ContactImportBatch, RecipientSuppression
+from app.schemas import ContactCreate, ContactResponse, ContactUpdate, ContactConsentWrite, ContactConsentHistoryResponse
 from pydantic import ValidationError
 from app.security import require_agent_access, require_write
 
@@ -106,6 +106,36 @@ async def delete_contact(email: str, contact_id: str, db: AsyncSession = Depends
     await db.delete(contact)
     await db.commit()
     return Response(status_code=204)
+
+
+@router.get("/{contact_id}/consent", response_model=ContactConsentHistoryResponse)
+async def get_contact_consent(email: str, contact_id: str, db: AsyncSession = Depends(get_db)):
+    await _get_contact(email, contact_id, db)
+    result = await db.execute(
+        select(ContactConsentEvent).where(
+            ContactConsentEvent.agent_email == email,
+            ContactConsentEvent.contact_id == contact_id,
+        ).order_by(ContactConsentEvent.id.desc()).limit(100)
+    )
+    events = result.scalars().all()
+    return {"current": events[0].action if events else "unknown", "events": events}
+
+
+@router.post("/{contact_id}/consent", response_model=ContactConsentHistoryResponse, status_code=201, dependencies=[Depends(require_write)])
+async def record_contact_consent(email: str, contact_id: str, payload: ContactConsentWrite, db: AsyncSession = Depends(get_db)):
+    await _get_contact(email, contact_id, db)
+    event = ContactConsentEvent(
+        agent_email=email,
+        contact_id=contact_id,
+        action=payload.action,
+        source=payload.source,
+        evidence=payload.evidence,
+        note=payload.note,
+        created_at=datetime.datetime.utcnow(),
+    )
+    db.add(event)
+    await db.commit()
+    return await get_contact_consent(email, contact_id, db)
 
 
 @router.post("/imports", dependencies=[Depends(require_write)])

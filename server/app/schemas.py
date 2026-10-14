@@ -115,6 +115,45 @@ class ContactResponse(BaseModel):
         from_attributes = True
 
 
+class ContactConsentWrite(BaseModel):
+    action: str = Field(..., pattern="^(granted|revoked)$")
+    source: str = Field(..., min_length=1, max_length=255)
+    evidence: str = Field("", max_length=1000)
+    note: str = Field("", max_length=1000)
+
+    @field_validator("source")
+    @classmethod
+    def trim_source(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Consent source cannot be empty")
+        return trimmed
+
+    @field_validator("evidence", "note")
+    @classmethod
+    def trim_optional_consent_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class ContactConsentEventResponse(BaseModel):
+    id: int
+    agent_email: str
+    contact_id: str
+    action: str
+    source: str
+    evidence: str
+    note: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ContactConsentHistoryResponse(BaseModel):
+    current: str
+    events: List[ContactConsentEventResponse]
+
+
 class ContactEngagementWrite(BaseModel):
     contact_id: str = Field(..., min_length=1, max_length=64)
     stage: str = Field("new", pattern="^(new|contacted|waiting|closed)$")

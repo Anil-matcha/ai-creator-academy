@@ -1,6 +1,7 @@
 import {
   Agent,
   Contact,
+  ContactConsentHistory,
   ContactEngagement,
   ContactImportResult,
   ContactImportBatch,
@@ -87,6 +88,12 @@ export const api = {
   deleteContact: (agentEmail: string, contactId: string) =>
     request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}`, {
       method: "DELETE",
+    }),
+  getContactConsent: (agentEmail: string, contactId: string) =>
+    request<ContactConsentHistory>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}/consent`),
+  recordContactConsent: (agentEmail: string, contactId: string, data: { action: "granted" | "revoked"; source: string; evidence?: string; note?: string }) =>
+    request<ContactConsentHistory>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}/consent`, {
+      method: "POST", body: JSON.stringify(data),
     }),
   importContactsCsv: (agentEmail: string, csv: string) =>
     request<ContactImportResult>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/imports`, {

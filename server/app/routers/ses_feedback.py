@@ -152,6 +152,14 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
         reason = "SES delivery delayed"
         status = "delayed"
         webhook_type = "email.delivery_delayed"
+    elif event_type == "Reject":
+        rejected = event.get("reject") or {}
+        mail = event.get("mail") or {}
+        recipients = mail.get("destination", [])
+        detail = rejected.get("reason")
+        reason = f"SES rejected message: {detail}" if isinstance(detail, str) and detail else "SES rejected message after acceptance"
+        status = "rejected"
+        webhook_type = "email.failed"
     else:
         return
 
@@ -187,8 +195,15 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
         # Only apply an address that exactly matches the correlated outbound message.
         if recipient != expected_recipient:
             continue
-        message.provider_delivery_status = status
-        message.provider_delivery_error = reason or None
+        current = message.provider_delivery_status
+        # Provider notifications can arrive out of order. Preserve compliance
+        # outcomes over informational success/delay notifications.
+        if current not in {"bounced", "complained", "rejected"} or status in {"bounced", "complained", "rejected"}:
+            precedence = {"delayed": 1, "delivered": 2, "rejected": 3, "bounced": 4, "complained": 5}
+            if current is None or precedence.get(status, 0) >= precedence.get(current, 0):
+                message.provider_delivery_status = status
+                bounded_reason = " ".join(str(reason).split())[:500] if reason else None
+                message.provider_delivery_error = bounded_reason
         await enqueue_outbound_status_webhook_event(
             db,
             event_type=webhook_type,

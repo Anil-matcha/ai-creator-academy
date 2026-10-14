@@ -23,6 +23,21 @@ export interface Contact {
   updated_at: string;
 }
 
+export interface ContactConsentEvent {
+  id: number;
+  agent_email: string;
+  contact_id: string;
+  action: "granted" | "revoked";
+  source: string;
+  evidence: string;
+  note: string;
+  created_at: string;
+}
+export interface ContactConsentHistory {
+  current: "unknown" | "granted" | "revoked";
+  events: ContactConsentEvent[];
+}
+
 export interface ContactEngagement {
   id: string;
   agent_email: string;
@@ -109,7 +124,7 @@ export interface Message {
   dmarc_status: "pass" | "fail" | "none" | "temperror" | "unverified";
   verified_domain?: string;
   delivery_error?: string | null;
-  provider_delivery_status?: "delivered" | "bounced" | "complained" | "delayed" | null;
+  provider_delivery_status?: "delivered" | "bounced" | "complained" | "delayed" | "rejected" | null;
   provider_delivery_error?: string | null;
   status: "delivered" | "accepted_by_relay" | "sending" | "delivery_unknown" | "pending_review" | "rejected" | "blocked" | "failed";
   threat_score: number;
