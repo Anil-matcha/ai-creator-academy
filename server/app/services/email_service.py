@@ -38,6 +38,11 @@ from app.database import AsyncSessionLocal
 from app.services.idempotency import reserve_idempotency, complete_idempotency, release_idempotency_claim
 
 logger = logging.getLogger("email_service")
+# Headers covered by our DKIM signature. Date and Message-ID are deliberately NOT signed: relays such as
+# Amazon SES replace both (SES substitutes its own Message-ID and reformats Date), which breaks any signature
+# that covers them. A live test through SES showed exactly that failure, with the body hash still matching.
+DKIM_SIGNED_HEADERS = [b"from", b"to", b"subject", b"reply-to", b"in-reply-to", b"references",
+                       b"mime-version", b"content-type", b"list-unsubscribe", b"list-unsubscribe-post"]
 SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
 
 def _send_smtp_sync(
@@ -133,9 +138,7 @@ def _send_smtp_sync(
                 signature = dkimpy.sign(
                     msg.as_bytes(), dkim_signing["selector"].encode(), dkim_signing["domain"].encode(),
                     dkim_signing["private_key"].encode(),
-                    include_headers=[b"from", b"to", b"subject", b"date", b"message-id", b"reply-to",
-                                     b"in-reply-to", b"references", b"mime-version", b"content-type",
-                                     b"list-unsubscribe", b"list-unsubscribe-post"],
+                    include_headers=DKIM_SIGNED_HEADERS,
                 )
                 message_data = signature.decode("ascii") + message_data
             except Exception as exc:

@@ -191,3 +191,42 @@ async def test_configured_signing_failure_refuses_smtp_submission(monkeypatch):
                             dkim_signing={"domain": "x.com", "selector": "s", "private_key": "not a key"})
     assert not ok and "Configured DKIM signing failed" in info
     assert "data" not in sent
+
+
+async def test_signature_survives_a_relay_that_rewrites_message_id_and_date(client, dns, monkeypatch):
+    """Regression for a live failure: SES replaces Message-ID and reformats Date after we sign."""
+    import re, smtplib, dkim
+    rec = await register(client)
+    publish(dns, rec)
+    await client.post(f"/v1/domains/{D}/verify", headers=ADMIN)
+    async with AsyncSessionLocal() as db:
+        params = await EmailService._dkim_signing_for(db, f"bot@{D}")
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def starttls(self): pass
+        def login(self, *a): pass
+        def sendmail(self, frm, to, data):
+            sent["data"] = data
+            return {}
+        def quit(self): pass
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    ok, _ = _send_smtp_sync("relay", 587, "", "", False, False, f"bot@{D}", "to@example.net", "Hi", "body",
+                            custom_msg_id="<original@mail.example.com>", dkim_signing=params)
+    assert ok
+    raw = sent["data"].encode() if isinstance(sent["data"], str) else sent["data"]
+    public = rec["dkim_record"]
+    published = lambda name, timeout=5: public.encode()  # noqa: E731
+    assert dkim.verify(raw, dnsfunc=published)
+
+    rewritten = re.sub(rb"(?im)^Message-ID:.*$", b"Message-ID: <010f01a1-relay@us-east-2.amazonses.com>", raw)
+    rewritten = re.sub(rb"(?im)^Date:.*$", b"Date: Wed, 14 Oct 2026 23:26:19 +0000", rewritten)
+    assert rewritten != raw and dkim.verify(rewritten, dnsfunc=published)
+
+    # headers that ARE signed must still be protected
+    tampered = re.sub(rb"(?im)^Subject:.*$", b"Subject: Changed", raw)
+    assert not dkim.verify(tampered, dnsfunc=published)
+    h_tag = re.search(rb"h=([^;]+);", raw.split(b"\r\n\r\n")[0].replace(b"\r\n ", b"").replace(b"\n ", b"")).group(1).lower()
+    assert b"message-id" not in h_tag and b"date" not in h_tag
