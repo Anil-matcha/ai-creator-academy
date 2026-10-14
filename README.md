@@ -167,6 +167,8 @@ REST and MCP requests are limited to 120 per socket peer IP per rolling minute b
 
 The HTTP server binds to `127.0.0.1:8000` by default; Docker Compose sets `HOST=0.0.0.0` inside the container so the published port and dashboard can reach it. The SMTP listener also defaults to loopback locally; Compose sets `SMTP_HOST=0.0.0.0` and publishes port `2525`. Configure `HOST`, `PORT`, `SMTP_HOST`, and `SMTP_PORT` for other deployments. Uvicorn caps concurrent connections/tasks at 200 and closes idle keepalive connections after 5 seconds by default; set `HTTP_MAX_CONCURRENCY` and `HTTP_KEEPALIVE_TIMEOUT_SECONDS` to adjust those bounds. Requests over the concurrency cap receive HTTP 503.
 
+SQLite is the default for a single-process self-hosted setup. PostgreSQL can be selected with an async SQLAlchemy URL such as `postgresql+asyncpg://user:password@db-host:5432/open_agent_email`; `asyncpg` is included in the server requirements. Database migrations are currently additive startup updates; Alembic-managed migration history is still planned.
+
 ---
 
 ## 🤖 Coding Agent Integration (MCP)

@@ -24,12 +24,13 @@ async def lifespan(app: FastAPI):
         def apply_additive_schema_updates(sync_conn):
             from sqlalchemy import inspect, text
             inspector = inspect(sync_conn)
+            timestamp_type = "DATETIME" if sync_conn.dialect.name == "sqlite" else "TIMESTAMP"
             key_columns = {column["name"] for column in inspector.get_columns("api_keys")}
             message_columns = {column["name"] for column in inspector.get_columns("messages")}
             if "agent_email" not in key_columns:
                 sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN agent_email VARCHAR(255)"))
             if "expires_at" not in key_columns:
-                sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN expires_at DATETIME"))
+                sync_conn.execute(text(f"ALTER TABLE api_keys ADD COLUMN expires_at {timestamp_type}"))
             if "delivery_error" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN delivery_error TEXT"))
             review_columns = {column["name"] for column in inspector.get_columns("review_items")}
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI):
             if "retried_by" not in outbox_columns:
                 sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_by VARCHAR(128)"))
             if "retried_at" not in outbox_columns:
-                sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_at DATETIME"))
+                sync_conn.execute(text(f"ALTER TABLE outbound_jobs ADD COLUMN retried_at {timestamp_type}"))
             message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
             if "ix_messages_raw_message_id" not in message_indexes:
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
