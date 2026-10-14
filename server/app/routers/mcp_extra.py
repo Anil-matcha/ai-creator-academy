@@ -30,6 +30,9 @@ from app.security import Principal
 
 _EMAIL = {"agent_email": {"type": "string", "description": "Agent inbox address"}}
 _MSG = {**_EMAIL, "message_id": {"type": "string"}}
+_ID = {"type": "string"}
+_PAGED = {"paged": {"type": "boolean", "default": False,
+                    "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}}
 
 
 def _tool(name, description, properties=None, required=None):
@@ -37,10 +40,19 @@ def _tool(name, description, properties=None, required=None):
             "inputSchema": {"type": "object", "properties": properties or {}, "required": required or []}}
 
 
+def _limit(default, maximum):
+    return {"type": "integer", "minimum": 1, "maximum": maximum, "default": default}
+
+
+def _page_requested(args):
+    return args.get("paged", False) is True or "cursor" in args
+
+
 EXT_TOOLS = [
     _tool("whoami", "Describe the credential making this call (admin or inbox-scoped key, scope, inbox)."),
     _tool("list_conversations", "List recent email threads with message/unread counts, participants and labels.",
-          {**_EMAIL, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, ["agent_email"]),
+          {**_EMAIL, "limit": _limit(50, 200), "cursor": _ID,
+           "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}}, ["agent_email"]),
     _tool("get_conversation", "Fetch every message in one thread, oldest first.",
           {**_EMAIL, "conversation_id": {"type": "string"}}, ["agent_email", "conversation_id"]),
     _tool("get_message_lifecycle", "Chronological timeline of review, queueing, retries and provider delivery outcomes.",
@@ -64,9 +76,14 @@ EXT_TOOLS = [
           ["agent_email", "message_id"]),
     _tool("restore_message", "Restore a trashed message to the inbox.", _MSG, ["agent_email", "message_id"]),
     _tool("list_contacts", "List the inbox's contacts.",
-          {**_EMAIL, "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}}, ["agent_email"]),
-    _tool("list_templates", "List the inbox's saved email templates.", _EMAIL, ["agent_email"]),
-    _tool("list_suppressions", "List recipients this inbox will not email.", _EMAIL, ["agent_email"]),
+          {**_EMAIL, "limit": _limit(50, 200), "cursor": _ID,
+           "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}}, ["agent_email"]),
+    _tool("list_templates", "List the inbox's saved email templates.",
+          {**_EMAIL, "limit": _limit(50, 200), "cursor": _ID,
+           "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}}, ["agent_email"]),
+    _tool("list_suppressions", "List recipients this inbox will not email.",
+          {**_EMAIL, "limit": _limit(50, 200), "cursor": _ID,
+           "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}}, ["agent_email"]),
     _tool("create_agent_suppression", "Block outbound email to one recipient from this inbox.",
           {**_EMAIL, "email": {"type": "string"}, "reason": {"type": "string"}}, ["agent_email", "email"]),
 ]
@@ -113,7 +130,11 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
     if name == "whoami":
         return json.dumps(await meta.whoami(principal))
     if name == "list_conversations":
-        return json.dumps(_dump(await conversations.list_conversations(email, _int(args, "limit", 50, 1, 200), db)))
+        if not _page_requested(args):
+            return json.dumps(_dump(await conversations.list_conversations(
+                email, _int(args, "limit", 50, 1, 200), db)))
+        return json.dumps(_dump(await conversations.list_conversations_page(
+            email, _int(args, "limit", 50, 1, 200), args.get("cursor"), db)))
     if name == "get_conversation":
         return json.dumps(_dump(await conversations.get_conversation(email, args["conversation_id"], db)))
     if name == "get_message_lifecycle":
@@ -139,18 +160,31 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
     if name == "restore_message":
         return json.dumps(_dump(await messages.restore_message(email, args["message_id"], db)))
     if name == "list_contacts":
-        return json.dumps(_dump(await contacts.list_contacts(email, _int(args, "limit", 100, 1, 500), db)))
+        if not _page_requested(args):
+            return json.dumps(_dump(await contacts.list_contacts(
+                email, _int(args, "limit", 100, 1, 500), db)))
+        return json.dumps(_dump(await contacts.list_contacts_page(
+            email, _int(args, "limit", 50, 1, 200), args.get("cursor"), db)))
     if name == "list_templates":
-        agent = await db.scalar(select(Agent.id).where(Agent.email == email))
-        if not agent:
-            raise ValueError(f"Agent {email} not found")
-        rows = (await db.execute(select(EmailTemplate).where(
-            EmailTemplate.agent_email == email))).scalars().all()
-        return json.dumps([{"id": t.id, "name": t.name, "subject": t.subject} for t in rows])
+        if not _page_requested(args):
+            agent = await db.scalar(select(Agent.id).where(Agent.email == email))
+            if not agent:
+                raise ValueError(f"Agent {email} not found")
+            rows = (await db.execute(select(EmailTemplate).where(
+                EmailTemplate.agent_email == email))).scalars().all()
+            return json.dumps([{"id": t.id, "name": t.name, "subject": t.subject} for t in rows])
+        page = await templates.list_templates_page(
+            email, _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
+        return json.dumps({"items": [{"id": t.id, "name": t.name, "subject": t.subject}
+                                      for t in page["items"]], "next_cursor": page["next_cursor"]})
     if name == "list_suppressions":
-        rows = (await db.execute(select(RecipientSuppression).where(
-            RecipientSuppression.agent_email == email))).scalars().all()
-        return json.dumps([{"id": r.id, "email": r.email, "reason": r.reason} for r in rows])
+        if not _page_requested(args):
+            rows = (await db.execute(select(RecipientSuppression).where(
+                RecipientSuppression.agent_email == email))).scalars().all()
+            return json.dumps([{"id": r.id, "email": r.email, "reason": r.reason} for r in rows])
+        page = await suppressions.list_suppressions_page(
+            email, _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
+        return json.dumps({"items": _dump(page["items"]), "next_cursor": page["next_cursor"]})
     if name == "create_agent_suppression":
         req = RecipientSuppressionCreate(email=args["email"], reason=args.get("reason"))
         return json.dumps(_dump(await suppressions.add_suppression(email, req, db)))
@@ -166,13 +200,6 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
 
 MAX_ATTACHMENT_DATA_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_CSV_CHARS = 1_000_000
-
-
-def _limit(default, maximum):
-    return {"type": "integer", "minimum": 1, "maximum": maximum, "default": default}
-
-
-_ID = {"type": "string"}
 
 
 def _m(model, obj):
@@ -374,8 +401,13 @@ async def _h_list_outreach_contacts(db, args, principal):
     due = args.get("due", False)
     if not isinstance(due, bool):
         raise ValueError("due must be a boolean")
-    rows = await engagements.list_engagements(args["agent_email"], due, _int(args, "limit", 100, 1, 500), db)
-    return [r.model_dump(mode="json") for r in rows]
+    if not _page_requested(args):
+        rows = await engagements.list_engagements(
+            args["agent_email"], due, _int(args, "limit", 100, 1, 500), db)
+        return [r.model_dump(mode="json") for r in rows]
+    page = await engagements.list_engagements_page(
+        args["agent_email"], due, _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
+    return _dump(page)
 
 
 async def _h_set_outreach_contact(db, args, principal):
@@ -423,7 +455,10 @@ async def _h_delete_agent_suppression(db, args, principal):
 # --- administration (administrator credential only) ---
 
 async def _h_list_webhooks(db, args, principal):
-    return await webhooks.list_webhooks(args.get("agent_email"), _int(args, "limit", 100, 1, 200), db)
+    if not _page_requested(args):
+        return await webhooks.list_webhooks(args.get("agent_email"), _int(args, "limit", 100, 1, 200), db)
+    return await webhooks.list_webhooks_page(
+        args.get("agent_email"), _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
 
 
 async def _h_get_webhook(db, args, principal):
@@ -461,8 +496,12 @@ async def _h_test_webhook(db, args, principal):
 
 async def _h_list_webhook_deliveries(db, args, principal):
     _require(args, "webhook_id")
-    return await webhooks.list_webhook_deliveries(
-        args["webhook_id"], args.get("status"), _int(args, "limit", 100, 1, 200), db)
+    if not _page_requested(args):
+        return await webhooks.list_webhook_deliveries(
+            args["webhook_id"], args.get("status"), _int(args, "limit", 100, 1, 200), db)
+    return await webhooks.page_deliveries(
+        endpoint_id=args["webhook_id"], status=args.get("status"), limit=_int(args, "limit", 50, 1, 100),
+        cursor=args.get("cursor"), db=db)
 
 
 async def _h_list_events(db, args, principal):
@@ -504,7 +543,9 @@ async def _h_delete_api_key(db, args, principal):
 
 
 async def _h_list_domains(db, args, principal):
-    return [_m(DomainResponse, d) for d in await domains.list_domains(db)]
+    if not _page_requested(args):
+        return [_m(DomainResponse, d) for d in await domains.list_domains(db)]
+    return await domains.list_domains_page(_int(args, "limit", 50, 1, 200), args.get("cursor"), db)
 
 
 async def _h_register_domain(db, args, principal):
@@ -576,8 +617,11 @@ async def _h_get_account_metrics(db, args, principal):
 
 
 async def _h_list_outbox(db, args, principal):
-    rows = await outbox.list_outbound_jobs(args.get("status"), _int(args, "limit", 50, 1, 200), db)
-    return [_m(OutboundJobResponse, r) for r in rows]
+    if not _page_requested(args):
+        rows = await outbox.list_outbound_jobs(args.get("status"), _int(args, "limit", 50, 1, 200), db)
+        return [_m(OutboundJobResponse, r) for r in rows]
+    return await outbox.page_outbound_jobs(
+        args.get("status"), _int(args, "limit", 50, 1, 100), args.get("cursor"), db)
 
 
 async def _h_retry_outbox_job(db, args, principal):
@@ -644,7 +688,7 @@ _NEW_SPECS = [
       "source": _ID, "evidence": _ID, "note": _ID},
      ["agent_email", "contact_id", "action", "source"], "write", _h_record_contact_consent),
     ("list_outreach_contacts", "List follow-up records (stage, next due time, reply and suppression facts). due=true returns only currently due, unsuppressed ones.",
-     {**_AE, "due": {"type": "boolean", "default": False}, "limit": _limit(100, 500)},
+     {**_AE, "due": {"type": "boolean", "default": False}, "limit": _limit(50, 200), "cursor": _ID, **_PAGED},
      ["agent_email"], "read", _h_list_outreach_contacts),
     ("set_outreach_contact", "Create or update a contact's follow-up record: stage (new, contacted, waiting, closed), optional next_due_at ISO time, notes. Never sends mail.",
      {**_AE, "contact_id": _ID, "stage": {"type": "string", "enum": ["new", "contacted", "waiting", "closed"]},
@@ -659,7 +703,7 @@ _NEW_SPECS = [
     ("get_outreach_contact", "Fetch one contact follow-up record by engagement_id.",
      {**_AE, "engagement_id": _ID}, ["agent_email", "engagement_id"], "read", _h_get_outreach_contact),
     ("list_webhooks", "Administrator only: list webhook endpoints, optionally for one inbox. Signing secrets are never returned.",
-     {**_AE, "limit": _limit(100, 200)}, [], "admin", _h_list_webhooks),
+     {**_AE, "limit": _limit(50, 200), "cursor": _ID, **_PAGED}, [], "admin", _h_list_webhooks),
     ("get_webhook", "Administrator only: fetch one webhook endpoint (no secret).",
      _WH_ID, ["webhook_id"], "admin", _h_get_webhook),
     ("create_webhook", "Administrator only: register an HTTPS webhook (port 443, public host) for an inbox. The signing secret is returned once, in this response only.",
@@ -673,7 +717,7 @@ _NEW_SPECS = [
     ("test_webhook", "Administrator only: queue a signed synthetic event to an enabled webhook.",
      _WH_ID, ["webhook_id"], "admin", _h_test_webhook),
     ("list_webhook_deliveries", "Administrator only: delivery attempts for one webhook, newest first.",
-     {**_WH_ID, "status": _DELIVERY_STATUS, "limit": _limit(100, 200)}, ["webhook_id"], "admin", _h_list_webhook_deliveries),
+     {**_WH_ID, "status": _DELIVERY_STATUS, "limit": _limit(50, 100), "cursor": _ID, **_PAGED}, ["webhook_id"], "admin", _h_list_webhook_deliveries),
     ("list_events", "Administrator only: cursor-paged event log across webhooks, filterable by inbox, type and status.",
      {**_AE, "event_type": _ID, "status": _DELIVERY_STATUS, "since": {"type": "string", "format": "date-time"},
       "until": {"type": "string", "format": "date-time"}, "limit": _limit(50, 100), "cursor": _ID},
@@ -691,7 +735,7 @@ _NEW_SPECS = [
     ("delete_api_key", "Administrator only: revoke a canonical account or inbox API key immediately. Requires confirm=DELETE.",
      {"key_id": _ID, "confirm": {"type": "string", "enum": ["DELETE"]}}, ["key_id", "confirm"], "admin", _h_delete_api_key),
     ("list_domains", "Administrator only: list registered domains and their DNS record status.",
-     {}, [], "admin", _h_list_domains),
+     {"limit": _limit(50, 200), "cursor": _ID, **_PAGED}, [], "admin", _h_list_domains),
     ("get_domain", "Administrator only: fetch one registered domain and its DNS record status.",
      {"domain": _ID}, ["domain"], "admin", _h_get_domain),
     ("register_domain", "Administrator only: register a domain, generate its DKIM key, and return the exact DNS records to publish.",
@@ -714,7 +758,7 @@ _NEW_SPECS = [
      [], "admin", _h_get_account_metrics),
     ("list_outbox", "Administrator only: durable outbound queue jobs, optionally by status.",
      {"status": {"type": "string", "enum": ["pending", "processing", "complete", "failed", "uncertain", "blocked"]},
-      "limit": _limit(50, 200)}, [], "admin", _h_list_outbox),
+      "limit": _limit(50, 100), "cursor": _ID, **_PAGED}, [], "admin", _h_list_outbox),
     ("retry_outbox_job", "Administrator only: retry a failed or uncertain job. An uncertain job may already have been accepted by the relay, so confirm_duplicate_risk=true is required for it.",
      {"job_id": _ID, "confirm_duplicate_risk": {"type": "boolean", "default": False}},
      ["job_id"], "admin", _h_retry_outbox_job),
@@ -723,7 +767,11 @@ _NEW_SPECS = [
 # --- account-level, starter-template and review-setting tools ---
 
 async def _h_list_account_suppressions(db, args, principal):
-    return await account.list_account_suppressions(args.get("address"), _int(args, "limit", 200, 1, 1000), db)
+    if not _page_requested(args):
+        return await account.list_account_suppressions(
+            args.get("address"), _int(args, "limit", 200, 1, 1000), db)
+    return await account.list_account_suppressions_page(
+        args.get("address"), _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
 
 
 async def _h_delete_account_suppression(db, args, principal):
@@ -737,8 +785,11 @@ async def _h_export_account(db, args, principal):
 
 
 async def _h_list_account_contacts(db, args, principal):
-    return await account.list_account_contacts(
-        args.get("agent_email"), args.get("q"), _int(args, "limit", 100, 1, 500), db)
+    if not _page_requested(args):
+        return await account.list_account_contacts(
+            args.get("agent_email"), args.get("q"), _int(args, "limit", 100, 1, 500), db)
+    return await account.list_account_contacts_page(
+        args.get("agent_email"), args.get("q"), _int(args, "limit", 50, 1, 200), args.get("cursor"), db)
 
 
 async def _h_restore_agent(db, args, principal):
@@ -752,7 +803,10 @@ async def _h_get_review_settings(db, args, principal):
 
 
 async def _h_list_starter_templates(db, args, principal):
-    return await starter_templates.list_starter_templates()
+    if not _page_requested(args):
+        return await starter_templates.list_starter_templates()
+    return await starter_templates.list_starter_templates_page(
+        _int(args, "limit", 50, 1, 200), args.get("cursor"))
 
 
 async def _h_get_starter_template(db, args, principal):
@@ -774,19 +828,19 @@ async def _h_copy_starter_template(db, args, principal):
 
 _MORE_SPECS = [
     ("list_account_suppressions", "Administrator only: suppressed recipients across every inbox, optionally for one address.",
-     {"address": _ID, "limit": _limit(200, 1000)}, [], "admin", _h_list_account_suppressions),
+     {"address": _ID, "limit": _limit(50, 200), "cursor": _ID, **_PAGED}, [], "admin", _h_list_account_suppressions),
     ("delete_account_suppression", "Administrator only: remove an address from every inbox's suppression list.",
      {"address": _ID}, ["address"], "admin", _h_delete_account_suppression),
     ("export_account", "Administrator only: bounded configuration export (inboxes, contacts, templates, suppressions, webhook endpoints) without message bodies, attachments, keys or secrets. `truncated` reports capped collections.",
      {"limit_per_collection": _limit(account.EXPORT_DEFAULT_LIMIT, account.EXPORT_MAX_LIMIT)}, [], "admin", _h_export_account),
     ("list_account_contacts", "Administrator only: contacts across inboxes, filterable by inbox and by address, name or company text.",
-     {**_AE, "q": _ID, "limit": _limit(100, 500)}, [], "admin", _h_list_account_contacts),
+     {**_AE, "q": _ID, "limit": _limit(50, 200), "cursor": _ID, **_PAGED}, [], "admin", _h_list_account_contacts),
     ("restore_agent", "Administrator only: restore a soft-deleted inbox so it receives mail again.",
      _AE, ["agent_email"], "admin", _h_restore_agent),
     ("get_review_settings", "Administrator only: the inbox's review notification address, expiry window and expiry action.",
      _AE, ["agent_email"], "admin", _h_get_review_settings),
     ("list_starter_templates", "List the built-in starter email templates (verification code, password reset, welcome, receipt, and more).",
-     {}, [], "any", _h_list_starter_templates),
+     {"limit": _limit(50, 200), "cursor": _ID, **_PAGED}, [], "any", _h_list_starter_templates),
     ("get_starter_template", "Fetch one starter template by alias with its body, variables and sample data.",
      {"alias": _ID}, ["alias"], "any", _h_get_starter_template),
     ("validate_template", "Check placeholder syntax and render sample data without saving anything.",

@@ -15,6 +15,7 @@ from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal
 from app.schemas import ReviewDecisionRequest, normalize_send_at
 from app.routers import reviews as reviews_router
+from app.routers import agents as agents_router, messages as messages_router
 from app.routers.mcp_extra import EXT_ADMIN, EXT_NAMES, EXT_READ, EXT_TOOLS, EXT_WRITE, _mcp_request, run_ext_tool
 
 router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
@@ -25,7 +26,12 @@ MCP_TOOLS = [
         "description": "Administrator only: list every agent email inbox configured in Open Agent Email",
         "inputSchema": {
             "type": "object",
-            "properties": {}
+            "properties": {
+                "include_deleted": {"type": "boolean", "default": False},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                "cursor": {"type": "string"},
+                "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."},
+            }
         }
     },
     {
@@ -37,7 +43,11 @@ MCP_TOOLS = [
                 "agent_email": {"type": "string", "description": "Agent email address"},
                 "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Optional filter"},
                 "status": {"type": "string", "enum": ["delivered", "accepted_by_relay", "sending", "delivery_unknown", "pending_review", "rejected", "blocked", "failed"]},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+                "read_status": {"type": "string", "enum": ["unread", "read", "all"], "default": "all"},
+                "q": {"type": "string", "maxLength": 200},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
+                "cursor": {"type": "string"},
+                "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}
             },
             "required": ["agent_email"]
         }
@@ -143,7 +153,10 @@ MCP_TOOLS = [
             "type": "object",
             "properties": {
                 "status": {"type": "string", "enum": ["pending", "approved", "rejected"], "default": "pending"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}
+                "agent_email": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                "cursor": {"type": "string"},
+                "paged": {"type": "boolean", "default": False, "description": "Return {items,next_cursor}; set true on the first page and pass cursor on later pages."}
             }
         }
     },
@@ -342,22 +355,47 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             raise ValueError(f"Pending review for message {args.get('message_id')} not found")
         args = {**args, "review_id": review_id}
     if name == "list_agents":
-        res = await db.execute(select(Agent).where(Agent.deleted_at.is_(None)))
-        agents = res.scalars().all()
-        return json.dumps([{"email": a.email, "display_name": a.display_name, "status": a.status} for a in agents], indent=2)
+        if not (args.get("paged", False) is True or "cursor" in args):
+            res = await db.execute(select(Agent).where(Agent.deleted_at.is_(None)))
+            agents = res.scalars().all()
+            return json.dumps([{"email": a.email, "display_name": a.display_name, "status": a.status}
+                               for a in agents], indent=2)
+        include_deleted = args.get("include_deleted", False)
+        if not isinstance(include_deleted, bool):
+            raise ValueError("include_deleted must be a boolean")
+        limit = args.get("limit", 50)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer between 1 and 200")
+        page = await agents_router.list_agents_page(
+            include_deleted=include_deleted, limit=limit, cursor=args.get("cursor"), db=db)
+        return json.dumps({"items": [{"email": a.email, "display_name": a.display_name, "status": a.status}
+                                      for a in page["items"]], "next_cursor": page["next_cursor"]}, indent=2)
 
     elif name == "list_messages":
         email = args["agent_email"]
-        limit = args.get("limit", 20)
+        if not (args.get("paged", False) is True or "cursor" in args):
+            limit = args.get("limit", 20)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+                raise ValueError("limit must be an integer between 1 and 100")
+            q = select(Message).where(Message.agent_email == email)
+            if "direction" in args:
+                q = q.where(Message.direction == args["direction"])
+            if "status" in args:
+                q = q.where(Message.status == args["status"])
+            msgs = (await db.execute(q.order_by(Message.created_at.desc()).limit(limit))).scalars().all()
+            return json.dumps([{
+                "id": m.id, "direction": m.direction, "sender": m.sender, "recipient": m.recipient,
+                "subject": m.subject, "status": m.status, "provider_delivery_status": m.provider_delivery_status,
+                "threat_score": m.threat_score, "created_at": m.created_at.isoformat(),
+            } for m in msgs], indent=2)
+        limit = args.get("limit", 50)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
             raise ValueError("limit must be an integer between 1 and 100")
-        q = select(Message).where(Message.agent_email == email)
-        if "direction" in args:
-            q = q.where(Message.direction == args["direction"])
-        if "status" in args:
-            q = q.where(Message.status == args["status"])
-        msgs = (await db.execute(q.order_by(Message.created_at.desc()).limit(limit))).scalars().all()
-        return json.dumps([{
+        page = await messages_router.page_messages(
+            email=email, limit=limit, direction=args.get("direction"),
+            read_status=args.get("read_status", "all"), status=args.get("status"),
+            q=args.get("q"), cursor=args.get("cursor"), db=db)
+        return json.dumps({"items": [{
             "id": m.id,
             "direction": m.direction,
             "sender": m.sender,
@@ -367,7 +405,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "provider_delivery_status": m.provider_delivery_status,
             "threat_score": m.threat_score,
             "created_at": m.created_at.isoformat()
-        } for m in msgs], indent=2)
+        } for m in page["items"]], "next_cursor": page["next_cursor"]}, indent=2)
 
     elif name == "get_message":
         query = select(Message).where(Message.id == args["message_id"])
@@ -511,22 +549,33 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         status_filter = args.get("status", "pending")
         if not isinstance(status_filter, str) or status_filter not in {"pending", "approved", "rejected"}:
             raise ValueError("status must be one of: pending, approved, rejected")
+        if not (args.get("paged", False) is True or "cursor" in args):
+            limit = args.get("limit", 50)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+                raise ValueError("limit must be an integer between 1 and 100")
+            query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.status == status_filter)
+            if not principal.is_admin:
+                query = query.where(ReviewItem.agent_email == principal.agent_email)
+            res = await db.execute(query.order_by(ReviewItem.created_at.desc()).limit(limit))
+            reviews = res.scalars().all()
+            return json.dumps([{
+                "review_id": r.id, "message_id": r.message_id, "agent_email": r.agent_email,
+                "reason": r.reason, "threat_score": r.threat_score, "status": r.status,
+            } for r in reviews], indent=2)
         limit = args.get("limit", 50)
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
-            raise ValueError("limit must be an integer between 1 and 100")
-        query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.status == status_filter)
-        if not principal.is_admin:
-            query = query.where(ReviewItem.agent_email == principal.agent_email)
-        res = await db.execute(query.order_by(ReviewItem.created_at.desc()).limit(limit))
-        reviews = res.scalars().all()
-        return json.dumps([{
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer between 1 and 200")
+        page = await reviews_router.list_reviews_page(
+            status=status_filter, agent_email=args.get("agent_email"), limit=limit,
+            cursor=args.get("cursor"), principal=principal, db=db)
+        return json.dumps({"items": [{
             "review_id": r.id,
             "message_id": r.message_id,
             "agent_email": r.agent_email,
             "reason": r.reason,
             "threat_score": r.threat_score,
             "status": r.status
-        } for r in reviews], indent=2)
+        } for r in page["items"]], "next_cursor": page["next_cursor"]}, indent=2)
 
     elif name == "get_review":
         review_id = args["review_id"]

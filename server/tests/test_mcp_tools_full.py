@@ -580,3 +580,32 @@ async def test_argument_validation_errors_are_tool_errors_not_crashes(client):
     await fails(client, ADMIN, "list_webhooks", limit=0)
     await fails(client, ADMIN, "list_events", limit=1000)
     await fails(client, ADMIN, "list_outreach_contacts", agent_email=A, due="yes")
+
+
+async def test_mcp_contact_pages_and_rejects_invalid_or_cross_inbox_cursors(client):
+    await make_agent(client, A)
+    await make_agent(client, B)
+    await ok(client, ADMIN, "create_contact", agent_email=A, email="one@example.com", name="One")
+    await ok(client, ADMIN, "create_contact", agent_email=A, email="two@example.com", name="Two")
+
+    first = await ok(client, ADMIN, "list_contacts", agent_email=A, paged=True, limit=1)
+    assert set(first) == {"items", "next_cursor"}
+    assert len(first["items"]) == 1 and first["next_cursor"]
+    second = await ok(client, ADMIN, "list_contacts", agent_email=A, limit=1, cursor=first["next_cursor"])
+    assert len(second["items"]) == 1 and second["next_cursor"] is None
+    assert first["items"][0]["id"] != second["items"][0]["id"]
+
+    await fails(client, ADMIN, "list_contacts", agent_email=A, cursor="not-a-cursor")
+    await fails(client, ADMIN, "list_contacts", agent_email=B, cursor=first["next_cursor"])
+
+
+async def test_mcp_message_pages_return_standard_page_shape(client):
+    await make_agent(client, A)
+    for number in range(2):
+        await client.post(f"/v1/agents/{A}/messages", headers=ADMIN, json={
+            "recipient": f"person{number}@example.com", "subject": f"Message {number}", "body_text": "hello",
+        })
+    first = await ok(client, ADMIN, "list_messages", agent_email=A, paged=True, limit=1)
+    assert set(first) == {"items", "next_cursor"}
+    assert len(first["items"]) == 1 and first["next_cursor"]
+    await fails(client, ADMIN, "list_messages", agent_email=A, cursor="not-a-cursor")

@@ -981,6 +981,23 @@
             "pattern": "^(merge|skip)$",
             "title": "On Conflict",
             "type": "string"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "new",
+                  "contacted",
+                  "waiting",
+                  "closed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
           }
         },
         "required": [
@@ -4278,6 +4295,75 @@
         ]
       }
     },
+    "/v1/agents/{email}/contacts/imports/page": {
+      "get": {
+        "operationId": "list_contact_imports_page_v1_agents__email__contacts_imports_page_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Contact Imports Page",
+        "tags": [
+          "Contacts"
+        ]
+      }
+    },
     "/v1/agents/{email}/contacts/imports/{batch_id}": {
       "delete": {
         "operationId": "reverse_contact_import_v1_agents__email__contacts_imports__batch_id__delete",
@@ -5671,6 +5757,84 @@
           }
         },
         "summary": "Get Thread",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/v1/agents/{email}/messages/thread/{thread_id}/page": {
+      "get": {
+        "operationId": "get_thread_page_v1_agents__email__messages_thread__thread_id__page_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thread Page",
         "tags": [
           "Messages"
         ]
@@ -8763,6 +8927,75 @@
           }
         },
         "summary": "List Outbound Retry Events",
+        "tags": [
+          "Outbound Queue"
+        ]
+      }
+    },
+    "/v1/outbox/{job_id}/retries/page": {
+      "get": {
+        "operationId": "list_outbound_retry_events_page_v1_outbox__job_id__retries_page_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Outbound Retry Events Page",
         "tags": [
           "Outbound Queue"
         ]

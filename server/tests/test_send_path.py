@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from app.database import AsyncSessionLocal
-from app.models import Message, MessageAttachment
+from app.models import IdempotencyRecord, Message, MessageAttachment
 from tests.conftest import ADMIN, make_agent, make_key
 
 MSGS = "/v1/agents/a@agents.local/messages"
@@ -21,6 +21,30 @@ async def test_idempotency_key_prevents_duplicate_send(client):
     assert first.status_code == 201 and second.status_code in (200, 201)
     assert first.json()["id"] == second.json()["id"]
     assert await _count() == 1
+    async with AsyncSessionLocal() as db:
+        receipt = await db.scalar(select(IdempotencyRecord).where(
+            IdempotencyRecord.scope == "outbound:a@agents.local",
+            IdempotencyRecord.idempotency_key == "k1",
+        ))
+        assert receipt.state == "completed"
+        assert receipt.response_status == 201
+        assert receipt.response_body == {"message_id": first.json()["id"]}
+
+
+async def test_in_flight_send_key_returns_conflict(client):
+    await make_agent(client, "a@agents.local")
+    from app.services.idempotency import reserve_idempotency
+
+    await reserve_idempotency("outbound:a@agents.local", "busy-send", {
+        "recipient": "to@example.com", "sender": "a@agents.local",
+        "subject": "hello", "body_text": "body", "body_html": None,
+        "thread_id": None, "conversation_id": None, "in_reply_to": None,
+        "references": None, "attachments": [],
+    })
+    response = await client.post(MSGS, headers={**ADMIN, "Idempotency-Key": "busy-send"}, json=PAYLOAD)
+    assert response.status_code == 409
+    assert "already in progress" in response.json()["detail"]
+    assert await _count() == 0
 
 
 async def test_idempotency_key_reuse_with_different_body_rejected(client):

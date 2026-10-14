@@ -34,6 +34,8 @@ from app.services.attachment_utils import validate_composed_message_size
 from app.services.attachment_scan import scan_attachments
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
 from app.services.unsubscribe import issue_token, public_base_url
+from app.database import AsyncSessionLocal
+from app.services.idempotency import reserve_idempotency, complete_idempotency, release_idempotency_claim
 
 logger = logging.getLogger("email_service")
 SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
@@ -640,6 +642,7 @@ class EmailService:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         validate_composed_message_size(subject, body_text or "", body_html, attachments)
         request_hash = None
+        idempotency_decision = None
         if idempotency_key is not None:
             idempotency_key = idempotency_key.strip()
             if not idempotency_key or len(idempotency_key) > 128:
@@ -671,6 +674,22 @@ class EmailService:
                     separators=(",", ":"),
                 )
                 legacy_request_hash = hashlib.sha256(legacy_request.encode("utf-8")).hexdigest()
+            idempotency_decision = await reserve_idempotency(
+                f"outbound:{agent.email}", idempotency_key, request_fields,
+            )
+            if idempotency_decision.outcome == "conflict":
+                raise HTTPException(status_code=422, detail="Idempotency-Key was already used with a different request")
+            if idempotency_decision.outcome in {"in_progress", "expired_in_progress"}:
+                raise HTTPException(status_code=409, detail="A request with this Idempotency-Key is already in progress")
+            if idempotency_decision.outcome == "replay":
+                replay_id = (idempotency_decision.response_body or {}).get("message_id")
+                existing = await db.get(Message, replay_id) if replay_id else None
+                if existing is None:
+                    raise HTTPException(status_code=409, detail="The stored idempotent response is no longer available")
+                return existing
+
+            # Upgrade receipts written by older releases, which stored only a
+            # request digest on the message row.
             result = await db.execute(select(Message).where(
                 Message.agent_email == agent.email,
                 Message.idempotency_key == idempotency_key,
@@ -684,13 +703,19 @@ class EmailService:
                     and existing.recipient == raw_recipient
                 )
                 if not matches_current and not matches_legacy:
+                    await release_idempotency_claim(AsyncSessionLocal, idempotency_decision)
                     raise HTTPException(status_code=422, detail="Idempotency-Key was already used with a different request")
+                await complete_idempotency(db, idempotency_decision, status=201,
+                                           body={"message_id": existing.id})
+                await db.commit()
                 return existing
 
         # Preserve idempotent retries of a message already accepted before the
         # recipient was suppressed, while blocking creation of any new message.
         suppression = await get_recipient_suppression(db, agent.email, recipient)
         if suppression:
+            if idempotency_decision is not None:
+                await release_idempotency_claim(AsyncSessionLocal, idempotency_decision)
             raise HTTPException(
                 status_code=422,
                 detail="This inbox has suppressed outbound email to the requested recipient.",
@@ -777,6 +802,9 @@ class EmailService:
                 created_at=datetime.datetime.utcnow(),
             ))
 
+        if idempotency_decision is not None:
+            await complete_idempotency(db, idempotency_decision, status=201,
+                                       body={"message_id": message.id})
         try:
             await db.commit()
         except IntegrityError:
@@ -789,9 +817,17 @@ class EmailService:
             ))
             existing = result.scalar_one_or_none()
             if not existing:
+                if idempotency_decision is not None:
+                    await release_idempotency_claim(AsyncSessionLocal, idempotency_decision)
                 raise
             if existing.request_hash != request_hash:
+                if idempotency_decision is not None:
+                    await release_idempotency_claim(AsyncSessionLocal, idempotency_decision)
                 raise HTTPException(status_code=422, detail="Idempotency-Key was already used with a different request")
+            if idempotency_decision is not None:
+                await complete_idempotency(db, idempotency_decision, status=201,
+                                           body={"message_id": existing.id})
+                await db.commit()
             return existing
         await db.refresh(message)
 
