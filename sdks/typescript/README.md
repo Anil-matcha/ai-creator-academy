@@ -37,7 +37,12 @@ Uses `globalThis.WebSocket` (Node 22+). On older Node pass one: `client.listen(i
 const event = constructEvent(rawBody, req.headers, [currentSecret, previousSecret]);
 ```
 
-Signature: HMAC-SHA256 over `<X-Webhook-Timestamp>.<X-Webhook-Event-Id>.<raw body>`, sent as `sha256=<hex>` (comma-separated while a rotated secret is still valid). Deliveries older or newer than 5 minutes are rejected. Failures throw `WebhookSignatureError`.
+Two signature schemes are accepted, and `constructEvent` prefers the current one:
+
+- **Current:** `Webhook-Signature: t=<unix>,v1=<hex>[,v1=<hex>]`, HMAC-SHA256 over `<t>.<raw body>`. There is one `v1` per active secret, so two appear while a rotated secret is still valid. If this header is present it must verify.
+- **Legacy:** `X-Webhook-Signature` as `sha256=<hex>`, HMAC-SHA256 over `<X-Webhook-Timestamp>.<X-Webhook-Event-Id>.<raw body>`. Used only when `Webhook-Signature` is absent.
+
+Deliveries older or newer than 5 minutes are rejected. Failures throw `WebhookSignatureError`. `signWebhookV1` and `signWebhook` expose the two signing functions for tests.
 
 ## Errors
 

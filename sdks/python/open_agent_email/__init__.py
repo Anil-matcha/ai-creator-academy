@@ -14,7 +14,13 @@ from .client import (
     Suppression,
     attachment_from_bytes,
 )
-from .webhooks import verify_webhook_signature
+from .webhooks import (
+    WebhookSignatureError,
+    construct_event,
+    sign_webhook,
+    sign_webhook_v1,
+    verify_webhook_signature,
+)
 
 __all__ = [
     "AgentEmailClient",
@@ -29,5 +35,9 @@ __all__ = [
     "OtpResult",
     "Suppression",
     "attachment_from_bytes",
+    "WebhookSignatureError",
+    "construct_event",
+    "sign_webhook",
+    "sign_webhook_v1",
     "verify_webhook_signature",
 ]
