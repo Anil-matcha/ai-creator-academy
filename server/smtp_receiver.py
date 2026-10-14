@@ -11,6 +11,7 @@ from email import policy
 from email.utils import parseaddr
 import logging
 import re
+import ssl
 import sys
 import os
 
@@ -35,6 +36,9 @@ READ_TIMEOUT_SECONDS = float(os.environ.get("SMTP_READ_TIMEOUT_SECONDS", 60))
 DATA_TIMEOUT_SECONDS = float(os.environ.get("SMTP_DATA_TIMEOUT_SECONDS", 300))
 MAX_CONNECTIONS = int(os.environ.get("SMTP_MAX_CONNECTIONS", 100))
 STREAM_LINE_LIMIT = int(os.environ.get("SMTP_LINE_LIMIT_BYTES", 16 * 1024))
+TLS_CERT_FILE = os.environ.get("SMTP_TLS_CERT_FILE", "").strip()
+TLS_KEY_FILE = os.environ.get("SMTP_TLS_KEY_FILE", "").strip()
+REQUIRE_STARTTLS = os.environ.get("SMTP_REQUIRE_STARTTLS", "false").strip().lower() in {"1", "true", "yes"}
 if not 1 <= PORT <= 65535:
     raise ValueError("SMTP_PORT must be between 1 and 65535")
 if min(
@@ -49,6 +53,12 @@ if min(
     raise ValueError("SMTP limits and timeouts must be greater than zero")
 if MAX_ATTACHMENT_BYTES > MAX_MESSAGE_BYTES:
     raise ValueError("SMTP_MAX_ATTACHMENT_BYTES cannot exceed SMTP_MAX_MESSAGE_BYTES")
+if bool(TLS_CERT_FILE) != bool(TLS_KEY_FILE):
+    raise ValueError("Set both SMTP_TLS_CERT_FILE and SMTP_TLS_KEY_FILE to enable STARTTLS")
+TLS_CONTEXT = None
+if TLS_CERT_FILE and TLS_KEY_FILE:
+    TLS_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    TLS_CONTEXT.load_cert_chain(TLS_CERT_FILE, TLS_KEY_FILE)
 CONNECTIONS = asyncio.Semaphore(MAX_CONNECTIONS)
 
 def safe_attachment_name(filename: str) -> str:
@@ -82,9 +92,11 @@ class SmtpSession:
         self.reader = reader
         self.writer = writer
         self.mail_from = ""
+        self.mail_from_set = False
         self.rcpt_to = []
         self.helo_domain = ""
         self.peer_ip = None
+        self.tls_active = False
 
     async def send_response(self, code: int, message: str):
         self.writer.write(f"{code} {message}\r\n".encode("utf-8"))
@@ -135,6 +147,7 @@ class SmtpSession:
                     data_too_large = False
                     data_started_at = None
                     self.mail_from = ""
+                    self.mail_from_set = False
                     self.rcpt_to = []
                 else:
                     if len(data_buffer) + len(line_bytes) > MAX_MESSAGE_BYTES:
@@ -153,24 +166,34 @@ class SmtpSession:
             if command_name in {"EHLO", "HELO"}:
                 helo_parts = line.split(maxsplit=1)
                 self.helo_domain = helo_parts[1].strip() if len(helo_parts) > 1 else ""
+                self.mail_from = ""
+                self.mail_from_set = False
+                self.rcpt_to = []
                 if command_name == "EHLO":
-                    self.writer.write(
-                        f"250-open-agent-email\r\n250-SIZE {MAX_MESSAGE_BYTES}\r\n250-8BITMIME\r\n250 HELP\r\n".encode("ascii")
-                    )
+                    capabilities = ["250-open-agent-email"]
+                    if TLS_CONTEXT and not self.tls_active:
+                        capabilities.append("250-STARTTLS")
+                    capabilities.extend([f"250-SIZE {MAX_MESSAGE_BYTES}", "250-8BITMIME", "250 HELP"])
+                    self.writer.write(("\r\n".join(capabilities) + "\r\n").encode("ascii"))
                     await self.writer.drain()
                 else:
                     await self.send_response(250, "Hello, pleased to meet you")
             elif cmd_upper.startswith("MAIL FROM:"):
                 sender_path = extract_smtp_path(line, "MAIL FROM")
-                if sender_path is None:
+                if REQUIRE_STARTTLS and not self.tls_active:
+                    await self.send_response(530, "STARTTLS is required before mail transfer")
+                elif sender_path is None:
                     await self.send_response(501, "Invalid reverse path")
                 else:
                     self.mail_from = sender_path
+                    self.mail_from_set = True
                     self.rcpt_to = []
                     await self.send_response(250, "Sender OK")
             elif cmd_upper.startswith("RCPT TO:"):
                 recipient_path = extract_smtp_path(line, "RCPT TO")
-                if not recipient_path:
+                if not self.mail_from_set:
+                    await self.send_response(503, "Specify MAIL FROM first")
+                elif not recipient_path:
                     await self.send_response(501, "Invalid forward path")
                 else:
                     async with AsyncSessionLocal() as db:
@@ -182,7 +205,9 @@ class SmtpSession:
                     else:
                         await self.send_response(550, "No active agent inbox for recipient")
             elif cmd_upper == "DATA":
-                if not self.rcpt_to:
+                if REQUIRE_STARTTLS and not self.tls_active:
+                    await self.send_response(530, "STARTTLS is required before mail transfer")
+                elif not self.mail_from_set or not self.rcpt_to:
                     await self.send_response(503, "Specify at least one valid recipient before DATA")
                 else:
                     data_mode = True
@@ -190,11 +215,29 @@ class SmtpSession:
                     data_too_large = False
                     data_started_at = asyncio.get_running_loop().time()
                     await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
+            elif cmd_upper == "STARTTLS":
+                if not TLS_CONTEXT:
+                    await self.send_response(502, "STARTTLS is not configured")
+                elif self.tls_active:
+                    await self.send_response(503, "TLS is already active")
+                else:
+                    await self.send_response(220, "Ready to start TLS")
+                    try:
+                        await self.writer.start_tls(TLS_CONTEXT, ssl_handshake_timeout=10)
+                    except (ssl.SSLError, asyncio.TimeoutError, ConnectionError, OSError):
+                        logger.info("SMTP STARTTLS handshake failed for %s", self.peer_ip)
+                        break
+                    self.tls_active = True
+                    self.helo_domain = ""
+                    self.mail_from = ""
+                    self.mail_from_set = False
+                    self.rcpt_to = []
             elif cmd_upper == "QUIT":
                 await self.send_response(221, "Bye")
                 break
             elif cmd_upper == "RSET":
                 self.mail_from = ""
+                self.mail_from_set = False
                 self.rcpt_to = []
                 data_buffer.clear()
                 data_too_large = False
