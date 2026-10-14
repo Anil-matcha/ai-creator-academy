@@ -13,7 +13,7 @@ import {
   Bot
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Agent, Message, MessageAttachment } from "@/lib/types";
+import { Agent, Message, MessageAttachment, OutboundAttachmentInput } from "@/lib/types";
 import { Dropdown } from "@/components/Dropdown";
 
 export default function InboxPage() {
@@ -39,6 +39,8 @@ export default function InboxPage() {
   const [composeRecipient, setComposeRecipient] = useState<string>("");
   const [composeSubject, setComposeSubject] = useState<string>("");
   const [composeBody, setComposeBody] = useState<string>("");
+  const [composeAttachments, setComposeAttachments] = useState<OutboundAttachmentInput[]>([]);
+  const [composeAttachmentError, setComposeAttachmentError] = useState<string>("");
   const [sendingCompose, setSendingCompose] = useState<boolean>(false);
 
   // Load Agents
@@ -156,17 +158,46 @@ export default function InboxPage() {
         recipient: composeRecipient,
         subject: composeSubject,
         body_text: composeBody,
+        attachments: composeAttachments,
       });
       setIsComposeOpen(false);
       setComposeRecipient("");
       setComposeSubject("");
       setComposeBody("");
+      setComposeAttachments([]);
+      setComposeAttachmentError("");
       await loadMessages();
       setSelectedMessage(msg);
     } catch (err: any) {
       alert(`Failed to send email: ${err.message}`);
     } finally {
       setSendingCompose(false);
+    }
+  };
+
+  const handleComposeFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setComposeAttachmentError("");
+    const current = [...composeAttachments];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} is larger than the 10 MiB limit.`);
+        if (current.length >= 10) throw new Error("A message can include at most 10 attachments.");
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+          reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error(`Could not read ${file.name}.`));
+          reader.readAsDataURL(file);
+        });
+        const encoded = dataUrl.split(",", 2)[1];
+        if (!encoded) throw new Error(`Could not encode ${file.name}.`);
+        current.push({ filename: file.name, content_type: file.type || "application/octet-stream", content_base64: encoded });
+      }
+      const totalBytes = current.reduce((total, item) => total + Math.floor(item.content_base64.length * 3 / 4), 0);
+      if (totalBytes > 10 * 1024 * 1024) throw new Error("Attachments together must be 10 MiB or smaller.");
+      setComposeAttachments(current);
+    } catch (error) {
+      setComposeAttachmentError(error instanceof Error ? error.message : "Could not add attachments.");
     }
   };
 
@@ -530,6 +561,27 @@ export default function InboxPage() {
                   onChange={(e) => setComposeBody(e.target.value)}
                   className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] focus:outline-none focus:border-zinc-500 resize-none font-sans"
                 />
+              </div>
+
+              <div>
+                <label className="text-[#8b949e] block mb-1">Attachments (up to 10 files, 10 MiB total)</label>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => { void handleComposeFiles(event.target.files); event.target.value = ""; }}
+                  className="w-full text-[11px] text-[#8b949e] file:mr-2 file:rounded file:border-0 file:bg-[#21262d] file:px-2 file:py-1 file:text-[#e6edf3]"
+                />
+                {composeAttachmentError && <p role="alert" className="mt-1 text-red-400">{composeAttachmentError}</p>}
+                {composeAttachments.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {composeAttachments.map((attachment, index) => (
+                      <li key={`${attachment.filename}-${index}`} className="flex items-center justify-between gap-2 text-[#8b949e]">
+                        <span className="truncate">{attachment.filename}</span>
+                        <button type="button" onClick={() => setComposeAttachments((items) => items.filter((_, itemIndex) => itemIndex !== index))} className="text-red-400 hover:text-red-300">Remove</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
