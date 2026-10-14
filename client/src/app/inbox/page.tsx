@@ -294,9 +294,9 @@ export default function InboxPage() {
                       </span>
                       <span
                         className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
-                          msg.status === "delivered"
+                          msg.status === "delivered" || msg.status === "accepted_by_relay"
                             ? "bg-[#238636]/10 text-[#2ea043] border-[#2ea043]/30"
-                            : msg.status === "pending_review"
+                            : msg.status === "pending_review" || msg.status === "sending"
                             ? "bg-[#9e6a03]/10 text-[#d29922] border-[#d29922]/30"
                             : "bg-[#da3633]/10 text-[#f85149] border-[#f85149]/30"
                         }`}
@@ -335,9 +335,9 @@ export default function InboxPage() {
 
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded border capitalize ${
-                      selectedMessage.status === "delivered"
+                      selectedMessage.status === "delivered" || selectedMessage.status === "accepted_by_relay"
                         ? "bg-[#238636]/10 text-[#2ea043] border-[#2ea043]/30"
-                        : selectedMessage.status === "pending_review"
+                        : selectedMessage.status === "pending_review" || selectedMessage.status === "sending"
                         ? "bg-[#9e6a03]/10 text-[#d29922] border-[#d29922]/30"
                         : "bg-[#da3633]/10 text-[#f85149] border-[#f85149]/30"
                     }`}

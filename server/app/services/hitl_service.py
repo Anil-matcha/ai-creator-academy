@@ -37,11 +37,11 @@ class HitlService:
         if action == "approve":
             review.status = "approved"
             if message:
-                message.status = "delivered"
-                
                 # Fetch agent
                 agent_res = await db.execute(select(Agent).where(Agent.email == message.agent_email))
                 agent = agent_res.scalar_one_or_none()
+
+                message.status = "sending" if message.direction == "outbound" else "delivered"
 
                 msg_payload = {
                     "id": message.id,
@@ -55,16 +55,23 @@ class HitlService:
                     "created_at": message.created_at.isoformat()
                 }
 
-                if message.direction == "outbound" and agent:
-                    # Dispatch to upstream SMTP relay or local loopback
-                    from app.services.email_service import EmailService
-                    delivered, delivery_info = await EmailService.dispatch_to_upstream(db, message, agent)
-                    if not delivered:
-                        message.status = "failed"
+                if message.direction == "outbound":
+                    if agent:
+                        # Dispatch to upstream SMTP relay or local loopback.
+                        from app.services.email_service import EmailService
+                        dispatch_status, delivery_info = await EmailService.dispatch_to_upstream(db, message, agent)
+                    else:
+                        dispatch_status, delivery_info = "failed", "Agent inbox no longer exists"
+                    message.status = dispatch_status
+                    if dispatch_status == "failed":
                         message.delivery_error = delivery_info
                     msg_payload["status"] = message.status
                     msg_payload["delivery_error"] = message.delivery_error
-                    event_name = "email.sent" if delivered else "email.failed"
+                    event_name = {
+                        "failed": "email.failed",
+                        "accepted_by_relay": "email.accepted",
+                        "delivered": "email.sent",
+                    }[dispatch_status]
                     await ws_manager.send_agent_message(message.agent_email, event_name, msg_payload)
                     await ws_manager.broadcast_event(event_name, msg_payload)
                 else:

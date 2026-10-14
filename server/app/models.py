@@ -49,7 +49,7 @@ class Message(Base):
     delivery_error = Column(Text, nullable=True)
     
     # State & Threat
-    status = Column(String(32), default="delivered", index=True)  # delivered, pending_review, rejected, blocked, failed
+    status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, pending_review, rejected, blocked, failed
     threat_score = Column(Float, default=0.0)
     threat_details = Column(Text, default="[]")  # JSON encoded list of threats detected
     

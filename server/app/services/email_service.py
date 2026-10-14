@@ -87,8 +87,12 @@ def _send_smtp_sync(
             server.login(username, password)
 
         server.sendmail(from_addr, [to_addr], msg.as_string())
-        server.quit()
-        return True, "Delivered to upstream SMTP relay"
+        try:
+            server.quit()
+        except Exception as e:
+            # DATA was accepted; a later QUIT failure does not undo relay acceptance.
+            logger.debug(f"SMTP relay accepted the message but QUIT failed: {e}")
+        return True, "Accepted by upstream SMTP relay"
     except Exception as e:
         logger.error(f"SMTP delivery failed: {e}")
         return False, str(e)
@@ -123,12 +127,12 @@ class EmailService:
         db: AsyncSession,
         message: Message,
         agent: Agent
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[str, str]:
         """
         Dispatches an accepted outbound email:
         - If recipient is a local agent, performs local loopback delivery.
-        - If recipient is external and Upstream SMTP is configured, relays via SMTP.
-        - If upstream SMTP is unavailable, returns a delivery failure.
+        - Local loopback is delivered directly to the recipient inbox.
+        - External SMTP success means accepted by the relay, not delivered to the recipient.
         """
         # 1. Local loopback check
         recip_agent_res = await db.execute(select(Agent).where(Agent.email == message.recipient))
@@ -146,14 +150,14 @@ class EmailService:
                 "thread_id": message.thread_id,
                 "created_at": message.created_at.isoformat()
             })
-            return True, "Delivered locally to agent inbox (loopback)"
+            return "delivered", "Delivered locally to agent inbox (loopback)"
 
         # 2. Upstream SMTP relay check
         smtp_res = await db.execute(select(SmtpConfig).where(SmtpConfig.id == "default"))
         config = smtp_res.scalar_one_or_none()
         if not config or not config.enabled or not config.host:
             logger.info(f"Upstream SMTP relay not configured. Could not deliver to {message.recipient}")
-            return False, "Upstream SMTP relay is not configured or enabled"
+            return "failed", "Upstream SMTP relay is not configured or enabled"
 
         from_addr = config.from_email or agent.email
         port_num = int(config.port) if str(config.port).isdigit() else 587
@@ -177,7 +181,7 @@ class EmailService:
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )
-        return success, info
+        return ("accepted_by_relay" if success else "failed"), info
 
     @classmethod
     async def process_inbound(
@@ -384,7 +388,7 @@ class EmailService:
         if agent.hitl_enabled:
             status = "pending_review"
         else:
-            status = "delivered"
+            status = "sending"
 
         message = Message(
             id=msg_id,
@@ -453,15 +457,19 @@ class EmailService:
             })
         else:
             # Actually dispatch via SMTP / local loopback
-            delivered, delivery_info = await cls.dispatch_to_upstream(db, message, agent)
-            if not delivered:
-                message.status = "failed"
+            dispatch_status, delivery_info = await cls.dispatch_to_upstream(db, message, agent)
+            message.status = dispatch_status
+            if dispatch_status == "failed":
                 message.delivery_error = delivery_info
-                await db.commit()
-                await db.refresh(message)
+            await db.commit()
+            await db.refresh(message)
             event_data["status"] = message.status
             event_data["delivery_error"] = message.delivery_error
-            event_name = "email.sent" if delivered else "email.failed"
+            event_name = {
+                "failed": "email.failed",
+                "accepted_by_relay": "email.accepted",
+                "delivered": "email.sent",
+            }[dispatch_status]
             await ws_manager.send_agent_message(agent.email, event_name, event_data)
             await ws_manager.broadcast_event(event_name, event_data)
 

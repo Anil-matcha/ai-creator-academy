@@ -150,9 +150,9 @@ export default function OverviewPage() {
                   <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                        msg.status === "delivered"
+                        msg.status === "delivered" || msg.status === "accepted_by_relay"
                           ? "bg-[#238636]/10 text-[#2ea043] border-[#2ea043]/30"
-                          : msg.status === "pending_review"
+                          : msg.status === "pending_review" || msg.status === "sending"
                           ? "bg-[#9e6a03]/10 text-[#d29922] border-[#d29922]/30"
                           : "bg-[#da3633]/10 text-[#f85149] border-[#f85149]/30"
                       }`}
