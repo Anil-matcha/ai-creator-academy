@@ -28,6 +28,7 @@ export default function SettingsPage() {
     port: "587",
     username: "",
     password_configured: false,
+    password_encryption_enabled: false,
     use_tls: true,
     use_ssl: false,
     from_email: "",
@@ -152,6 +153,11 @@ export default function SettingsPage() {
             {Object.entries(SMTP_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
           </select>
           <p className="text-[11px] text-[#8b949e] mt-1">Presets fill in SMTP connection details. Enter credentials from your provider; Amazon SES requires replacing the host with your region’s SMTP endpoint.</p>
+          <p role="status" className={`mt-2 text-[11px] ${config.password_encryption_enabled ? "text-[#3fb950]" : "text-[#d29922]"}`}>
+            {config.password_encryption_enabled
+              ? "SMTP credentials are encrypted at rest. Keep the encryption key backed up with your database."
+              : "SMTP credential encryption is off. Set SMTP_CONFIG_ENCRYPTION_KEY on the server before saving a relay password."}
+          </p>
         </div>
         <div className="flex items-center justify-between pb-4 border-b border-[#30363d]">
           <div>

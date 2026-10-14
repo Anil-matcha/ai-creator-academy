@@ -32,7 +32,7 @@ MCP_TOOLS = [
             "properties": {
                 "agent_email": {"type": "string", "description": "Agent email address"},
                 "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Optional filter"},
-                "status": {"type": "string", "enum": ["delivered", "accepted_by_relay", "sending", "pending_review", "rejected", "blocked", "failed"]},
+                "status": {"type": "string", "enum": ["delivered", "accepted_by_relay", "sending", "delivery_unknown", "pending_review", "rejected", "blocked", "failed"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
             },
             "required": ["agent_email"]

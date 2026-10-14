@@ -14,21 +14,70 @@ from app.services.ws_manager import ws_manager
 logger = logging.getLogger("outbound_worker")
 MAX_ATTEMPTS = 8
 LEASE_SECONDS = 300
+STALE_DELIVERY_UNKNOWN = (
+    "Worker lease expired while dispatching. The SMTP relay may have accepted the message; "
+    "automatic retry was stopped to avoid silently sending a duplicate. An administrator "
+    "must confirm duplicate risk before retrying."
+)
 
 
 async def _dispatch_one() -> bool:
     now = datetime.datetime.utcnow()
     stale_before = now - datetime.timedelta(seconds=LEASE_SECONDS)
     async with AsyncSessionLocal() as db:
+        # A worker may die after SMTP accepted the message but before recording success.
+        # Never automatically reclaim that job: SMTP cannot tell us whether acceptance happened.
+        stale_result = await db.execute(
+            select(OutboundJob)
+            .where(
+                OutboundJob.status == "processing",
+                or_(OutboundJob.locked_at.is_(None), OutboundJob.locked_at < stale_before),
+            )
+            .order_by(OutboundJob.created_at)
+            .limit(1)
+        )
+        stale_job = stale_result.scalar_one_or_none()
+        if stale_job:
+            stale_id = stale_job.id
+            stale_message_id = stale_job.message_id
+            marked = await db.execute(
+                update(OutboundJob)
+                .where(
+                    OutboundJob.id == stale_id,
+                    OutboundJob.status == "processing",
+                    or_(OutboundJob.locked_at.is_(None), OutboundJob.locked_at < stale_before),
+                )
+                .values(status="uncertain", locked_at=None, last_error=STALE_DELIVERY_UNKNOWN)
+            )
+            if marked.rowcount == 1:
+                message = await db.get(Message, stale_message_id)
+                if message:
+                    message.status = "delivery_unknown"
+                    message.delivery_error = STALE_DELIVERY_UNKNOWN
+                await db.commit()
+                logger.error("Outbound message %s has unknown delivery; automatic retry stopped", stale_message_id)
+                if message:
+                    payload = {
+                        "id": message.id,
+                        "agent_email": message.agent_email,
+                        "direction": message.direction,
+                        "sender": message.sender,
+                        "recipient": message.recipient,
+                        "subject": message.subject,
+                        "status": "delivery_unknown",
+                        "thread_id": message.thread_id,
+                        "created_at": message.created_at.isoformat(),
+                        "delivery_error": message.delivery_error,
+                    }
+                    await ws_manager.send_agent_message(message.agent_email, "email.delivery_unknown", payload)
+                    await ws_manager.broadcast_event("email.delivery_unknown", payload)
+            else:
+                await db.rollback()
+            return True
+
         result = await db.execute(
             select(OutboundJob)
-            .where(or_(
-                (OutboundJob.status == "pending") & (OutboundJob.available_at <= now),
-                (OutboundJob.status == "processing") & or_(
-                    OutboundJob.locked_at.is_(None),
-                    OutboundJob.locked_at < stale_before,
-                ),
-            ))
+            .where(OutboundJob.status == "pending", OutboundJob.available_at <= now)
             .order_by(OutboundJob.available_at, OutboundJob.created_at)
             .limit(1)
         )
@@ -40,10 +89,7 @@ async def _dispatch_one() -> bool:
         claim = update(OutboundJob).where(
             OutboundJob.id == job.id,
             OutboundJob.status == old_status,
-            (OutboundJob.available_at <= now) if old_status == "pending" else or_(
-                OutboundJob.locked_at.is_(None),
-                OutboundJob.locked_at < stale_before,
-            ),
+            OutboundJob.available_at <= now,
         ).values(status="processing", locked_at=now, attempts=OutboundJob.attempts + 1)
         claimed = await db.execute(claim)
         if claimed.rowcount != 1:
@@ -51,6 +97,7 @@ async def _dispatch_one() -> bool:
             return True
         await db.commit()
         await db.refresh(job)
+        claim_locked_at = job.locked_at
 
         message = await db.get(Message, job.message_id)
         agent = await db.get(Agent, message.agent_email) if message else None
@@ -67,10 +114,24 @@ async def _dispatch_one() -> bool:
         message = await db.get(Message, job.message_id)
         if status == "failed" and job.attempts < MAX_ATTEMPTS:
             delay = min(3600, 2 ** min(job.attempts, 10))
-            job.status = "pending"
-            job.available_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=delay)
-            job.locked_at = None
-            job.last_error = info
+            rescheduled = await db.execute(
+                update(OutboundJob)
+                .where(
+                    OutboundJob.id == job.id,
+                    OutboundJob.status == "processing",
+                    OutboundJob.locked_at == claim_locked_at,
+                )
+                .values(
+                    status="pending",
+                    available_at=datetime.datetime.utcnow() + datetime.timedelta(seconds=delay),
+                    locked_at=None,
+                    last_error=info,
+                )
+            )
+            if rescheduled.rowcount != 1:
+                await db.rollback()
+                logger.warning("Discarding stale dispatch result for outbound message %s", job.message_id)
+                return True
             if message:
                 message.status = "sending"
                 message.delivery_error = info
@@ -78,9 +139,23 @@ async def _dispatch_one() -> bool:
             logger.warning("Outbound message %s failed; retry %s scheduled", job.message_id, job.attempts)
             return True
 
-        job.status = "failed" if status == "failed" else "complete"
-        job.locked_at = None
-        job.last_error = info if status == "failed" else None
+        completed = await db.execute(
+            update(OutboundJob)
+            .where(
+                OutboundJob.id == job.id,
+                OutboundJob.status == "processing",
+                OutboundJob.locked_at == claim_locked_at,
+            )
+            .values(
+                status="failed" if status == "failed" else "complete",
+                locked_at=None,
+                last_error=info if status == "failed" else None,
+            )
+        )
+        if completed.rowcount != 1:
+            await db.rollback()
+            logger.warning("Discarding stale dispatch result for outbound message %s", job.message_id)
+            return True
         if message:
             message.status = status
             message.delivery_error = info if status == "failed" else None

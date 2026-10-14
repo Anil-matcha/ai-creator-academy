@@ -52,6 +52,9 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_by VARCHAR(128)"))
             if "retried_at" not in outbox_columns:
                 sync_conn.execute(text(f"ALTER TABLE outbound_jobs ADD COLUMN retried_at {timestamp_type}"))
+            retry_event_columns = {column["name"] for column in inspector.get_columns("outbound_retry_events")}
+            if "previous_status" not in retry_event_columns:
+                sync_conn.execute(text("ALTER TABLE outbound_retry_events ADD COLUMN previous_status VARCHAR(24)"))
             if sync_conn.dialect.name == "postgresql":
                 smtp_columns = {column["name"]: column for column in inspector.get_columns("smtp_configs")}
                 if str(smtp_columns.get("password", {}).get("type", "")).upper() != "TEXT":

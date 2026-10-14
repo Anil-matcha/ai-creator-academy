@@ -10,6 +10,7 @@ from app.schemas import SmtpConfigUpdate, SmtpConfigResponse, SmtpTestRequest, S
 from app.services.email_service import _send_smtp_sync
 from app.security import require_admin
 from app.services.smtp_secrets import decrypt_password, encrypt_password
+from app.config import settings
 
 router = APIRouter(prefix="/v1/settings", tags=["Settings"], dependencies=[Depends(require_admin)])
 
@@ -40,6 +41,7 @@ async def get_smtp_config(db: AsyncSession = Depends(get_db)):
         port=str(config.port),
         username=config.username,
         password_configured=bool(config.password),
+        password_encryption_enabled=bool(settings.SMTP_CONFIG_ENCRYPTION_KEY),
         use_tls=config.use_tls,
         use_ssl=config.use_ssl,
         from_email=config.from_email,
@@ -78,6 +80,7 @@ async def update_smtp_config(payload: SmtpConfigUpdate, db: AsyncSession = Depen
         port=str(config.port),
         username=config.username,
         password_configured=bool(config.password),
+        password_encryption_enabled=bool(settings.SMTP_CONFIG_ENCRYPTION_KEY),
         use_tls=config.use_tls,
         use_ssl=config.use_ssl,
         from_email=config.from_email,

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], depe
 async def list_messages(
     email: str,
     direction: Optional[str] = Query(None, description="inbound or outbound"),
-    status: Optional[str] = Query(None, description="delivered, accepted_by_relay, sending, pending_review, rejected, blocked, failed"),
+    status: Optional[str] = Query(None, description="delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed"),
     thread_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db)

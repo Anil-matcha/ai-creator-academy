@@ -57,7 +57,7 @@ class Message(Base):
     inbound_dedup_hash = Column(String(64), nullable=True)
     
     # State & Threat
-    status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, pending_review, rejected, blocked, failed
+    status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed
     threat_score = Column(Float, default=0.0)
     threat_details = Column(Text, default="[]")  # JSON encoded list of threats detected
     
@@ -87,7 +87,7 @@ class OutboundJob(Base):
 
     id = Column(String(64), primary_key=True, index=True)
     message_id = Column(String(64), ForeignKey("messages.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
-    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, complete, failed
+    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, complete, failed, uncertain
     attempts = Column(Integer, nullable=False, default=0)
     available_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
     locked_at = Column(DateTime, nullable=True, index=True)
@@ -106,6 +106,7 @@ class OutboundRetryEvent(Base):
     requested_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     previous_attempts = Column(Integer, nullable=False)
     previous_error = Column(Text, nullable=True)
+    previous_status = Column(String(24), nullable=True)
 
 
 class ReviewItem(Base):

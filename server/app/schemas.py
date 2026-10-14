@@ -172,6 +172,7 @@ class OutboundRetryEventResponse(BaseModel):
     requested_at: datetime
     previous_attempts: int
     previous_error: Optional[str]
+    previous_status: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -216,6 +217,7 @@ class SmtpConfigResponse(BaseModel):
     port: str
     username: str
     password_configured: bool
+    password_encryption_enabled: bool
     use_tls: bool
     use_ssl: bool
     from_email: str

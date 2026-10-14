@@ -46,7 +46,7 @@ export interface Message {
   dmarc_status: "pass" | "fail" | "none" | "temperror" | "unverified";
   verified_domain?: string;
   delivery_error?: string | null;
-  status: "delivered" | "accepted_by_relay" | "sending" | "pending_review" | "rejected" | "blocked" | "failed";
+  status: "delivered" | "accepted_by_relay" | "sending" | "delivery_unknown" | "pending_review" | "rejected" | "blocked" | "failed";
   threat_score: number;
   threat_details: string; // JSON string
   created_at: string;
@@ -102,6 +102,7 @@ export interface SmtpConfig {
   port: string;
   username: string;
   password_configured: boolean;
+  password_encryption_enabled: boolean;
   use_tls: boolean;
   use_ssl: boolean;
   from_email: string;
@@ -130,7 +131,7 @@ export interface ApiKeyCreated {
   expires_at?: string | null;
 }
 
-export type OutboundJobStatus = "pending" | "processing" | "complete" | "failed";
+export type OutboundJobStatus = "pending" | "processing" | "complete" | "failed" | "uncertain";
 
 export interface OutboundJob {
   id: string;
@@ -152,6 +153,7 @@ export interface OutboundRetryEvent {
   requested_at: string;
   previous_attempts: number;
   previous_error?: string | null;
+  previous_status?: string | null;
 }
 
 export interface Stats {

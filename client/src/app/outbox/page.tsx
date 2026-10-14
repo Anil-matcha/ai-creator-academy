@@ -11,6 +11,7 @@ const FILTERS: { label: string; value: OutboundJobStatus | "" }[] = [
   { label: "Processing", value: "processing" },
   { label: "Complete", value: "complete" },
   { label: "Failed", value: "failed" },
+  { label: "Uncertain", value: "uncertain" },
 ];
 
 const statusColor: Record<OutboundJobStatus, string> = {
@@ -18,6 +19,7 @@ const statusColor: Record<OutboundJobStatus, string> = {
   processing: "text-blue-400 border-blue-400/40 bg-blue-400/10",
   complete: "text-[#3fb950] border-[#3fb950]/40 bg-[#3fb950]/10",
   failed: "text-[#f85149] border-[#f85149]/40 bg-[#f85149]/10",
+  uncertain: "text-[#d29922] border-[#d29922]/40 bg-[#d29922]/10",
 };
 
 function formatDate(value?: string | null) {
@@ -76,11 +78,13 @@ export default function OutboxPage() {
   }, [selectedJob?.id]);
 
   const retryJob = async () => {
-    if (!selectedJob || selectedJob.status !== "failed") return;
+    if (!selectedJob || (selectedJob.status !== "failed" && selectedJob.status !== "uncertain")) return;
+    const confirmDuplicateRisk = selectedJob.status === "uncertain";
+    if (confirmDuplicateRisk && !window.confirm("The relay may already have accepted this email. Retrying can send a duplicate. Continue?")) return;
     setRetrying(true);
     setActionError("");
     try {
-      const updated = await api.retryOutboundJob(selectedJob.id);
+      const updated = await api.retryOutboundJob(selectedJob.id, confirmDuplicateRisk);
       setSelectedJob(updated);
       try {
         setRetryEvents(await api.getOutboundRetryEvents(updated.id, 100));
@@ -152,7 +156,8 @@ export default function OutboxPage() {
               </div>
               {selectedJob.last_error && <div className="rounded border border-[#f85149]/30 bg-[#f85149]/10 p-2.5 text-[11px] text-[#ff7b72]"><div className="font-medium mb-1">Last delivery error</div><div className="whitespace-pre-wrap break-words">{selectedJob.last_error}</div></div>}
               {selectedJob.retried_at && <p className="text-[10px] text-[#8b949e]">Last manually retried {formatDate(selectedJob.retried_at)} by <span className="font-mono text-[#e6edf3]">{selectedJob.retried_by || "unknown"}</span></p>}
-              {selectedJob.status === "failed" && <button onClick={retryJob} disabled={retrying} className="w-full rounded bg-[#238636] px-3 py-2 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50 flex items-center justify-center gap-2"><RotateCcw className="w-3.5 h-3.5" />{retrying ? "Queueing retry…" : "Retry failed job"}</button>}
+              {selectedJob.status === "uncertain" && <p className="rounded border border-[#d29922]/30 bg-[#d29922]/10 p-2.5 text-[11px] text-[#d29922]">Delivery could not be confirmed. Retrying may send a duplicate.</p>}
+              {(selectedJob.status === "failed" || selectedJob.status === "uncertain") && <button onClick={retryJob} disabled={retrying} className="w-full rounded bg-[#238636] px-3 py-2 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50 flex items-center justify-center gap-2"><RotateCcw className="w-3.5 h-3.5" />{retrying ? "Queueing retry…" : selectedJob.status === "uncertain" ? "Retry with duplicate risk" : "Retry failed job"}</button>}
               {actionError && <p role="alert" className="text-[11px] text-[#ff7b72]">{actionError}</p>}
             </div>
             <div className="flex-1 overflow-y-auto p-4">
@@ -160,7 +165,7 @@ export default function OutboxPage() {
               {historyLoading ? <div className="text-xs text-[#8b949e]">Loading retry history…</div> : historyError ? <div role="alert" className="text-xs text-[#ff7b72]">{historyError}</div> : retryEvents.length === 0 ? <div className="rounded border border-dashed border-[#30363d] p-4 text-center text-xs text-[#8b949e]">No manual retry events recorded.</div> : <div className="space-y-2">
                 {retryEvents.map((event) => <article key={event.id} className="rounded border border-[#30363d] bg-[#0d1117] p-3">
                   <div className="flex items-start justify-between gap-2"><div className="flex items-center gap-1.5 text-xs text-[#e6edf3]"><Send className="w-3 h-3 text-[#8b949e]" />Retry requested</div><time className="text-[10px] text-[#8b949e]">{formatDate(event.requested_at)}</time></div>
-                  <div className="mt-2 text-[11px] text-[#8b949e]">By <span className="font-mono text-[#c9d1d9]">{event.actor}</span> · {event.previous_attempts} prior attempt{event.previous_attempts === 1 ? "" : "s"}</div>
+                  <div className="mt-2 text-[11px] text-[#8b949e]">By <span className="font-mono text-[#c9d1d9]">{event.actor}</span> · retry from {event.previous_status || "unknown"} · {event.previous_attempts} prior attempt{event.previous_attempts === 1 ? "" : "s"}</div>
                   {event.previous_error && <div className="mt-2 border-l-2 border-[#f85149]/50 pl-2 text-[10px] text-[#ff7b72] whitespace-pre-wrap break-words">{event.previous_error}</div>}
                 </article>)}
               </div>}
