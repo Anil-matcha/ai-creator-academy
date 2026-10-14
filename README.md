@@ -137,6 +137,8 @@ Outbound message statuses distinguish local delivery from relay acceptance: `del
 
 REST send and reply requests accept an optional `Idempotency-Key` header (1–128 characters); MCP `send_message` and `reply_to_message` accept an optional `idempotency_key` argument. Repeating a request with the same key and content returns the original message; using that key with different content returns HTTP 409. Keys are scoped to the agent inbox and stored with a request digest.
 
+REST and MCP send/reply calls accept attachments as `{filename, content_type, content_base64}` items. The defaults allow up to 10 files, 10 MiB per file, and 20 MiB total decoded content; configure `OUTBOUND_MAX_ATTACHMENTS`, `OUTBOUND_MAX_ATTACHMENT_BYTES`, and `OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES`. JSON base64 adds overhead and is also subject to the HTTP request-body limit.
+
 ### 2. Custom Domains & DNS (`/domains`)
 1. Add your agent domain (e.g., `agents.yourdomain.com`).
 2. Add the generated DNS records to your DNS registrar (Cloudflare, Route53, Namecheap):
@@ -167,7 +169,7 @@ REST and MCP requests are limited to 120 per socket peer IP per rolling minute b
 
 REST inbox listings are capped at 500 messages and review lists at 200; MCP message and review tools accept bounded limits up to 100.
 
-The HTTP server binds to `127.0.0.1:8000` by default; Docker Compose sets `HOST=0.0.0.0` inside the container so the published port and dashboard can reach it. The SMTP listener also defaults to loopback locally; Compose sets `SMTP_HOST=0.0.0.0` and publishes port `2525`. Configure `HOST`, `PORT`, `SMTP_HOST`, and `SMTP_PORT` for other deployments. Uvicorn caps concurrent connections/tasks at 200 and closes idle keepalive connections after 5 seconds by default; set `HTTP_MAX_CONCURRENCY` and `HTTP_KEEPALIVE_TIMEOUT_SECONDS` to adjust those bounds. HTTP request bodies are capped at 10 MiB by default; configure `HTTP_MAX_REQUEST_BYTES`. Requests over the concurrency cap receive HTTP 503 and oversized bodies receive HTTP 413.
+The HTTP server binds to `127.0.0.1:8000` by default; Docker Compose sets `HOST=0.0.0.0` inside the container so the published port and dashboard can reach it. The SMTP listener also defaults to loopback locally; Compose sets `SMTP_HOST=0.0.0.0` and publishes port `2525`. Configure `HOST`, `PORT`, `SMTP_HOST`, and `SMTP_PORT` for other deployments. Uvicorn caps concurrent connections/tasks at 200 and closes idle keepalive connections after 5 seconds by default; set `HTTP_MAX_CONCURRENCY` and `HTTP_KEEPALIVE_TIMEOUT_SECONDS` to adjust those bounds. HTTP request bodies are capped at 15 MiB by default; configure `HTTP_MAX_REQUEST_BYTES`. Requests over the concurrency cap receive HTTP 503 and oversized bodies receive HTTP 413.
 
 SQLite is the default for a single-process self-hosted setup. PostgreSQL can be selected with an async SQLAlchemy URL such as `postgresql+asyncpg://user:password@db-host:5432/open_agent_email`; `asyncpg` is included in the server requirements. Database migrations are currently additive startup updates; Alembic-managed migration history is still planned.
 

@@ -61,6 +61,12 @@ export interface MessageAttachment {
   created_at: string;
 }
 
+export interface OutboundAttachmentInput {
+  filename: string;
+  content_type?: string;
+  content_base64: string;
+}
+
 export interface ReviewItem {
   id: string;
   message_id: string;

@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import Agent, Message, MessageAttachment
 from app.schemas import MessageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest
 from app.services.email_service import EmailService
+from app.services.attachment_utils import decode_attachment_inputs
 from app.security import require_agent_access, require_write
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
@@ -85,6 +86,7 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
         body_text=req.body_text,
         body_html=req.body_html,
         thread_id=req.thread_id,
+        attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
     )
     return message
@@ -119,6 +121,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
         thread_id=original_msg.thread_id,
         in_reply_to=in_reply_to,
         references=references,
+        attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
     )
     return reply_msg

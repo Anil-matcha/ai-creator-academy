@@ -2,6 +2,7 @@ import {
   Agent,
   Message,
   MessageAttachment,
+  OutboundAttachmentInput,
   ReviewItem,
   Stats,
   Domain,
@@ -71,20 +72,24 @@ export const api = {
 
   sendMessage: (
     agentEmail: string,
-    data: { recipient: string; subject: string; body_text: string; body_html?: string; thread_id?: string }
+    data: { recipient: string; subject: string; body_text: string; body_html?: string; thread_id?: string; attachments?: OutboundAttachmentInput[] },
+    idempotencyKey?: string,
   ) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages`, {
       method: "POST",
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
       body: JSON.stringify(data),
     }),
 
   replyMessage: (
     agentEmail: string,
     messageId: string,
-    data: { body_text: string; body_html?: string }
+    data: { body_text: string; body_html?: string; attachments?: OutboundAttachmentInput[] },
+    idempotencyKey?: string,
   ) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/reply`, {
       method: "POST",
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
       body: JSON.stringify(data),
     }),
 

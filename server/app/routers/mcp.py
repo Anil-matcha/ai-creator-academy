@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import Agent, Message, ReviewItem
 from app.services.email_service import EmailService
+from app.services.attachment_utils import decode_attachment_inputs
 from app.services.hitl_service import HitlService
 from app.security import Principal, get_principal
 
@@ -58,6 +59,11 @@ MCP_TOOLS = [
                 "recipient": {"type": "string"},
                 "subject": {"type": "string"},
                 "body_text": {"type": "string"},
+                "attachments": {"type": "array", "items": {"type": "object", "properties": {
+                    "filename": {"type": "string", "maxLength": 255},
+                    "content_type": {"type": "string", "maxLength": 255},
+                    "content_base64": {"type": "string"}
+                }, "required": ["filename", "content_base64"]}},
                 "idempotency_key": {"type": "string", "maxLength": 128, "description": "Optional retry key; reuse only for the same request"}
             },
             "required": ["agent_email", "recipient", "subject", "body_text"]
@@ -72,6 +78,11 @@ MCP_TOOLS = [
                 "agent_email": {"type": "string"},
                 "message_id": {"type": "string"},
                 "body_text": {"type": "string"},
+                "attachments": {"type": "array", "items": {"type": "object", "properties": {
+                    "filename": {"type": "string", "maxLength": 255},
+                    "content_type": {"type": "string", "maxLength": 255},
+                    "content_base64": {"type": "string"}
+                }, "required": ["filename", "content_base64"]}},
                 "idempotency_key": {"type": "string", "maxLength": 128, "description": "Optional retry key; reuse only for the same request"}
             },
             "required": ["agent_email", "message_id", "body_text"]
@@ -296,6 +307,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             recipient=args["recipient"],
             subject=args["subject"],
             body_text=args["body_text"],
+            attachments=decode_attachment_inputs(args.get("attachments")),
             idempotency_key=args.get("idempotency_key"),
         )
         return json.dumps({
@@ -324,6 +336,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             recipient=reply_recipient,
             subject=subj,
             body_text=args["body_text"],
+            attachments=decode_attachment_inputs(args.get("attachments")),
             thread_id=orig.thread_id,
             in_reply_to=in_reply_to,
             references=references,

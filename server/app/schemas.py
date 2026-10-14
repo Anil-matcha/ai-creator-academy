@@ -54,16 +54,24 @@ class ThreatScanResult(BaseModel):
 
 
 # --- Message Schemas ---
+class MessageAttachmentInput(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field("application/octet-stream", max_length=255)
+    content_base64: str = Field(..., min_length=1)
+
+
 class MessageSendRequest(BaseModel):
     recipient: str = Field(..., example="customer@example.com")
     subject: str = Field(..., example="Update on your support ticket #492")
     body_text: str = Field(..., example="Hello! We have reviewed your inquiry and resolved the issue.")
     body_html: Optional[str] = None
     thread_id: Optional[str] = None
+    attachments: Optional[List[MessageAttachmentInput]] = None
 
 class MessageReplyRequest(BaseModel):
     body_text: str = Field(..., example="Thank you for confirming. I am closing this ticket now.")
     body_html: Optional[str] = None
+    attachments: Optional[List[MessageAttachmentInput]] = None
 
 class MessageForwardRequest(BaseModel):
     recipient: str = Field(..., min_length=3, max_length=320, example="support-lead@example.com")
