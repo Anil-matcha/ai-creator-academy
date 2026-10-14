@@ -36,9 +36,15 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE review_items ADD COLUMN reviewed_by VARCHAR(128)"))
             if "raw_message_id" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN raw_message_id VARCHAR(998)"))
+            if "idempotency_key" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN idempotency_key VARCHAR(128)"))
+            if "request_hash" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN request_hash VARCHAR(64)"))
             message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
             if "ix_messages_raw_message_id" not in message_indexes:
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
+            if "uq_messages_agent_idempotency_key" not in message_indexes:
+                sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_idempotency_key ON messages (agent_email, idempotency_key)"))
         await conn.run_sync(apply_additive_schema_updates)
     logger.info("Database schema ready.")
 

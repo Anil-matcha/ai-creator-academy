@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+import hashlib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -14,6 +15,8 @@ from email.utils import formatdate, make_msgid
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException
 
 from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig
 from app.schemas import ThreatScanResult
@@ -374,12 +377,43 @@ class EmailService:
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Message:
         """
         Sends an outbound email as the agent.
         If HITL approval gate is enabled, places message into pending_review.
         Otherwise, delivers to local inbox or upstream SMTP relay.
         """
+        request_hash = None
+        if idempotency_key is not None:
+            idempotency_key = idempotency_key.strip()
+            if not idempotency_key or len(idempotency_key) > 128:
+                raise HTTPException(status_code=400, detail="Idempotency-Key must contain 1 to 128 characters")
+            canonical_request = json.dumps({
+                "recipient": recipient,
+                "subject": subject,
+                "body_text": body_text,
+                "body_html": body_html,
+                "thread_id": thread_id,
+                "in_reply_to": in_reply_to,
+                "references": references,
+                "attachments": [
+                    {"filename": item["filename"], "content_type": item["content_type"],
+                     "content_sha256": hashlib.sha256(item["content"]).hexdigest()}
+                    for item in attachments or []
+                ],
+            }, sort_keys=True, separators=(",", ":"))
+            request_hash = hashlib.sha256(canonical_request.encode("utf-8")).hexdigest()
+            result = await db.execute(select(Message).where(
+                Message.agent_email == agent.email,
+                Message.idempotency_key == idempotency_key,
+            ))
+            existing = result.scalar_one_or_none()
+            if existing:
+                if existing.request_hash != request_hash:
+                    raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+                return existing
+
         msg_id = f"msg_{uuid.uuid4().hex[:12]}"
         rfc_id = cls.generate_message_id(agent.email.split("@")[-1])
         tid = thread_id or f"th_{uuid.uuid4().hex[:12]}"
@@ -412,6 +446,8 @@ class EmailService:
             threat_details="[]",
             created_at=datetime.datetime.utcnow()
         )
+        message.idempotency_key = idempotency_key
+        message.request_hash = request_hash
         db.add(message)
 
         for attachment in attachments or []:
@@ -434,7 +470,22 @@ class EmailService:
             )
             db.add(review_item)
 
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if not idempotency_key:
+                raise
+            result = await db.execute(select(Message).where(
+                Message.agent_email == agent.email,
+                Message.idempotency_key == idempotency_key,
+            ))
+            existing = result.scalar_one_or_none()
+            if not existing:
+                raise
+            if existing.request_hash != request_hash:
+                raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+            return existing
         await db.refresh(message)
 
         event_data = {

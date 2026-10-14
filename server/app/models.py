@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary
+from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -24,6 +24,7 @@ class Agent(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (UniqueConstraint("agent_email", "idempotency_key", name="uq_messages_agent_idempotency_key"),)
 
     id = Column(String(64), primary_key=True, index=True)
     agent_email = Column(String(255), ForeignKey("agents.email"), index=True, nullable=False)
@@ -47,6 +48,8 @@ class Message(Base):
     dmarc_status = Column(String(32), default="unverified")
     verified_domain = Column(String(255), nullable=True)
     delivery_error = Column(Text, nullable=True)
+    idempotency_key = Column(String(128), nullable=True)
+    request_hash = Column(String(64), nullable=True)
     
     # State & Threat
     status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, pending_review, rejected, blocked, failed

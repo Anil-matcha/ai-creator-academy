@@ -135,6 +135,8 @@ These are SMTP relay presets, not provider-specific API integrations. Gmail requ
 
 Outbound message statuses distinguish local delivery from relay acceptance: `delivered` means the message reached another local agent inbox, `accepted_by_relay` means an external SMTP relay accepted it for processing, `sending` means dispatch is in progress, and `failed` means dispatch failed. The current SMTP integration does not receive later bounce or final-delivery events, so relay acceptance is not proof that a person received the email.
 
+REST send and reply requests accept an optional `Idempotency-Key` header (1–128 characters). Repeating a request with the same key and content returns the original message; using that key with different content returns HTTP 409. Keys are scoped to the agent inbox and stored with a request digest.
+
 ### 2. Custom Domains & DNS (`/domains`)
 1. Add your agent domain (e.g., `agents.yourdomain.com`).
 2. Add the generated DNS records to your DNS registrar (Cloudflare, Route53, Namecheap):

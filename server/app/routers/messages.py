@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
@@ -70,7 +70,7 @@ async def download_message_attachment(email: str, message_id: str, attachment_id
     )
 
 @router.post("", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
-async def send_message(email: str, req: MessageSendRequest, db: AsyncSession = Depends(get_db)):
+async def send_message(email: str, req: MessageSendRequest, request: Request, db: AsyncSession = Depends(get_db)):
     # Verify agent exists
     ag_res = await db.execute(select(Agent).where(Agent.email == email))
     agent = ag_res.scalar_one_or_none()
@@ -84,12 +84,13 @@ async def send_message(email: str, req: MessageSendRequest, db: AsyncSession = D
         subject=req.subject,
         body_text=req.body_text,
         body_html=req.body_html,
-        thread_id=req.thread_id
+        thread_id=req.thread_id,
+        idempotency_key=request.headers.get("Idempotency-Key"),
     )
     return message
 
 @router.post("/{message_id}/reply", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
-async def reply_message(email: str, message_id: str, req: MessageReplyRequest, db: AsyncSession = Depends(get_db)):
+async def reply_message(email: str, message_id: str, req: MessageReplyRequest, request: Request, db: AsyncSession = Depends(get_db)):
     # Verify agent exists
     ag_res = await db.execute(select(Agent).where(Agent.email == email))
     agent = ag_res.scalar_one_or_none()
@@ -118,6 +119,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, d
         thread_id=original_msg.thread_id,
         in_reply_to=in_reply_to,
         references=references,
+        idempotency_key=request.headers.get("Idempotency-Key"),
     )
     return reply_msg
 
