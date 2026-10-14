@@ -10,6 +10,7 @@ import hashlib
 from email import policy
 from email.utils import parseaddr
 import logging
+import re
 import sys
 import os
 
@@ -20,7 +21,7 @@ from app.database import AsyncSessionLocal
 from app.models import Agent
 from app.services.email_service import EmailService
 from app.services.mail_auth import evaluate_inbound_authentication
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SMTP] %(message)s")
 logger = logging.getLogger("smtp_receiver")
@@ -60,6 +61,21 @@ def safe_content_type(content_type: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", content_type or ""):
         return content_type
     return "application/octet-stream"
+
+
+def extract_smtp_path(line: str, command: str) -> str | None:
+    """Parse an SMTP reverse/forward path while ignoring ESMTP parameters."""
+    match = re.match(rf"^{re.escape(command)}:\s*(<[^>\r\n]*>|[^\s]+)(?:\s+.*)?$", line, re.IGNORECASE)
+    if not match:
+        return None
+    path = match.group(1)
+    if path.startswith("<"):
+        if not path.endswith(">"):
+            return None
+        return path[1:-1]
+    if any(char in path for char in "<>"):
+        return None
+    return path
 
 class SmtpSession:
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -133,24 +149,38 @@ class SmtpSession:
                 continue
 
             cmd_upper = line.upper()
-            if cmd_upper.startswith("EHLO") or cmd_upper.startswith("HELO"):
+            command_name = line.split(maxsplit=1)[0].upper()
+            if command_name in {"EHLO", "HELO"}:
                 helo_parts = line.split(maxsplit=1)
                 self.helo_domain = helo_parts[1].strip() if len(helo_parts) > 1 else ""
-                await self.send_response(250, "Hello, pleased to meet you")
-            elif cmd_upper.startswith("MAIL FROM:"):
-                self.mail_from = line[10:].strip("<> ")
-                self.rcpt_to = []
-                await self.send_response(250, "Sender OK")
-            elif cmd_upper.startswith("RCPT TO:"):
-                recipient = line[8:].strip("<> ")
-                async with AsyncSessionLocal() as db:
-                    res = await db.execute(select(Agent).where(Agent.email == recipient, Agent.status == "active"))
-                    known_agent = res.scalar_one_or_none()
-                if known_agent:
-                    self.rcpt_to.append(recipient)
-                    await self.send_response(250, "Recipient OK")
+                if command_name == "EHLO":
+                    self.writer.write(
+                        f"250-open-agent-email\r\n250-SIZE {MAX_MESSAGE_BYTES}\r\n250-8BITMIME\r\n250 HELP\r\n".encode("ascii")
+                    )
+                    await self.writer.drain()
                 else:
-                    await self.send_response(550, "No active agent inbox for recipient")
+                    await self.send_response(250, "Hello, pleased to meet you")
+            elif cmd_upper.startswith("MAIL FROM:"):
+                sender_path = extract_smtp_path(line, "MAIL FROM")
+                if sender_path is None:
+                    await self.send_response(501, "Invalid reverse path")
+                else:
+                    self.mail_from = sender_path
+                    self.rcpt_to = []
+                    await self.send_response(250, "Sender OK")
+            elif cmd_upper.startswith("RCPT TO:"):
+                recipient_path = extract_smtp_path(line, "RCPT TO")
+                if not recipient_path:
+                    await self.send_response(501, "Invalid forward path")
+                else:
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(Agent).where(func.lower(Agent.email) == recipient_path.lower(), Agent.status == "active"))
+                        known_agent = res.scalar_one_or_none()
+                    if known_agent:
+                        self.rcpt_to.append(known_agent.email)
+                        await self.send_response(250, "Recipient OK")
+                    else:
+                        await self.send_response(550, "No active agent inbox for recipient")
             elif cmd_upper == "DATA":
                 if not self.rcpt_to:
                     await self.send_response(503, "Specify at least one valid recipient before DATA")
