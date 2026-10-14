@@ -311,6 +311,16 @@ The built-in scanner guards agent inboxes against:
 
 ---
 
+## 🧪 Tests
+
+```bash
+cd server
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The suite covers REST/MCP authentication and scope policy (anonymous, malformed, expired, revoked, read-only, reviewer, cross-mailbox), send idempotency and suppression, contact consent history, and SES/SNS feedback ordering. CI runs it on every push along with a client type-check.
+
 ## 📄 License
 
 Apache 2.0. Open-source for developers and autonomous AI agent systems.
