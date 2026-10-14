@@ -56,7 +56,8 @@ MCP_TOOLS = [
                 "agent_email": {"type": "string"},
                 "recipient": {"type": "string"},
                 "subject": {"type": "string"},
-                "body_text": {"type": "string"}
+                "body_text": {"type": "string"},
+                "idempotency_key": {"type": "string", "maxLength": 128, "description": "Optional retry key; reuse only for the same request"}
             },
             "required": ["agent_email", "recipient", "subject", "body_text"]
         }
@@ -69,7 +70,8 @@ MCP_TOOLS = [
             "properties": {
                 "agent_email": {"type": "string"},
                 "message_id": {"type": "string"},
-                "body_text": {"type": "string"}
+                "body_text": {"type": "string"},
+                "idempotency_key": {"type": "string", "maxLength": 128, "description": "Optional retry key; reuse only for the same request"}
             },
             "required": ["agent_email", "message_id", "body_text"]
         }
@@ -287,7 +289,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             agent=ag,
             recipient=args["recipient"],
             subject=args["subject"],
-            body_text=args["body_text"]
+            body_text=args["body_text"],
+            idempotency_key=args.get("idempotency_key"),
         )
         return json.dumps({
             "status": msg.status,
@@ -318,6 +321,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             thread_id=orig.thread_id,
             in_reply_to=in_reply_to,
             references=references,
+            idempotency_key=args.get("idempotency_key"),
         )
         return json.dumps({
             "status": reply_msg.status,
