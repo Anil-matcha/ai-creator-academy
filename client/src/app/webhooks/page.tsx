@@ -19,6 +19,7 @@ const webhookEventTypes: { value: WebhookEventType; label: string }[] = [
   { value: "email.accepted_by_relay", label: "Accepted by relay" },
   { value: "email.failed", label: "Email failed" },
   { value: "email.delivery_unknown", label: "Delivery unknown" },
+  { value: "contact.due", label: "Contact follow-up due" },
 ];
 const deliveryEventTypes: { value: string; label: string }[] = [
   ...webhookEventTypes,

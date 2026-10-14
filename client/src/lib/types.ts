@@ -239,7 +239,8 @@ export type WebhookEventType =
   | "email.blocked"
   | "email.accepted_by_relay"
   | "email.failed"
-  | "email.delivery_unknown";
+  | "email.delivery_unknown"
+  | "contact.due";
 
 export interface WebhookEndpoint {
   id: string;

@@ -69,6 +69,25 @@ client.delete_contact("agent@example.com", contact["id"])
 
 The list limit is 1–500 (default 100). Email and name are limited to 255 characters, company to 255, and notes to 4,000. The SDK checks these bounds before sending requests. Contacts are inert records; creating one does not send an email.
 
+## Follow-ups
+
+Follow-up records track a contact's stage (`new`, `contacted`, `waiting`, or `closed`), optional due time, and notes. Listing works with a read-access key; creating, updating, and deleting requires full access. A contact can have one follow-up per inbox. Use `due=True` to list only overdue records that are open, unreplied, and not suppressed. A due time must be an ISO 8601/RFC 3339 datetime string; set it to `None` in `update_engagement` to clear it. The SDK checks stage, due-time parsing, and the 4,000-character notes bound before sending.
+
+```python
+followup = client.create_engagement(
+    "agent@example.com", contact_id=contact["id"],
+    stage="waiting", next_due_at="2026-10-20T09:00:00Z",
+    notes="Send the requested product details",
+)
+due_items = client.list_engagements("agent@example.com", due=True, limit=100)
+updated = client.update_engagement(
+    "agent@example.com", followup["id"], stage="closed", next_due_at=None,
+)
+client.delete_engagement("agent@example.com", updated["id"])
+```
+
+Scheduling a suppressed contact returns HTTP 422. A verified inbound reply is recorded by the server and clears the due time; callers cannot set or clear the reply flag. Due records are reminders only and never send email automatically.
+
 CSV import accepts UTF-8 text with an `email` header and optional `name`, `company`, and `notes` headers. The file may contain at most 1,000 rows and 1 MB. Duplicate and suppressed addresses are skipped with row-level reasons; no email is sent and import does not establish consent.
 
 ```python

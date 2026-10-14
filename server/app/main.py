@@ -30,6 +30,9 @@ async def lifespan(app: FastAPI):
             if "import_batch_id" not in contact_columns:
                 sync_conn.execute(text("ALTER TABLE contacts ADD COLUMN import_batch_id VARCHAR(64)"))
                 sync_conn.execute(text("CREATE INDEX ix_contacts_import_batch_id ON contacts (import_batch_id)"))
+            engagement_columns = {column["name"] for column in inspector.get_columns("contact_engagements")}
+            if "due_notified_at" not in engagement_columns:
+                sync_conn.execute(text(f"ALTER TABLE contact_engagements ADD COLUMN due_notified_at {timestamp_type}"))
             key_columns = {column["name"] for column in inspector.get_columns("api_keys")}
             message_columns = {column["name"] for column in inspector.get_columns("messages")}
             if "agent_email" not in key_columns:
@@ -131,10 +134,13 @@ async def lifespan(app: FastAPI):
 
     from app.services.outbound_worker import run_outbound_worker
     from app.services.webhook_delivery import run_webhook_worker
+    from app.services.contact_due_webhooks import run_contact_due_sweeper
     outbound_task = asyncio.create_task(run_outbound_worker(), name="outbound-mail-worker")
     app.state.outbound_worker_task = outbound_task
     webhook_task = asyncio.create_task(run_webhook_worker(), name="webhook-delivery-worker")
     app.state.webhook_worker_task = webhook_task
+    contact_due_task = asyncio.create_task(run_contact_due_sweeper(), name="contact-due-webhook-sweeper")
+    app.state.contact_due_worker_task = contact_due_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -163,6 +169,12 @@ async def lifespan(app: FastAPI):
     webhook_task.cancel()
     try:
         await webhook_task
+    except asyncio.CancelledError:
+        pass
+
+    contact_due_task.cancel()
+    try:
+        await contact_due_task
     except asyncio.CancelledError:
         pass
 

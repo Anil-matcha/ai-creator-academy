@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import datetime
 import json
 from typing import Any, Literal, NotRequired, TypedDict
 from urllib.error import HTTPError, URLError
@@ -95,6 +96,25 @@ class EmailTemplatePreview(TypedDict):
     body_text: str
     body_html: str
     variables: list[str]
+
+
+class ContactEngagement(TypedDict):
+    id: str
+    agent_email: str
+    contact_id: str
+    contact_email: str
+    contact_name: str
+    stage: str
+    next_due_at: str | None
+    notes: str
+    replied_at: str | None
+    replied: bool
+    suppressed: bool
+    created_at: str
+    updated_at: str
+
+
+_UNSET = object()
 
 
 MessageStatus = Literal[
@@ -355,6 +375,79 @@ class AgentEmailClient:
         self._request(
             "DELETE",
             f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}",
+        )
+
+    @staticmethod
+    def _validate_engagement_fields(
+        *, stage: str | None = None, next_due_at: str | None | object = _UNSET,
+        notes: str | None = None,
+    ) -> None:
+        if stage is not None and stage not in {"new", "contacted", "waiting", "closed"}:
+            raise ValueError("stage must be 'new', 'contacted', 'waiting', or 'closed'")
+        if next_due_at is not _UNSET and next_due_at is not None:
+            if not isinstance(next_due_at, str):
+                raise ValueError("next_due_at must be an RFC 3339 datetime string or None")
+            try:
+                datetime.datetime.fromisoformat(next_due_at.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError("next_due_at must be an RFC 3339 datetime string or None") from None
+        if notes is not None and len(notes) > 4000:
+            raise ValueError("notes must be no more than 4000 characters")
+
+    def list_engagements(
+        self, inbox: str, *, due: bool = False, limit: int = 100,
+    ) -> list[ContactEngagement]:
+        """List follow-ups; due=True returns only currently due, unsuppressed contacts."""
+        if not isinstance(due, bool):
+            raise ValueError("due must be a boolean")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/engagements",
+            query={"due": str(due).lower(), "limit": limit},
+        )
+
+    def create_engagement(
+        self, inbox: str, *, contact_id: str, stage: str = "new",
+        next_due_at: str | None = None, notes: str = "",
+    ) -> ContactEngagement:
+        """Create one follow-up record for a contact. Requires a full-access key."""
+        if not isinstance(contact_id, str) or not 1 <= len(contact_id) <= 64:
+            raise ValueError("contact_id must contain 1–64 characters")
+        self._validate_engagement_fields(stage=stage, next_due_at=next_due_at, notes=notes)
+        payload = {"contact_id": contact_id, "stage": stage, "notes": notes.strip()}
+        if next_due_at is not None:
+            payload["next_due_at"] = next_due_at
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/engagements", payload=payload
+        )
+
+    def update_engagement(
+        self, inbox: str, engagement_id: str, *, stage: str | None = None,
+        next_due_at: str | None | object = _UNSET, notes: str | None = None,
+    ) -> ContactEngagement:
+        """Update a follow-up; pass next_due_at=None to clear its due time."""
+        if stage is None and next_due_at is _UNSET and notes is None:
+            raise ValueError("provide at least one engagement field to update")
+        self._validate_engagement_fields(stage=stage, next_due_at=next_due_at, notes=notes)
+        payload: dict[str, Any] = {}
+        if stage is not None:
+            payload["stage"] = stage
+        if next_due_at is not _UNSET:
+            payload["next_due_at"] = next_due_at
+        if notes is not None:
+            payload["notes"] = notes.strip()
+        return self._request(
+            "PATCH",
+            f"/v1/agents/{self._inbox_path(inbox)}/engagements/{quote(engagement_id, safe='')}",
+            payload=payload,
+        )
+
+    def delete_engagement(self, inbox: str, engagement_id: str) -> None:
+        """Delete a follow-up. Requires a full-access key."""
+        self._request(
+            "DELETE",
+            f"/v1/agents/{self._inbox_path(inbox)}/engagements/{quote(engagement_id, safe='')}",
         )
 
     def import_contacts_csv(self, inbox: str, csv_text: str) -> dict[str, Any]:

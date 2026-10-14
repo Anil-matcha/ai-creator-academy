@@ -53,6 +53,7 @@ class ContactEngagement(Base):
     contact_id = Column(String(64), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
     stage = Column(String(32), nullable=False, default="new")
     next_due_at = Column(DateTime, nullable=True, index=True)
+    due_notified_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=False, default="")
     replied_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)

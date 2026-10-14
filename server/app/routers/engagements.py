@@ -111,6 +111,7 @@ async def update_engagement(email: str, engagement_id: str, request: ContactEnga
     if not row:
         raise HTTPException(status_code=404, detail="Engagement not found")
     item, contact = row
+    previous_next_due_at = item.next_due_at
     changes = request.model_dump(exclude_unset=True)
     next_due = changes.get("next_due_at", item.next_due_at)
     stage = changes.get("stage", item.stage)
@@ -119,6 +120,10 @@ async def update_engagement(email: str, engagement_id: str, request: ContactEnga
     for field in ("stage", "next_due_at", "notes"):
         if field in changes:
             setattr(item, field, changes[field])
+    if "next_due_at" in changes and changes["next_due_at"] != previous_next_due_at:
+        # A changed schedule is a new wake-up opportunity, including when an
+        # operator later restores the same timestamp that was notified before.
+        item.due_notified_at = None
     if item.replied_at is not None or item.stage == "closed":
         item.next_due_at = None
     await db.commit()
