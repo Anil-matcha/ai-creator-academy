@@ -23,6 +23,7 @@ import {
 } from "./types";
 
 const API_BASE = "/api/backend";
+type MessageStatus = "delivered" | "accepted_by_relay" | "sending" | "delivery_unknown" | "pending_review" | "rejected" | "blocked" | "failed";
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
@@ -78,12 +79,13 @@ export const api = {
 
   getMessagePage: (
     agentEmail: string,
-    filters?: { q?: string; direction?: "inbound" | "outbound"; read_status?: "unread" | "read" | "all"; limit?: number; cursor?: string }
+    filters?: { q?: string; direction?: "inbound" | "outbound"; read_status?: "unread" | "read" | "all"; status?: MessageStatus; limit?: number; cursor?: string }
   ) => {
     const params = new URLSearchParams();
     if (filters?.q) params.set("q", filters.q);
     if (filters?.direction) params.set("direction", filters.direction);
     if (filters?.read_status) params.set("read_status", filters.read_status);
+    if (filters?.status) params.set("status", filters.status);
     if (filters?.limit) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
     return request<MessagePage>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/page?${params.toString()}`);

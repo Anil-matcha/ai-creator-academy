@@ -27,6 +27,7 @@ def _encode_message_cursor(
     direction: str | None,
     query: str,
     read_status: str,
+    status: str | None,
 ) -> str:
     payload = json.dumps(
         {
@@ -37,6 +38,7 @@ def _encode_message_cursor(
             "direction": direction,
             "query": query,
             "read_status": read_status,
+            "status": status,
         },
         separators=(",", ":"),
     ).encode("utf-8")
@@ -50,6 +52,7 @@ def _decode_message_cursor(
     direction: str | None,
     query: str,
     read_status: str,
+    status: str | None,
 ) -> tuple[datetime, str]:
     if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
         raise HTTPException(status_code=400, detail="Invalid message cursor")
@@ -63,6 +66,10 @@ def _decode_message_cursor(
         if (payload.get("inbox") != inbox or payload.get("direction") != direction
                 or payload.get("query") != query or payload.get("read_status", "all") != read_status):
             raise ValueError("cursor filters changed")
+        # Cursors created before status filtering have no status field. Keep them
+        # usable for unfiltered requests, while rejecting them for filtered pages.
+        if ("status" not in payload and status is not None) or payload.get("status") != status:
+            raise ValueError("cursor status filter changed")
         if created_at.tzinfo is not None:
             raise ValueError("cursor timestamp must be naive")
         return created_at, message_id
@@ -113,6 +120,11 @@ async def page_messages(
     limit: int = Query(50, ge=1, le=100),
     direction: Optional[str] = Query(None, pattern="^(inbound|outbound)$"),
     read_status: str = Query("all", pattern="^(unread|read|all)$"),
+    status: Optional[str] = Query(
+        None,
+        pattern="^(delivered|accepted_by_relay|sending|delivery_unknown|pending_review|rejected|blocked|failed)$",
+        description="Filter by delivery status",
+    ),
     q: Optional[str] = Query(None, max_length=200, description="Search sender and subject"),
     cursor: Optional[str] = Query(None, max_length=512),
     db: AsyncSession = Depends(get_db),
@@ -121,6 +133,8 @@ async def page_messages(
     normalized_query = (q or "").strip()
     if direction:
         query = query.where(Message.direction == direction)
+    if status:
+        query = query.where(Message.status == status)
     if read_status == "unread":
         query = query.where(Message.is_read.is_(False))
     elif read_status == "read":
@@ -138,6 +152,7 @@ async def page_messages(
             direction=direction,
             query=normalized_query,
             read_status=read_status,
+            status=status,
         )
         query = query.where(
             or_(
@@ -157,6 +172,7 @@ async def page_messages(
         direction=direction,
         query=normalized_query,
         read_status=read_status,
+        status=status,
     ) if has_more and items else None
     return {"items": items, "next_cursor": next_cursor}
 

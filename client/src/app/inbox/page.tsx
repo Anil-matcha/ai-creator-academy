@@ -25,6 +25,7 @@ export default function InboxPage() {
   const [threadAttachments, setThreadAttachments] = useState<Record<string, MessageAttachment[]>>({});
   const [filterDirection, setFilterDirection] = useState<"" | "inbound" | "outbound">("");
   const [filterReadStatus, setFilterReadStatus] = useState<"unread" | "read" | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<Message["status"] | "">("");
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [listError, setListError] = useState<string>("");
@@ -40,7 +41,7 @@ export default function InboxPage() {
   const activeAgentEmail = useRef(selectedAgentEmail);
   const activeReadStatus = useRef(filterReadStatus);
   selectedMessageKey.current = `${selectedAgentEmail}\u0000${selectedMessage?.id || ""}`;
-  activeMessageView.current = `${selectedAgentEmail}\u0000${filterDirection}\u0000${filterReadStatus}\u0000${searchQuery}`;
+  activeMessageView.current = `${selectedAgentEmail}\u0000${filterDirection}\u0000${filterReadStatus}\u0000${filterStatus}\u0000${searchQuery}`;
   activeAgentEmail.current = selectedAgentEmail;
   activeReadStatus.current = filterReadStatus;
 
@@ -89,6 +90,7 @@ export default function InboxPage() {
         q: searchQuery || undefined,
         direction: filterDirection || undefined,
         read_status: filterReadStatus,
+        status: filterStatus || undefined,
         limit: 50,
         cursor,
       });
@@ -122,7 +124,7 @@ export default function InboxPage() {
     setMessages([]);
     setNextCursor(null);
     loadMessages();
-  }, [selectedAgentEmail, filterDirection, filterReadStatus, searchQuery]);
+  }, [selectedAgentEmail, filterDirection, filterReadStatus, filterStatus, searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -334,6 +336,17 @@ export default function InboxPage() {
     { value: "unread", label: "Unread" },
     { value: "read", label: "Read" },
   ];
+  const deliveryStatusOptions = [
+    { value: "", label: "All Delivery Statuses" },
+    { value: "delivered", label: "Delivered" },
+    { value: "accepted_by_relay", label: "Accepted by Relay" },
+    { value: "sending", label: "Sending" },
+    { value: "delivery_unknown", label: "Delivery Unknown" },
+    { value: "pending_review", label: "Pending Review" },
+    { value: "rejected", label: "Rejected" },
+    { value: "blocked", label: "Blocked" },
+    { value: "failed", label: "Failed" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -365,6 +378,13 @@ export default function InboxPage() {
               options={readStatusOptions}
               value={filterReadStatus}
               onChange={(value) => setFilterReadStatus(value as "unread" | "read" | "all")}
+            />
+          </div>
+          <div className="w-48">
+            <Dropdown
+              options={deliveryStatusOptions}
+              value={filterStatus}
+              onChange={(value) => setFilterStatus(value as Message["status"] | "")}
             />
           </div>
           <input

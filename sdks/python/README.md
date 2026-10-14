@@ -20,13 +20,15 @@ for message in messages:
     print(message["id"], message["sender"], message["subject"])
 
 page = client.get_message_page(
-    "agent@example.com", query="invoice", read_status="unread", limit=50
+    "agent@example.com", query="invoice", read_status="unread",
+    status="delivered", limit=50
 )
 for message in page["items"]:
     print(message["id"], message["subject"])
 if page["next_cursor"]:
     next_page = client.get_message_page(
         "agent@example.com", query="invoice", read_status="unread",
+        status="delivered",
         limit=50, cursor=page["next_cursor"]
     )
 
@@ -40,7 +42,7 @@ if result.get("found"):
     print("Verification code:", result["code"])
 ```
 
-`get_message_page` searches sender and subject, accepts `inbound` or `outbound` direction filters, and can filter by `read_status="unread"`, `"read"`, or `"all"` (the default). New inbound messages start unread; outbound messages start read. Keep the same search, direction, and read-status parameters when following a `next_cursor`.
+`get_message_page` searches sender and subject, accepts `inbound` or `outbound` direction filters, and can filter by `read_status="unread"`, `"read"`, or `"all"` (the default). The optional `status` filter accepts `delivered`, `accepted_by_relay`, `sending`, `delivery_unknown`, `pending_review`, `rejected`, `blocked`, or `failed`. New inbound messages start unread; outbound messages start read. Keep the same search, direction, read-status, and delivery-status parameters when following a `next_cursor`.
 
 Use `mark_message_read(inbox, message_id)` to mark an inbound message read. It returns the updated message; the endpoint requires a full-access API key.
 

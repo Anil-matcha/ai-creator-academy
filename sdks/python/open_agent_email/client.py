@@ -46,6 +46,18 @@ class MessagePage(TypedDict):
     next_cursor: str | None
 
 
+MessageStatus = Literal[
+    "delivered",
+    "accepted_by_relay",
+    "sending",
+    "delivery_unknown",
+    "pending_review",
+    "rejected",
+    "blocked",
+    "failed",
+]
+
+
 class AgentEmailError(Exception):
     """An API or transport error. The bearer token is never included in errors."""
 
@@ -183,6 +195,7 @@ class AgentEmailClient:
         *,
         direction: str | None = None,
         read_status: Literal["unread", "read", "all"] = "all",
+        status: MessageStatus | None = None,
         query: str | None = None,
         limit: int = 50,
         cursor: str | None = None,
@@ -194,6 +207,11 @@ class AgentEmailClient:
             raise ValueError("direction must be 'inbound' or 'outbound'")
         if read_status not in {"unread", "read", "all"}:
             raise ValueError("read_status must be 'unread', 'read', or 'all'")
+        if status is not None and status not in {
+            "delivered", "accepted_by_relay", "sending", "delivery_unknown",
+            "pending_review", "rejected", "blocked", "failed",
+        }:
+            raise ValueError("status must be a supported message delivery status")
         if query is not None and len(query) > 200:
             raise ValueError("query must be no more than 200 characters")
         params: dict[str, str | int | float] = {"limit": limit}
@@ -201,6 +219,8 @@ class AgentEmailClient:
             params["direction"] = direction
         if read_status != "all":
             params["read_status"] = read_status
+        if status is not None:
+            params["status"] = status
         if query:
             params["q"] = query
         if cursor:
