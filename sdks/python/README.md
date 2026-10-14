@@ -27,7 +27,7 @@ if result.get("found"):
     print("Verification code:", result["code"])
 ```
 
-The SDK sends the key in the `Authorization: Bearer` header. Keep it in a secret manager or environment variable, and use HTTPS except for local development. The client never prints or includes the token in its API exceptions. Requests have a bounded timeout (15 seconds by default, configurable up to 60 seconds).
+The SDK sends the key in the `Authorization: Bearer` header. Keep it in a secret manager or environment variable, and use HTTPS except for local development. The client never prints or includes the token in its API exceptions. Each socket operation uses a bounded timeout (15 seconds by default, configurable up to 60 seconds).
 
 ## Send and reply
 
@@ -88,6 +88,30 @@ try:
 except AgentEmailError as exc:
     print(exc.status_code, exc.detail)
 ```
+
+## Verify inbound webhooks
+
+Verify the signature against the exact raw request body before decoding JSON. Then deduplicate the event ID in durable storage; retries and manual replays reuse that ID.
+
+```python
+from open_agent_email import verify_webhook_signature
+
+valid = verify_webhook_signature(
+    raw_body,  # exact bytes read from the request, before JSON parsing
+    event_id=request.headers.get("X-Webhook-Event-Id", ""),
+    timestamp=request.headers.get("X-Webhook-Timestamp", ""),
+    signature=request.headers.get("X-Webhook-Signature", ""),
+    secret=signing_secret,
+    tolerance_seconds=300,
+)
+if not valid:
+    return Response(status_code=401)
+
+event = json.loads(raw_body)
+# Atomically record the event ID and apply the event; reject an already-recorded ID.
+```
+
+The helper checks the timestamp window and compares the HMAC-SHA256 signature in constant time. The receiver still needs an atomic event-ID deduplication store to handle retries safely.
 
 ## Local install
 

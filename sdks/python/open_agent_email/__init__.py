@@ -8,6 +8,7 @@ from .client import (
     OtpResult,
     attachment_from_bytes,
 )
+from .webhooks import verify_webhook_signature
 
 __all__ = [
     "AgentEmailClient",
@@ -16,4 +17,5 @@ __all__ = [
     "Message",
     "OtpResult",
     "attachment_from_bytes",
+    "verify_webhook_signature",
 ]
