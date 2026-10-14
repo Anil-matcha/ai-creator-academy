@@ -93,6 +93,8 @@ The server initializes:
 - **Interactive OpenAPI Docs**: `http://127.0.0.1:8000/docs`
 - **Inbound SMTP Listener**: `127.0.0.1:2525`
 
+For a dashboard hosted on another origin, set `CORS_ORIGINS` in `server/.env` to a JSON array of explicit origins, for example `CORS_ORIGINS='["https://mail.example.com"]'`. Wildcard origins are rejected because the API uses credentialed CORS.
+
 ### 2. Start the Client (Next.js Dashboard)
 
 ```bash

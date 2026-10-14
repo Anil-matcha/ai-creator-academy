@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List
+from urllib.parse import urlsplit
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Open Agent Email"
@@ -25,6 +27,28 @@ class Settings(BaseSettings):
     
     # Set explicitly in the environment; no built-in administrator credential.
     ADMIN_API_KEY: str = ""
+
+    @field_validator("CORS_ORIGINS")
+    @classmethod
+    def validate_cors_origins(cls, origins: List[str]) -> List[str]:
+        normalized = []
+        for origin in origins:
+            origin = origin.strip()
+            parsed = urlsplit(origin)
+            if (
+                not origin
+                or "*" in origin
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("CORS_ORIGINS must contain explicit HTTP(S) origins; wildcard origins are not allowed")
+            normalized.append(origin.rstrip("/"))
+        return list(dict.fromkeys(normalized))
     
     class Config:
         env_file = ".env"
