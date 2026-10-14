@@ -327,6 +327,15 @@ The built-in scanner guards agent inboxes against:
 
 Operations (migrations, backup/restore, key rotation): see [docs/operations.md](docs/operations.md).
 
+## 🗂️ Account administration, starter templates and inbox lifecycle
+
+- **Soft delete** – `DELETE /v1/agents/{email}` hides the inbox and stops it receiving mail (the SMTP receiver rejects its address) but keeps all data. `POST /v1/agents/{email}/restore` brings it back; `GET /v1/agents?include_deleted=true` lists hidden inboxes; `DELETE ...?purge=true` permanently deletes it. API keys of a soft-deleted inbox are rejected until it is restored.
+- **Account suppressions** (admin) – `GET /v1/account/suppressions[?address=]` aggregates every inbox's blocked recipients; `DELETE /v1/account/suppressions/{address}` removes that address from all inboxes.
+- **Cross-inbox contacts** (admin) – `GET/POST /v1/contacts`, `GET/PATCH/DELETE /v1/contacts/{address}`. These are views over the existing per-inbox contact rows, not a separate table. An address can exist in several inboxes: reads return every match, and `PATCH`/`DELETE` need `?agent_email=` when the address is ambiguous.
+- **Export** (admin) – `GET /v1/account/export?limit_per_collection=` returns agents, contacts, templates, suppressions and webhook endpoints. It never includes message bodies, attachments, API keys or hashes, SMTP credentials or webhook secrets, and it reports `truncated` / `truncated_collections` when a collection hit the cap.
+- **Template validation** – `POST /v1/templates/validate` checks placeholder syntax and renders with sample data without saving anything.
+- **Starter templates** – `GET /v1/starter-templates` and `/{alias}` provide eight ready-made templates (verification code, password reset, welcome, receipt, support acknowledgement, meeting follow-up, outreach introduction, weekly digest). `POST /v1/agents/{email}/templates/from-starter/{alias}` copies one into an inbox as an independent, editable template. The outreach template is for recipients who have agreed to hear from you.
+
 ## 🧪 Tests
 
 ```bash

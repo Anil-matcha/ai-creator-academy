@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import ApiKey
+from app.models import Agent, ApiKey
 
 
 @dataclass(frozen=True)
@@ -58,6 +58,11 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
         or not api_key.agent_email
         or api_key.scope not in {"read_only", "full_access", "reviewer"}
     ):
+        raise _unauthorized()
+
+    # Keys of a soft-deleted inbox stop working until it is restored.
+    owner_deleted = await db.scalar(select(Agent.deleted_at).where(Agent.email == api_key.agent_email))
+    if owner_deleted is not None:
         raise _unauthorized()
 
     return Principal(

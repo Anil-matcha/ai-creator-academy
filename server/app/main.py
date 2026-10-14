@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
 from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback, engagements, conversations, meta, events
+from app.routers import account as account_router, starter_templates as starter_templates_router
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -270,6 +271,8 @@ app.include_router(domains.router)
 app.include_router(settings_router.router)
 app.include_router(api_keys.router)
 app.include_router(mcp.router)
+app.include_router(account_router.router)
+app.include_router(starter_templates_router.router)
 
 @app.get("/health")
 @app.get("/api/health")

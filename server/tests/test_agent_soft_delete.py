@@ -37,6 +37,16 @@ async def test_soft_delete_keeps_data_and_blocks_recreate(client):
     assert r.status_code == 400
 
 
+async def test_keys_of_deleted_agent_are_rejected_until_restore(client):
+    await make_agent(client, "a@agents.local")
+    key, _ = await make_key(client, "a@agents.local", "full_access")
+    assert (await client.get("/v1/agents/a@agents.local/messages", headers=key)).status_code == 200
+    await client.delete("/v1/agents/a@agents.local", headers=ADMIN)
+    assert (await client.get("/v1/agents/a@agents.local/messages", headers=key)).status_code == 401
+    await client.post("/v1/agents/a@agents.local/restore", headers=ADMIN)
+    assert (await client.get("/v1/agents/a@agents.local/messages", headers=key)).status_code == 200
+
+
 async def test_agent_key_cannot_delete_or_restore(client):
     await make_agent(client, "a@agents.local")
     key, _ = await make_key(client, "a@agents.local", "full_access")
