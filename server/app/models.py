@@ -109,6 +109,39 @@ class OutboundRetryEvent(Base):
     previous_status = Column(String(24), nullable=True)
 
 
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    url = Column(Text, nullable=False)
+    signing_secret = Column(Text, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(String(64), primary_key=True, index=True)  # stable event ID
+    endpoint_id = Column(String(64), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_email = Column(String(255), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False, default="email.received")
+    payload = Column(JSON, nullable=False)  # immutable event snapshot; intentionally excludes body and attachments
+    status = Column(String(24), nullable=False, default="pending", index=True)  # pending, processing, delivered, failed
+    attempts = Column(Integer, nullable=False, default=0)
+    available_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+    locked_at = Column(DateTime, nullable=True, index=True)
+    lease_token = Column(String(64), nullable=True, index=True)
+    last_error = Column(String(255), nullable=True)
+    replayed_by = Column(String(128), nullable=True)
+    replayed_at = Column(DateTime, nullable=True)
+    replay_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+    delivered_at = Column(DateTime, nullable=True)
+
+
 class ReviewItem(Base):
     __tablename__ = "review_items"
 

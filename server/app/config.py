@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     OUTBOUND_MAX_ATTACHMENTS: int = 10
     OUTBOUND_MAX_ATTACHMENT_BYTES: int = 10 * 1024 * 1024
     OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES: int = 20 * 1024 * 1024
+    WEBHOOK_DELIVERY_RETENTION_DAYS: int = 30
 
     @field_validator("API_RATE_LIMIT_REQUESTS", "API_RATE_LIMIT_WINDOW_SECONDS", "API_RATE_LIMIT_MAX_CLIENTS")
     @classmethod
@@ -55,11 +56,12 @@ class Settings(BaseSettings):
     @field_validator(
         "HTTP_MAX_CONCURRENCY", "HTTP_KEEPALIVE_TIMEOUT_SECONDS", "HTTP_MAX_REQUEST_BYTES",
         "OUTBOUND_MAX_ATTACHMENTS", "OUTBOUND_MAX_ATTACHMENT_BYTES", "OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES",
+        "WEBHOOK_DELIVERY_RETENTION_DAYS",
     )
     @classmethod
     def validate_http_limits(cls, value: int) -> int:
         if value <= 0:
-            raise ValueError("HTTP server limits must be greater than zero")
+            raise ValueError("Server and API limits must be greater than zero")
         return value
 
     @field_validator("PORT")

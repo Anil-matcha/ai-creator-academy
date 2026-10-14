@@ -16,6 +16,7 @@ services:
       - ADMIN_API_KEY=${ADMIN_API_KEY:?Set ADMIN_API_KEY before starting the stack}
       - SMTP_CONFIG_ENCRYPTION_KEY=${SMTP_CONFIG_ENCRYPTION_KEY:-}
       - SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS=${SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS:-}
+      - WEBHOOK_DELIVERY_RETENTION_DAYS=${WEBHOOK_DELIVERY_RETENTION_DAYS:-30}
     volumes:
       - ./server/open_agent_email.db:/app/open_agent_email.db
 

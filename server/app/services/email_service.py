@@ -18,7 +18,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
-from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob
+from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery
 from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
@@ -340,6 +340,35 @@ class EmailService:
                 created_at=datetime.datetime.utcnow()
             )
             db.add(review_item)
+        # Snapshot only the notification metadata. The event is committed atomically
+        # with the inbound message; webhook network I/O runs in its own worker.
+        if status == "delivered":
+            endpoints = (await db.execute(select(WebhookEndpoint).where(
+                WebhookEndpoint.agent_email == agent.email,
+                WebhookEndpoint.enabled.is_(True),
+            ))).scalars().all()
+            event_metadata = {
+                "agent_email": agent.email,
+                "direction": "inbound",
+                "sender": sender,
+                "recipient": agent.email,
+                "status": status,
+                "thread_id": thread_id,
+                "created_at": message.created_at.isoformat(),
+            }
+            for endpoint in endpoints:
+                event_id = f"evt_{uuid.uuid4().hex}"
+                db.add(WebhookDelivery(
+                    id=event_id,
+                    endpoint_id=endpoint.id,
+                    agent_email=agent.email,
+                    event_type="email.received",
+                    payload={"id": event_id, "message_id": msg_id, **event_metadata},
+                    status="pending",
+                    attempts=0,
+                    available_at=message.created_at,
+                    created_at=message.created_at,
+                ))
         try:
             await db.commit()
         except IntegrityError:

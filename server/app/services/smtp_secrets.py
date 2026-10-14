@@ -16,6 +16,41 @@ def _fernet(key: str) -> Fernet:
         raise RuntimeError("SMTP_CONFIG_ENCRYPTION_KEY must be a valid Fernet key") from exc
 
 
+def encrypt_secret(secret: str, purpose: str = "application secret") -> str:
+    """Encrypt a managed application secret with the configured Fernet key."""
+    if not secret:
+        return ""
+    if not settings.SMTP_CONFIG_ENCRYPTION_KEY:
+        raise RuntimeError(f"SMTP_CONFIG_ENCRYPTION_KEY is required to encrypt {purpose}")
+    token = _fernet(settings.SMTP_CONFIG_ENCRYPTION_KEY).encrypt(secret.encode("utf-8")).decode("ascii")
+    return PREFIX + token
+
+
+def decrypt_secret(stored: str | None, purpose: str = "application secret") -> str:
+    """Decrypt a managed secret, allowing the configured rotation key."""
+    if not stored:
+        return ""
+    if not stored.startswith(PREFIX):
+        raise RuntimeError(f"Stored {purpose} is not encrypted")
+    try:
+        token = stored[len(PREFIX):].encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(f"Stored {purpose} ciphertext is malformed") from exc
+    keys = [settings.SMTP_CONFIG_ENCRYPTION_KEY, settings.SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS]
+    if not any(keys):
+        raise RuntimeError(f"SMTP_CONFIG_ENCRYPTION_KEY is required to access encrypted {purpose}")
+    for key in dict.fromkeys(keys):
+        if not key:
+            continue
+        try:
+            return _fernet(key).decrypt(token).decode("utf-8")
+        except InvalidToken:
+            continue
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(f"Stored {purpose} is not valid UTF-8") from exc
+    raise RuntimeError(f"Stored {purpose} cannot be decrypted; verify the encryption key and its backup")
+
+
 def encrypt_password(password: str) -> str:
     if not password:
         return ""

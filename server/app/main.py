@@ -8,7 +8,7 @@ import asyncio
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -55,6 +55,13 @@ async def lifespan(app: FastAPI):
             retry_event_columns = {column["name"] for column in inspector.get_columns("outbound_retry_events")}
             if "previous_status" not in retry_event_columns:
                 sync_conn.execute(text("ALTER TABLE outbound_retry_events ADD COLUMN previous_status VARCHAR(24)"))
+            webhook_delivery_columns = {column["name"] for column in inspector.get_columns("webhook_deliveries")}
+            for name, definition in {
+                "lease_token": "VARCHAR(64)", "replayed_by": "VARCHAR(128)",
+                "replayed_at": f"{timestamp_type}", "replay_count": "INTEGER NOT NULL DEFAULT 0",
+            }.items():
+                if name not in webhook_delivery_columns:
+                    sync_conn.execute(text(f"ALTER TABLE webhook_deliveries ADD COLUMN {name} {definition}"))
             if sync_conn.dialect.name == "postgresql":
                 smtp_columns = {column["name"]: column for column in inspector.get_columns("smtp_configs")}
                 if str(smtp_columns.get("password", {}).get("type", "")).upper() != "TEXT":
@@ -68,8 +75,11 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_inbound_dedup_hash ON messages (agent_email, inbound_dedup_hash)"))
         await conn.run_sync(apply_additive_schema_updates)
     from sqlalchemy import select
-    from app.models import SmtpConfig
-    from app.services.smtp_secrets import PREFIX, encrypt_password, decrypt_password, decrypt_with_current_key
+    from app.models import SmtpConfig, WebhookEndpoint
+    from app.services.smtp_secrets import (
+        PREFIX, encrypt_password, decrypt_password, decrypt_with_current_key,
+        encrypt_secret, decrypt_secret,
+    )
     async with AsyncSessionLocal() as db:
         configs = (await db.execute(select(SmtpConfig))).scalars().all()
         for config in configs:
@@ -85,12 +95,22 @@ async def lifespan(app: FastAPI):
                 config.password = encrypt_password(config.password)
             else:
                 logger.warning("SMTP relay credential remains plaintext; configure SMTP_CONFIG_ENCRYPTION_KEY to protect it")
+        endpoints = (await db.execute(select(WebhookEndpoint))).scalars().all()
+        for endpoint in endpoints:
+            if not endpoint.signing_secret:
+                continue
+            plaintext = decrypt_secret(endpoint.signing_secret, "webhook signing secret")
+            if decrypt_with_current_key(endpoint.signing_secret) is None:
+                endpoint.signing_secret = encrypt_secret(plaintext, "webhook signing secret")
         await db.commit()
     logger.info("Database schema ready.")
 
     from app.services.outbound_worker import run_outbound_worker
+    from app.services.webhook_delivery import run_webhook_worker
     outbound_task = asyncio.create_task(run_outbound_worker(), name="outbound-mail-worker")
     app.state.outbound_worker_task = outbound_task
+    webhook_task = asyncio.create_task(run_webhook_worker(), name="webhook-delivery-worker")
+    app.state.webhook_worker_task = webhook_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -113,6 +133,12 @@ async def lifespan(app: FastAPI):
     outbound_task.cancel()
     try:
         await outbound_task
+    except asyncio.CancelledError:
+        pass
+
+    webhook_task.cancel()
+    try:
+        await webhook_task
     except asyncio.CancelledError:
         pass
 
@@ -177,6 +203,7 @@ async def live_dashboard_websocket(websocket: WebSocket):
 # Routers
 app.include_router(stats.router)
 app.include_router(outbox.router)
+app.include_router(webhooks.router)
 app.include_router(agents.router)
 app.include_router(messages.router)
 app.include_router(reviews.router)
@@ -199,15 +226,19 @@ async def health_check():
 @app.get("/ready")
 async def readiness_check():
     from sqlalchemy import func, select, text
-    from app.models import OutboundJob
+    from app.models import OutboundJob, WebhookDelivery
 
     database_ready = False
     pending_jobs = None
+    pending_webhooks = None
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
             pending_jobs = await db.scalar(
                 select(func.count()).select_from(OutboundJob).where(OutboundJob.status == "pending")
+            )
+            pending_webhooks = await db.scalar(
+                select(func.count()).select_from(WebhookDelivery).where(WebhookDelivery.status == "pending")
             )
             database_ready = True
     except Exception:
@@ -217,7 +248,9 @@ async def readiness_check():
     smtp_ready = bool(smtp_server and smtp_server.is_serving())
     worker = getattr(app.state, "outbound_worker_task", None)
     worker_ready = bool(worker and not worker.done())
-    ready = database_ready and smtp_ready and worker_ready
+    webhook_worker = getattr(app.state, "webhook_worker_task", None)
+    webhook_worker_ready = bool(webhook_worker and not webhook_worker.done())
+    ready = database_ready and smtp_ready and worker_ready and webhook_worker_ready
     return JSONResponse(
         status_code=200 if ready else 503,
         content={
@@ -226,8 +259,10 @@ async def readiness_check():
                 "database": "ready" if database_ready else "unavailable",
                 "smtp_listener": "ready" if smtp_ready else "unavailable",
                 "outbound_worker": "ready" if worker_ready else "unavailable",
+                "webhook_worker": "ready" if webhook_worker_ready else "unavailable",
             },
             "outbox_pending": pending_jobs,
+            "webhooks_pending": pending_webhooks,
         },
     )
 
