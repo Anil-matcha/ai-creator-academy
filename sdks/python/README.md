@@ -46,6 +46,29 @@ if result.get("found"):
 
 Use `mark_message_read(inbox, message_id)` to mark an inbound message read. It returns the updated message; the endpoint requires a full-access API key.
 
+## Inbox contacts
+
+Contacts are an address book scoped to one inbox. Listing is available with a read-only key; creating, updating, and deleting contacts requires a full-access key. Contact email addresses are normalized to lowercase, and duplicate addresses within the same inbox return HTTP 409.
+
+```python
+contact = client.create_contact(
+    "agent@example.com",
+    email="alex@example.net",
+    name="Alex Rivera",
+    company="Example Co",
+    notes="Prefers email follow-up",
+)
+print(contact["id"], contact["email"])
+
+contacts = client.list_contacts("agent@example.com", limit=100)
+updated = client.update_contact(
+    "agent@example.com", contact["id"], notes="Follow up next week"
+)
+client.delete_contact("agent@example.com", contact["id"])
+```
+
+The list limit is 1–500 (default 100). Email and name are limited to 255 characters, company to 255, and notes to 4,000. The SDK checks these bounds before sending requests. Contacts are inert records; creating one does not send an email.
+
 The SDK sends the key in the `Authorization: Bearer` header. Keep it in a secret manager or environment variable, and use HTTPS except for local development. The client never prints or includes the token in its API exceptions. Each socket operation uses a bounded timeout (15 seconds by default, configurable up to 60 seconds).
 
 ## Send and reply

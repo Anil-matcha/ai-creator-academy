@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -44,6 +44,31 @@ class OtpResult(TypedDict, total=False):
 class MessagePage(TypedDict):
     items: list[Message]
     next_cursor: str | None
+
+
+class Contact(TypedDict):
+    id: str
+    agent_email: str
+    email: str
+    name: str
+    company: str
+    notes: str
+    created_at: str
+    updated_at: str
+
+
+class ContactCreate(TypedDict):
+    email: str
+    name: str
+    company: NotRequired[str]
+    notes: NotRequired[str]
+
+
+class ContactUpdate(TypedDict, total=False):
+    email: str
+    name: str
+    company: str
+    notes: str
 
 
 MessageStatus = Literal[
@@ -227,6 +252,78 @@ class AgentEmailClient:
             params["cursor"] = cursor
         return self._request(
             "GET", f"/v1/agents/{self._inbox_path(inbox)}/messages/page", query=params
+        )
+
+    @staticmethod
+    def _validate_contact_fields(
+        *, email: str | None = None, name: str | None = None,
+        company: str | None = None, notes: str | None = None,
+    ) -> None:
+        if email is not None:
+            normalized = email.strip().lower()
+            local, separator, domain = normalized.rpartition("@")
+            if (
+                not separator or not local or not domain or len(normalized) > 255
+                or any(char.isspace() for char in normalized)
+                or "@" in local or "." not in domain
+            ):
+                raise ValueError("email must be a valid address of at most 255 characters")
+        if name is not None and not 1 <= len(name.strip()) <= 255:
+            raise ValueError("name must contain 1–255 non-whitespace characters")
+        if company is not None and len(company) > 255:
+            raise ValueError("company must be no more than 255 characters")
+        if notes is not None and len(notes) > 4000:
+            raise ValueError("notes must be no more than 4000 characters")
+
+    def list_contacts(self, inbox: str, *, limit: int = 100) -> list[Contact]:
+        """List contacts in an inbox, ordered by name and email (server limit is 1–500)."""
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/contacts", query={"limit": limit}
+        )
+
+    def create_contact(
+        self, inbox: str, *, email: str, name: str,
+        company: str = "", notes: str = "",
+    ) -> Contact:
+        """Create an inbox contact. A full-access API key is required."""
+        self._validate_contact_fields(email=email, name=name, company=company, notes=notes)
+        payload = {
+            "email": email.strip().lower(), "name": name.strip(),
+            "company": company.strip(), "notes": notes.strip(),
+        }
+        return self._request("POST", f"/v1/agents/{self._inbox_path(inbox)}/contacts", payload=payload)
+
+    def update_contact(
+        self, inbox: str, contact_id: str, *, email: str | None = None,
+        name: str | None = None, company: str | None = None, notes: str | None = None,
+    ) -> Contact:
+        """Update the provided contact fields. A full-access API key is required."""
+        changes = {key: value for key, value in {
+            "email": email, "name": name, "company": company, "notes": notes,
+        }.items() if value is not None}
+        if not changes:
+            raise ValueError("provide at least one contact field to update")
+        self._validate_contact_fields(**changes)
+        if "email" in changes:
+            changes["email"] = changes["email"].strip().lower()
+        if "name" in changes:
+            changes["name"] = changes["name"].strip()
+        for key in ("company", "notes"):
+            if key in changes:
+                changes[key] = changes[key].strip()
+        return self._request(
+            "PATCH",
+            f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}",
+            payload=changes,
+        )
+
+    def delete_contact(self, inbox: str, contact_id: str) -> None:
+        """Delete a contact. A full-access API key is required."""
+        self._request(
+            "DELETE",
+            f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}",
         )
 
     def send_message(
