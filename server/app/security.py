@@ -1,6 +1,7 @@
 """Authentication and authorization dependencies for the API and MCP gateway."""
 
 from dataclasses import dataclass
+import datetime
 import hashlib
 import hmac
 
@@ -49,7 +50,12 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     result = await db.execute(select(ApiKey).where(ApiKey.key_hash == token_hash))
     api_key = result.scalar_one_or_none()
-    if not api_key or not api_key.agent_email or api_key.scope not in {"read_only", "full_access"}:
+    if (
+        not api_key
+        or (api_key.expires_at is not None and api_key.expires_at <= datetime.datetime.utcnow())
+        or not api_key.agent_email
+        or api_key.scope not in {"read_only", "full_access"}
+    ):
         raise _unauthorized()
 
     return Principal(

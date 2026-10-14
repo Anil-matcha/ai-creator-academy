@@ -110,6 +110,7 @@ export interface ApiKeyItem {
   scope: string;
   agent_email?: string | null;
   created_at: string;
+  expires_at?: string | null;
 }
 
 export interface ApiKeyCreated {
@@ -120,6 +121,7 @@ export interface ApiKeyCreated {
   scope: string;
   agent_email: string;
   created_at: string;
+  expires_at?: string | null;
 }
 
 export interface Stats {

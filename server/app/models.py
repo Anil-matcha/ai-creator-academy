@@ -100,6 +100,7 @@ class ApiKey(Base):
     scope = Column(String(64), default="full_access")
     agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True, index=True)
 
     agent = relationship("Agent", back_populates="api_keys")
 

@@ -37,7 +37,11 @@ async def create_api_key(payload: ApiKeyCreate, db: AsyncSession = Depends(get_d
         key_hash=key_hash,
         scope=payload.scope,
         agent_email=payload.agent_email,
-        created_at=datetime.datetime.utcnow()
+        created_at=datetime.datetime.utcnow(),
+        expires_at=(
+            datetime.datetime.utcnow() + datetime.timedelta(days=payload.expires_in_days)
+            if payload.expires_in_days is not None else None
+        ),
     )
     db.add(api_key)
     await db.commit()
@@ -50,7 +54,8 @@ async def create_api_key(payload: ApiKeyCreate, db: AsyncSession = Depends(get_d
         prefix=api_key.prefix,
         scope=api_key.scope,
         agent_email=api_key.agent_email,
-        created_at=api_key.created_at
+        created_at=api_key.created_at,
+        expires_at=api_key.expires_at,
     )
 
 @router.delete("/{key_id}", status_code=204, dependencies=[Depends(require_admin)])

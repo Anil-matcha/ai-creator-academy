@@ -166,6 +166,8 @@ Connect any Model Context Protocol compatible client to control agent inboxes.
 ### Cursor Setup
 Create an inbox and an API key for it in **API Keys**. Then add to `.cursor/mcp.json` (or `~/.cursor/mcp.json`), replacing the placeholder with the generated key:
 
+API keys expire after 90 days by default. Choose 30 days, 90 days, one year, or no expiration when creating a key. Expired keys are rejected automatically; revoke a key at any time from the dashboard.
+
 ```json
 {
   "mcpServers": {

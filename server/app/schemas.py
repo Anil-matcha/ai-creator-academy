@@ -187,6 +187,7 @@ class ApiKeyCreate(BaseModel):
     name: str = Field(..., example="Cursor AI Integration")
     agent_email: str
     scope: str = Field("full_access", example="full_access", pattern="^(read_only|full_access)$")
+    expires_in_days: Optional[int] = Field(90, ge=1, le=3650)
 
 class ApiKeyResponse(BaseModel):
     id: str
@@ -195,6 +196,7 @@ class ApiKeyResponse(BaseModel):
     scope: str
     agent_email: Optional[str] = None
     created_at: datetime
+    expires_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -207,6 +209,7 @@ class ApiKeyCreatedResponse(BaseModel):
     scope: str
     agent_email: str
     created_at: datetime
+    expires_at: Optional[datetime] = None
 
 # --- Stats Schema ---
 class StatsResponse(BaseModel):

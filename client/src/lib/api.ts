@@ -145,10 +145,10 @@ export const api = {
 
   // API Keys
   getApiKeys: () => request<ApiKeyItem[]>("/v1/api-keys"),
-  createApiKey: (name: string, agent_email: string, scope: string = "full_access") =>
+  createApiKey: (name: string, agent_email: string, scope: string = "full_access", expires_in_days: number | null = 90) =>
     request<ApiKeyCreated>("/v1/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name, agent_email, scope }),
+      body: JSON.stringify({ name, agent_email, scope, expires_in_days }),
     }),
   deleteApiKey: (id: string) =>
     request<void>(`/v1/api-keys/${id}`, {

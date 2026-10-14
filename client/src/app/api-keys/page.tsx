@@ -18,6 +18,7 @@ export default function ApiKeysPage() {
   const [keyName, setKeyName] = useState<string>("");
   const [scope, setScope] = useState<string>("full_access");
   const [agentEmail, setAgentEmail] = useState<string>("");
+  const [expiresInDays, setExpiresInDays] = useState<string>("90");
   const [generating, setGenerating] = useState<boolean>(false);
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -49,7 +50,7 @@ export default function ApiKeysPage() {
     try {
       setGenerating(true);
       setError(null);
-      const res = await api.createApiKey(keyName.trim(), agentEmail, scope);
+      const res = await api.createApiKey(keyName.trim(), agentEmail, scope, expiresInDays === "never" ? null : Number(expiresInDays));
       setCreatedKey(res);
       setKeyName("");
       await fetchKeys();
@@ -108,6 +109,7 @@ export default function ApiKeysPage() {
           </div>
           <p className="text-[11px] text-[#8b949e]">
             This token will never be displayed again. Store it securely in your environment variables.
+            {createdKey.expires_at && ` It expires ${new Date(createdKey.expires_at).toLocaleDateString()}.`}
           </p>
           <div className="flex items-center gap-2 bg-[#0d1117] border border-[#30363d] rounded p-2">
             <span className="font-mono text-xs text-[#e6edf3] flex-1 break-all select-all">
@@ -129,7 +131,7 @@ export default function ApiKeysPage() {
         <h2 className="text-xs font-semibold text-[#e6edf3] uppercase tracking-wider mb-3">
           Create New Secret Key
         </h2>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <input
               type="text"
@@ -152,6 +154,14 @@ export default function ApiKeysPage() {
             />
           </div>
           <div>
+            <select value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-[#e6edf3]">
+              <option value="30">Expires in 30 days</option>
+              <option value="90">Expires in 90 days</option>
+              <option value="365">Expires in 1 year</option>
+              <option value="never">No expiration</option>
+            </select>
+          </div>
+          <div>
             <button
               type="submit"
               disabled={generating || !keyName.trim() || !agentEmail}
@@ -167,7 +177,7 @@ export default function ApiKeysPage() {
       {/* Keys List Table */}
       <div className="bg-[#161b22] border border-[#30363d] rounded-lg overflow-hidden">
         <div className="p-4 border-b border-[#30363d] text-xs font-semibold text-[#e6edf3]">
-          Active API Keys
+          API Keys
         </div>
         {loading ? (
           <div className="p-8 text-center text-xs text-[#8b949e]">Loading keys...</div>
@@ -186,12 +196,13 @@ export default function ApiKeysPage() {
                   <th className="py-2.5 px-4 font-medium">Token Prefix</th>
                   <th className="py-2.5 px-4 font-medium">Scope</th>
                   <th className="py-2.5 px-4 font-medium">Created</th>
+                  <th className="py-2.5 px-4 font-medium">Expires</th>
                   <th className="py-2.5 px-4 font-medium text-right">Revoke</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#30363d]/50">
                 {keys.map((k) => (
-                  <tr key={k.id} className="hover:bg-[#21262d]/30 transition">
+                  <tr key={k.id} className={`hover:bg-[#21262d]/30 transition ${k.expires_at && new Date(k.expires_at) <= new Date() ? "opacity-50" : ""}`}>
                     <td className="py-3 px-4 font-medium text-[#e6edf3]">{k.name}</td>
                     <td className="py-3 px-4 font-mono text-[11px] text-[#8b949e]">{k.prefix}_••••••</td>
                     <td className="py-3 px-4">
@@ -201,6 +212,9 @@ export default function ApiKeysPage() {
                     </td>
                     <td className="py-3 px-4 text-[#8b949e] text-[11px]">
                       {new Date(k.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 px-4 text-[#8b949e] text-[11px]">
+                      {k.expires_at ? new Date(k.expires_at).toLocaleDateString() : "Never"}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button

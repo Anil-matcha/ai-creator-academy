@@ -26,6 +26,8 @@ async def lifespan(app: FastAPI):
             message_columns = {column["name"] for column in inspector.get_columns("messages")}
             if "agent_email" not in key_columns:
                 sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN agent_email VARCHAR(255)"))
+            if "expires_at" not in key_columns:
+                sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN expires_at DATETIME"))
             if "delivery_error" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN delivery_error TEXT"))
             if "raw_message_id" not in message_columns:
