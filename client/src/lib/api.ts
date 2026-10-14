@@ -1,6 +1,7 @@
 import {
   Agent,
   Contact,
+  ContactEngagement,
   ContactImportResult,
   ContactImportBatch,
   EmailTemplate,
@@ -101,6 +102,16 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  // Inbox-scoped human follow-up records. Due items are surfaced only; these endpoints never send mail.
+  getEngagements: (agentEmail: string, due = false) =>
+    request<ContactEngagement[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/engagements?due=${due}&limit=500`),
+  createEngagement: (agentEmail: string, data: { contact_id: string; stage?: string; next_due_at?: string | null; notes?: string }) =>
+    request<ContactEngagement>(`/v1/agents/${encodeURIComponent(agentEmail)}/engagements`, { method: "POST", body: JSON.stringify(data) }),
+  updateEngagement: (agentEmail: string, engagementId: string, data: { stage?: string; next_due_at?: string | null; notes?: string }) =>
+    request<ContactEngagement>(`/v1/agents/${encodeURIComponent(agentEmail)}/engagements/${encodeURIComponent(engagementId)}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteEngagement: (agentEmail: string, engagementId: string) =>
+    request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/engagements/${encodeURIComponent(engagementId)}`, { method: "DELETE" }),
+
   // Inbox-scoped reusable email templates
   getEmailTemplates: (agentEmail: string, limit = 100) =>
     request<EmailTemplate[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates?limit=${limit}`),
@@ -179,7 +190,10 @@ export const api = {
 
   sendMessage: (
     agentEmail: string,
-    data: { recipient: string; subject: string; body_text: string; body_html?: string; thread_id?: string; attachments?: OutboundAttachmentInput[] },
+    data: { recipient: string; thread_id?: string; attachments?: OutboundAttachmentInput[] } & (
+      { subject: string; body_text: string; body_html?: string; template_id?: never; template_data?: never } |
+      { template_id: string; template_data?: Record<string, unknown>; subject?: never; body_text?: never; body_html?: never }
+    ),
     idempotencyKey?: string,
   ) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages`, {
@@ -191,7 +205,10 @@ export const api = {
   replyMessage: (
     agentEmail: string,
     messageId: string,
-    data: { body_text: string; body_html?: string; attachments?: OutboundAttachmentInput[] },
+    data: { attachments?: OutboundAttachmentInput[] } & (
+      { body_text: string; body_html?: string; template_id?: never; template_data?: never } |
+      { template_id: string; template_data?: Record<string, unknown>; body_text?: never; body_html?: never }
+    ),
     idempotencyKey?: string,
   ) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/reply`, {

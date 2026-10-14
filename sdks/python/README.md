@@ -110,6 +110,23 @@ client.update_template("agent@example.com", template["id"], name="Support follow
 client.delete_template("agent@example.com", template["id"])
 ```
 
+Use a saved template for an individual outbound message or reply by passing `template_id` and optional `template_data` to the send methods. The SDK rejects mixing a template with direct content. Normal suppression, approval, and idempotency behavior still applies.
+
+```python
+sent = client.send_message(
+    "agent@example.com",
+    recipient="alex@example.net",
+    template_id=template["id"],
+    template_data={"customer": {"name": "Alex"}, "ticket_id": "T-42"},
+)
+reply = client.reply_message(
+    "agent@example.com",
+    "msg_0123456789ab",
+    template_id=template["id"],
+    template_data={"customer": {"name": "Alex"}, "ticket_id": "T-42"},
+)
+```
+
 ## Recipient suppressions
 
 Suppressions are explicit, operator-managed blocks scoped to one inbox. Listing requires read access; adding or removing an entry requires full-access scope. The SDK normalizes addresses to lowercase and checks email length (maximum 255 characters), optional reason length (maximum 500 characters), and list limit (1–500) before sending.

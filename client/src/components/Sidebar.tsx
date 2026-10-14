@@ -17,6 +17,7 @@ import {
   Users,
   Ban,
   FileText,
+  CalendarClock,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -63,6 +64,7 @@ export function Sidebar() {
     { name: "API Keys", href: "/api-keys", icon: Key },
     { name: "Agents", href: "/agents", icon: Bot },
     { name: "Contacts", href: "/contacts", icon: Users },
+    { name: "Follow-ups", href: "/engagements", icon: CalendarClock },
     { name: "Templates", href: "/templates", icon: FileText },
     { name: "Suppressions", href: "/suppressions", icon: Ban },
     { name: "MCP Gateway", href: "/mcp", icon: Cpu },

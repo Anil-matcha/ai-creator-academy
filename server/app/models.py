@@ -40,6 +40,25 @@ class Contact(Base):
     agent = relationship("Agent", back_populates="contacts")
 
 
+class ContactEngagement(Base):
+    """Inbox-scoped follow-up state; due dates never trigger outbound mail."""
+    __tablename__ = "contact_engagements"
+    __table_args__ = (
+        UniqueConstraint("agent_email", "contact_id", name="uq_engagement_agent_contact"),
+        Index("ix_engagement_due", "agent_email", "next_due_at"),
+    )
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(String(64), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage = Column(String(32), nullable=False, default="new")
+    next_due_at = Column(DateTime, nullable=True, index=True)
+    notes = Column(Text, nullable=False, default="")
+    replied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
 class EmailTemplate(Base):
     """Reusable, inbox-scoped message content; templates never send by themselves."""
     __tablename__ = "email_templates"

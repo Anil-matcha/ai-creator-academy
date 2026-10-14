@@ -13,9 +13,17 @@ import {
   Bot
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Agent, Message, MessageAttachment, OutboundAttachmentInput } from "@/lib/types";
+import { Agent, EmailTemplate, EmailTemplatePreview, Message, MessageAttachment, OutboundAttachmentInput } from "@/lib/types";
 import { Dropdown } from "@/components/Dropdown";
 import { MessageSnippets } from "@/components/MessageSnippets";
+
+function parseTemplateData(source: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(source);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Template data must be a JSON object.");
+  }
+  return value as Record<string, unknown>;
+}
 
 export default function InboxPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -48,6 +56,11 @@ export default function InboxPage() {
 
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [replyTemplateId, setReplyTemplateId] = useState("");
+  const [replyTemplateData, setReplyTemplateData] = useState("{}");
+  const [replyTemplatePreview, setReplyTemplatePreview] = useState<EmailTemplatePreview | null>(null);
+  const [replyTemplateError, setReplyTemplateError] = useState("");
   const replyDraftKey = selectedAgentEmail && selectedMessage
     ? `open-agent-email:reply-draft:${selectedAgentEmail}:${selectedMessage.thread_id}`
     : "";
@@ -63,6 +76,10 @@ export default function InboxPage() {
   useEffect(() => {
     const previousKey = previousReplyDraftKey.current;
     if (previousKey === replyDraftKey) return;
+    setReplyTemplateId("");
+    setReplyTemplateData("{}");
+    setReplyTemplatePreview(null);
+    setReplyTemplateError("");
     if (previousKey) {
       try {
         if (replyText) window.localStorage.setItem(previousKey, replyText);
@@ -86,6 +103,10 @@ export default function InboxPage() {
   const [composeRecipient, setComposeRecipient] = useState<string>("");
   const [composeSubject, setComposeSubject] = useState<string>("");
   const [composeBody, setComposeBody] = useState<string>("");
+  const [composeTemplateId, setComposeTemplateId] = useState("");
+  const [composeTemplateData, setComposeTemplateData] = useState("{}");
+  const [composeTemplatePreview, setComposeTemplatePreview] = useState<EmailTemplatePreview | null>(null);
+  const [composeTemplateError, setComposeTemplateError] = useState("");
   const [composeAttachments, setComposeAttachments] = useState<OutboundAttachmentInput[]>([]);
   const [composeAttachmentError, setComposeAttachmentError] = useState<string>("");
   const [sendingCompose, setSendingCompose] = useState<boolean>(false);
@@ -105,6 +126,29 @@ export default function InboxPage() {
     };
     fetchAgents();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedAgentEmail) {
+      setEmailTemplates([]);
+      return;
+    }
+    api.getEmailTemplates(selectedAgentEmail)
+      .then((items) => { if (active) setEmailTemplates(items); })
+      .catch((error) => {
+        if (active) {
+          setEmailTemplates([]);
+          console.error("Failed to load inbox templates:", error);
+        }
+      });
+    setComposeTemplateId("");
+    setComposeTemplateData("{}");
+    setComposeTemplatePreview(null);
+    setReplyTemplateId("");
+    setReplyTemplateData("{}");
+    setReplyTemplatePreview(null);
+    return () => { active = false; };
+  }, [selectedAgentEmail]);
 
   // Load Messages for Selected Agent
   const loadMessages = async (cursor?: string, append = false) => {
@@ -233,16 +277,45 @@ export default function InboxPage() {
   }, [selectedAgentEmail, selectedMessage?.id, selectedMessage?.direction, selectedMessage?.is_read, filterReadStatus, messages]);
 
   // Handle Send Reply
+  const previewReplyTemplate = async () => {
+    if (!selectedAgentEmail || !replyTemplateId) return;
+    try {
+      setReplyTemplateError("");
+      setReplyTemplatePreview(await api.previewSavedEmailTemplate(
+        selectedAgentEmail, replyTemplateId, parseTemplateData(replyTemplateData),
+      ));
+    } catch (error) {
+      setReplyTemplatePreview(null);
+      setReplyTemplateError(error instanceof Error ? error.message : "Could not preview template.");
+    }
+  };
+
+  const previewComposeTemplate = async () => {
+    if (!selectedAgentEmail || !composeTemplateId) return;
+    try {
+      setComposeTemplateError("");
+      setComposeTemplatePreview(await api.previewSavedEmailTemplate(
+        selectedAgentEmail, composeTemplateId, parseTemplateData(composeTemplateData),
+      ));
+    } catch (error) {
+      setComposeTemplatePreview(null);
+      setComposeTemplateError(error instanceof Error ? error.message : "Could not preview template.");
+    }
+  };
+
   const handleSendReply = async () => {
-    if (!selectedMessage || !replyText.trim()) return;
+    if (!selectedMessage || (!replyTemplateId && !replyText.trim())) return;
     try {
       setSendingReply(true);
       const latestMessage = threadMessages[threadMessages.length - 1] || selectedMessage;
-      const reply = await api.replyMessage(selectedAgentEmail, latestMessage.id, {
-        body_text: replyText,
-      });
+      const reply = await api.replyMessage(selectedAgentEmail, latestMessage.id, replyTemplateId
+        ? { template_id: replyTemplateId, template_data: parseTemplateData(replyTemplateData) }
+        : { body_text: replyText });
       try { window.localStorage.removeItem(replyDraftKey); } catch { /* Best effort cleanup. */ }
       setReplyText("");
+      setReplyTemplateId("");
+      setReplyTemplateData("{}");
+      setReplyTemplatePreview(null);
       await loadMessages();
       setSelectedMessage(reply);
     } catch (err: any) {
@@ -280,19 +353,29 @@ export default function InboxPage() {
   // Handle Fresh Outbound Compose
   const handleComposeSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!composeRecipient || !composeSubject || !composeBody) return;
+    if (!composeRecipient || (!composeTemplateId && (!composeSubject || !composeBody))) return;
     try {
       setSendingCompose(true);
-      const msg = await api.sendMessage(selectedAgentEmail, {
-        recipient: composeRecipient,
-        subject: composeSubject,
-        body_text: composeBody,
-        attachments: composeAttachments,
-      });
+      const msg = await api.sendMessage(selectedAgentEmail, composeTemplateId
+        ? {
+          recipient: composeRecipient,
+          template_id: composeTemplateId,
+          template_data: parseTemplateData(composeTemplateData),
+          attachments: composeAttachments,
+        }
+        : {
+          recipient: composeRecipient,
+          subject: composeSubject,
+          body_text: composeBody,
+          attachments: composeAttachments,
+        });
       setIsComposeOpen(false);
       setComposeRecipient("");
       setComposeSubject("");
       setComposeBody("");
+      setComposeTemplateId("");
+      setComposeTemplateData("{}");
+      setComposeTemplatePreview(null);
       setComposeAttachments([]);
       setComposeAttachmentError("");
       await loadMessages();
@@ -661,15 +744,40 @@ export default function InboxPage() {
                     To: {selectedMessage.direction === "inbound" ? selectedMessage.sender : selectedMessage.recipient}
                   </span>
                 </div>
-                <MessageSnippets inboxEmail={selectedAgentEmail} value={replyText} onApply={(body) => {
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <select
+                    aria-label="Reply template"
+                    value={replyTemplateId}
+                    onChange={(event) => { setReplyTemplateId(event.target.value); setReplyTemplatePreview(null); setReplyTemplateError(""); }}
+                    className="w-full rounded border border-[#30363d] bg-[#0d1117] p-2 text-xs text-[#e6edf3]"
+                  >
+                    <option value="">Use direct reply text</option>
+                    {emailTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                  </select>
+                  {replyTemplateId && <button type="button" onClick={() => void previewReplyTemplate()} className="rounded border border-[#30363d] px-3 py-2 text-xs text-[#e6edf3] hover:bg-[#21262d]">Preview template</button>}
+                </div>
+                {replyTemplateId && <div className="space-y-2">
+                  <label className="block text-[10px] text-[#8b949e]">Template data (JSON object)</label>
+                  <textarea rows={2} value={replyTemplateData} onChange={(event) => { setReplyTemplateData(event.target.value); setReplyTemplatePreview(null); setReplyTemplateError(""); }} className="w-full rounded border border-[#30363d] bg-[#0d1117] p-2 font-mono text-[11px] text-[#e6edf3]" />
+                  {replyTemplateError && <p role="alert" className="text-[11px] text-red-400">{replyTemplateError}</p>}
+                  {replyTemplatePreview && <div className="max-h-48 space-y-1 overflow-auto rounded border border-[#30363d] bg-[#0d1117] p-2 text-[10px] text-[#c9d1d9]">
+                    <p><span className="text-[#8b949e]">Subject:</span> {replyTemplatePreview.subject.toLowerCase().startsWith("re:") ? replyTemplatePreview.subject : `Re: ${replyTemplatePreview.subject}`}</p>
+                    <p className="text-[#8b949e]">Rendered text:</p>
+                    <pre className="whitespace-pre-wrap">{replyTemplatePreview.body_text}</pre>
+                    {replyTemplatePreview.body_html && <><p className="text-[#8b949e]">Rendered HTML source:</p><pre className="whitespace-pre-wrap">{replyTemplatePreview.body_html}</pre></>}
+                  </div>}
+                </div>}
+                {!replyTemplateId && <MessageSnippets inboxEmail={selectedAgentEmail} value={replyText} onApply={(body) => {
                   setReplyText(body);
                   if (replyDraftKey) {
                     try { window.localStorage.setItem(replyDraftKey, body); } catch { /* Draft remains available while this view is open. */ }
                   }
-                }} />
+                }} />}
                 <textarea
                   rows={3}
                   value={replyText}
+                  disabled={Boolean(replyTemplateId)}
+                  required={!replyTemplateId}
                   onChange={(e) => {
                     const value = e.target.value;
                     setReplyText(value);
@@ -681,13 +789,13 @@ export default function InboxPage() {
                     }
                   }}
                   placeholder="Type in-thread response..."
-                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2.5 text-xs text-[#e6edf3] placeholder-[#8b949e] focus:outline-none focus:border-zinc-500 resize-none"
+                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2.5 text-xs text-[#e6edf3] placeholder-[#8b949e] focus:outline-none focus:border-zinc-500 resize-none disabled:opacity-50"
                 />
                 <div className="flex justify-end">
-                  {replyText && <span className="mr-auto self-center text-[10px] text-[#8b949e]">Draft saved on this device</span>}
+                  {replyText && !replyTemplateId && <span className="mr-auto self-center text-[10px] text-[#8b949e]">Draft saved on this device</span>}
                   <button
                     onClick={handleSendReply}
-                    disabled={sendingReply || !replyText.trim()}
+                    disabled={sendingReply || (!replyTemplateId && !replyText.trim())}
                     className="px-3 py-1.5 rounded bg-[#238636] hover:bg-[#2ea043] disabled:opacity-50 text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
                   >
                     <Send className="w-3 h-3" />
@@ -742,28 +850,57 @@ export default function InboxPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="text-[#8b949e] block mb-1">Saved template (optional)</label>
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <select
+                    aria-label="Compose template"
+                    value={composeTemplateId}
+                    onChange={(event) => { setComposeTemplateId(event.target.value); setComposeTemplatePreview(null); setComposeTemplateError(""); }}
+                    className="w-full rounded border border-[#30363d] bg-[#0d1117] p-2 text-xs text-[#e6edf3]"
+                  >
+                    <option value="">Write direct content</option>
+                    {emailTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                  </select>
+                  {composeTemplateId && <button type="button" onClick={() => void previewComposeTemplate()} className="rounded border border-[#30363d] px-3 py-2 text-xs text-[#e6edf3] hover:bg-[#21262d]">Preview template</button>}
+                </div>
+                {composeTemplateId && <>
+                  <label className="block text-[10px] text-[#8b949e]">Template data (JSON object)</label>
+                  <textarea rows={2} value={composeTemplateData} onChange={(event) => { setComposeTemplateData(event.target.value); setComposeTemplatePreview(null); setComposeTemplateError(""); }} className="w-full rounded border border-[#30363d] bg-[#0d1117] p-2 font-mono text-[11px] text-[#e6edf3]" />
+                  {composeTemplateError && <p role="alert" className="text-[11px] text-red-400">{composeTemplateError}</p>}
+                  {composeTemplatePreview && <div className="max-h-48 space-y-1 overflow-auto rounded border border-[#30363d] bg-[#0d1117] p-2 text-[10px] text-[#c9d1d9]">
+                    <p><span className="text-[#8b949e]">Subject:</span> {composeTemplatePreview.subject}</p>
+                    <p className="text-[#8b949e]">Rendered text:</p>
+                    <pre className="whitespace-pre-wrap">{composeTemplatePreview.body_text}</pre>
+                    {composeTemplatePreview.body_html && <><p className="text-[#8b949e]">Rendered HTML source:</p><pre className="whitespace-pre-wrap">{composeTemplatePreview.body_html}</pre></>}
+                  </div>}
+                </>}
+              </div>
+
               <div>
                 <label className="text-[#8b949e] block mb-1">Subject</label>
                 <input
                   type="text"
-                  required
+                  required={!composeTemplateId}
+                  disabled={Boolean(composeTemplateId)}
                   placeholder="Subject"
                   value={composeSubject}
                   onChange={(e) => setComposeSubject(e.target.value)}
-                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] focus:outline-none focus:border-zinc-500 disabled:opacity-50"
                 />
               </div>
 
               <div>
                 <label className="text-[#8b949e] block mb-1">Body</label>
-                <MessageSnippets inboxEmail={selectedAgentEmail} value={composeBody} onApply={setComposeBody} />
+                {!composeTemplateId && <MessageSnippets inboxEmail={selectedAgentEmail} value={composeBody} onApply={setComposeBody} />}
                 <textarea
                   rows={4}
-                  required
+                  required={!composeTemplateId}
+                  disabled={Boolean(composeTemplateId)}
                   placeholder="Message body..."
                   value={composeBody}
                   onChange={(e) => setComposeBody(e.target.value)}
-                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] focus:outline-none focus:border-zinc-500 resize-none font-sans"
+                  className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] focus:outline-none focus:border-zinc-500 resize-none font-sans disabled:opacity-50"
                 />
               </div>
 

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- Agent Schemas ---
 class AgentCreate(BaseModel):
@@ -113,6 +113,55 @@ class ContactResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ContactEngagementWrite(BaseModel):
+    contact_id: str = Field(..., min_length=1, max_length=64)
+    stage: str = Field("new", pattern="^(new|contacted|waiting|closed)$")
+    next_due_at: Optional[datetime] = None
+    notes: str = Field("", max_length=4000)
+
+    @field_validator("notes")
+    @classmethod
+    def trim_engagement_notes(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("next_due_at")
+    @classmethod
+    def normalize_due_time(cls, value: Optional[datetime]) -> Optional[datetime]:
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value and value.tzinfo else value
+
+
+class ContactEngagementUpdate(BaseModel):
+    stage: Optional[str] = Field(None, pattern="^(new|contacted|waiting|closed)$")
+    next_due_at: Optional[datetime] = None
+    notes: Optional[str] = Field(None, max_length=4000)
+
+    @field_validator("notes")
+    @classmethod
+    def trim_engagement_notes(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value is not None else None
+
+    @field_validator("next_due_at")
+    @classmethod
+    def normalize_due_time(cls, value: Optional[datetime]) -> Optional[datetime]:
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value and value.tzinfo else value
+
+
+class ContactEngagementResponse(BaseModel):
+    id: str
+    agent_email: str
+    contact_id: str
+    contact_email: str
+    contact_name: str
+    stage: str
+    next_due_at: Optional[datetime]
+    notes: str
+    replied_at: Optional[datetime]
+    replied: bool
+    suppressed: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class RecipientSuppressionCreate(BaseModel):
@@ -261,15 +310,19 @@ class MessageAttachmentInput(BaseModel):
 
 class MessageSendRequest(BaseModel):
     recipient: str = Field(..., min_length=3, max_length=320, example="customer@example.com")
-    subject: str = Field(..., example="Update on your support ticket #492")
-    body_text: str = Field(..., example="Hello! We have reviewed your inquiry and resolved the issue.")
+    subject: Optional[str] = Field(None, max_length=512, example="Update on your support ticket #492")
+    body_text: Optional[str] = Field(None, max_length=100_000, example="Hello! We have reviewed your inquiry and resolved the issue.")
     body_html: Optional[str] = None
+    template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_data: Dict[str, Any] = Field(default_factory=dict)
     thread_id: Optional[str] = None
     attachments: Optional[List[MessageAttachmentInput]] = None
 
 class MessageReplyRequest(BaseModel):
-    body_text: str = Field(..., example="Thank you for confirming. I am closing this ticket now.")
+    body_text: Optional[str] = Field(None, max_length=100_000, example="Thank you for confirming. I am closing this ticket now.")
     body_html: Optional[str] = None
+    template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_data: Dict[str, Any] = Field(default_factory=dict)
     attachments: Optional[List[MessageAttachmentInput]] = None
 
 class MessageForwardRequest(BaseModel):

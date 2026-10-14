@@ -546,17 +546,31 @@ class AgentEmailClient:
         inbox: str,
         *,
         recipient: str,
-        subject: str,
-        body_text: str,
+        subject: str | None = None,
+        body_text: str | None = None,
         body_html: str | None = None,
+        template_id: str | None = None,
+        template_data: dict[str, Any] | None = None,
         thread_id: str | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
     ) -> Message:
-        """Send a message, optionally with a retry-safe idempotency key."""
-        payload: dict[str, Any] = {"recipient": recipient, "subject": subject, "body_text": body_text}
-        if body_html is not None:
-            payload["body_html"] = body_html
+        """Send direct content or render an inbox template for this message."""
+        payload: dict[str, Any] = {"recipient": recipient}
+        if template_id is not None:
+            payload["template_id"] = template_id
+            if template_data is not None:
+                payload["template_data"] = template_data
+            if subject is not None or body_text is not None or body_html is not None:
+                raise ValueError("provide template_id or direct message content, not both")
+        else:
+            if template_data is not None:
+                raise ValueError("template_data requires template_id")
+            if subject is None or body_text is None:
+                raise ValueError("subject and body_text are required without template_id")
+            payload.update({"subject": subject, "body_text": body_text})
+            if body_html is not None:
+                payload["body_html"] = body_html
         if thread_id is not None:
             payload["thread_id"] = thread_id
         if attachments:
@@ -571,15 +585,29 @@ class AgentEmailClient:
         inbox: str,
         message_id: str,
         *,
-        body_text: str,
+        body_text: str | None = None,
         body_html: str | None = None,
+        template_id: str | None = None,
+        template_data: dict[str, Any] | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
     ) -> Message:
-        """Reply in the original message thread."""
-        payload: dict[str, Any] = {"body_text": body_text}
-        if body_html is not None:
-            payload["body_html"] = body_html
+        """Reply with direct content or render an inbox template in-thread."""
+        payload: dict[str, Any] = {}
+        if template_id is not None:
+            payload["template_id"] = template_id
+            if template_data is not None:
+                payload["template_data"] = template_data
+            if body_text is not None or body_html is not None:
+                raise ValueError("provide template_id or direct reply content, not both")
+        else:
+            if template_data is not None:
+                raise ValueError("template_data requires template_id")
+            if body_text is None:
+                raise ValueError("body_text is required without template_id")
+            payload["body_text"] = body_text
+            if body_html is not None:
+                payload["body_html"] = body_html
         if attachments:
             payload["attachments"] = attachments
         return self._request(

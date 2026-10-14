@@ -2,6 +2,7 @@
 import datetime
 import html
 import json
+import math
 import re
 import uuid
 from typing import Any
@@ -63,6 +64,8 @@ def _validate_data(value: Any, depth: int = 0, count: list[int] | None = None) -
     elif isinstance(value, str):
         if len(value) > 4096:
             raise HTTPException(status_code=422, detail="Preview string values are limited to 4,096 characters")
+    elif isinstance(value, float) and not math.isfinite(value):
+        raise HTTPException(status_code=422, detail="Preview data numbers must be finite")
     elif value is not None and not isinstance(value, (int, float, bool)):
         raise HTTPException(status_code=422, detail="Preview data must contain JSON values")
 
@@ -95,7 +98,7 @@ def _render(source: str, data: dict[str, Any], *, html_part: bool = False) -> tu
 
 def _preview(subject: str, body_text: str, body_html: str, data: dict[str, Any]) -> dict[str, Any]:
     try:
-        size = len(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        size = len(json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="Preview data must be valid JSON") from None
     if size > _MAX_DATA_BYTES:

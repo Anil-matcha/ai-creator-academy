@@ -19,7 +19,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
-from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery, UnsubscribeToken
+from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery, UnsubscribeToken, Contact, ContactEngagement
 from app.config import settings
 from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
@@ -370,6 +370,27 @@ class EmailService:
             created_at=datetime.datetime.utcnow()
         )
         db.add(message)
+        # Reply state is derived from an authenticated, delivered inbound message;
+        # callers cannot write it through the engagement API.
+        if status == "delivered" and dmarc_status == "pass":
+            try:
+                reply_address = canonicalize_recipient(sender)
+            except ValueError:
+                reply_address = None
+            if reply_address:
+                engagement_result = await db.execute(
+                    select(ContactEngagement)
+                    .join(Contact, Contact.id == ContactEngagement.contact_id)
+                    .where(
+                        ContactEngagement.agent_email == agent.email,
+                        Contact.agent_email == agent.email,
+                        Contact.email == reply_address,
+                        ContactEngagement.stage != "closed",
+                    )
+                )
+                for engagement in engagement_result.scalars().all():
+                    engagement.next_due_at = None
+                    engagement.replied_at = message.created_at
         for attachment in attachments or []:
             db.add(MessageAttachment(
                 id=f"att_{uuid.uuid4().hex[:16]}", message_id=msg_id,

@@ -23,6 +23,22 @@ export interface Contact {
   updated_at: string;
 }
 
+export interface ContactEngagement {
+  id: string;
+  agent_email: string;
+  contact_id: string;
+  contact_email: string;
+  contact_name: string;
+  stage: "new" | "contacted" | "waiting" | "closed";
+  next_due_at: string | null;
+  notes: string;
+  replied_at: string | null;
+  replied: boolean;
+  suppressed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EmailTemplate {
   id: string;
   agent_email: string;

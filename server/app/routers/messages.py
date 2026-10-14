@@ -9,14 +9,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from app.database import get_db
-from app.models import Agent, Message, MessageAttachment
+from app.models import Agent, EmailTemplate, Message, MessageAttachment
 from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
 from app.services.otp_finder import find_recent_otp
 from app.security import require_agent_access, require_write
+from app.routers.templates import _preview
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
+
+
+async def _outbound_content(email: str, payload, db: AsyncSession, *, reply_subject: str | None = None):
+    """Resolve either direct message content or one inbox-scoped saved template."""
+    if payload.template_id:
+        supplied_content = {"subject", "body_text", "body_html"} & payload.model_fields_set
+        if supplied_content:
+            raise HTTPException(status_code=422, detail="Provide either template_id or message content, not both")
+        template = await db.scalar(
+            select(EmailTemplate).where(
+                EmailTemplate.agent_email == email,
+                EmailTemplate.id == payload.template_id,
+            )
+        )
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+        rendered = _preview(template.subject, template.body_text, template.body_html, payload.template_data)
+        subject = rendered["subject"]
+        if reply_subject is not None and not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
+        return subject, rendered["body_text"], rendered["body_html"] or None
+
+    if "template_data" in payload.model_fields_set:
+        raise HTTPException(status_code=422, detail="template_data requires template_id")
+    if payload.subject is None or payload.body_text is None:
+        raise HTTPException(status_code=422, detail="subject and body_text are required without template_id")
+    return reply_subject if reply_subject is not None else payload.subject, payload.body_text, payload.body_html
 
 
 def _encode_message_cursor(
@@ -239,13 +267,15 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    subject, body_text, body_html = await _outbound_content(email, req, db)
+
     message = await EmailService.send_outbound(
         db=db,
         agent=agent,
         recipient=req.recipient,
-        subject=req.subject,
-        body_text=req.body_text,
-        body_html=req.body_html,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
         thread_id=req.thread_id,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
@@ -270,6 +300,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
     subject = original_msg.subject
     if not subject.lower().startswith("re:"):
         subject = f"Re: {subject}"
+    subject, body_text, body_html = await _outbound_content(email, req, db, reply_subject=subject)
     in_reply_to, references = EmailService.reply_headers(original_msg)
 
     reply_msg = await EmailService.send_outbound(
@@ -277,8 +308,8 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
         agent=agent,
         recipient=reply_recipient,
         subject=subject,
-        body_text=req.body_text,
-        body_html=req.body_html,
+        body_text=body_text,
+        body_html=body_html,
         thread_id=original_msg.thread_id,
         in_reply_to=in_reply_to,
         references=references,
