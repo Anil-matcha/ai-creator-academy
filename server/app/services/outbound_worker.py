@@ -110,7 +110,8 @@ async def _dispatch_one() -> bool:
         claim_locked_at = job.locked_at
 
         message = await db.get(Message, job.message_id)
-        agent = await db.get(Agent, message.agent_email) if message else None
+        # Agent's primary key is `id`; messages reference the inbox by its unique email address.
+        agent = await db.scalar(select(Agent).where(Agent.email == message.agent_email)) if message else None
         if not message or not agent:
             status, info = "failed", "Outbound message or owning agent no longer exists"
         else:

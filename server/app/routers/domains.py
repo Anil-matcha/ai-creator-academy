@@ -12,6 +12,7 @@ from app.schemas import DomainCreate, DomainResponse
 from app.security import require_admin
 from app.services import domain_dns
 from app.services.smtp_secrets import encrypt_secret
+from app.services.webhook_events import enqueue_domain_webhook_event
 
 router = APIRouter(prefix="/v1/domains", tags=["Domains"], dependencies=[Depends(require_admin)])
 
@@ -79,9 +80,29 @@ async def verify_domain(domain_name: str, db: AsyncSession = Depends(get_db)):
         asyncio.to_thread(domain_dns.check_dkim, clean_domain, domain.dkim_selector, public_b64),
         asyncio.to_thread(domain_dns.check_dmarc, clean_domain),
     )
+    previous_status = domain.status
+    previous_checks = (domain.mx_status, domain.spf_status, domain.dkim_status)
     domain.mx_status, domain.spf_status, domain.dkim_status, domain.dmarc_status = mx, spf, dkim, dmarc
     domain.status = domain_dns.overall_status(mx, spf, dkim)
     domain.last_checked_at = datetime.datetime.utcnow()
+
+    # Emit only on a change: into verified, or out of verified / into a new mismatch. Repeated
+    # verify calls that find the same state do not repeat the event.
+    records = {"mx": mx, "spf": spf, "dkim": dkim, "dmarc": dmarc}
+    if domain.status == "verified" and previous_status != "verified":
+        event_type = "domain.sending_verified"
+    elif domain.status != "verified" and (
+        previous_status == "verified"
+        or ("mismatch" in (mx, spf, dkim) and previous_checks != (mx, spf, dkim))
+    ):
+        event_type = "domain.sending_failed"
+    else:
+        event_type = None
+    if event_type:
+        await enqueue_domain_webhook_event(
+            db, event_type=event_type, domain=domain.domain, status=domain.status,
+            records=records, created_at=domain.last_checked_at,
+        )
     await db.commit()
     await db.refresh(domain)
     return domain
