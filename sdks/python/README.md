@@ -81,6 +81,35 @@ print(reversal["deleted"], reversal["retained_after_edits"])
 
 Reversal removes only contacts that have not been edited since import. Full-access scope is required for import and reversal.
 
+## Reusable email templates
+
+Templates are scoped to an inbox and never send by themselves. Listing and previewing are available with read access; creating, updating, and deleting requires a full-access key. Template names must be 1–255 characters, subjects 1–512 characters without line breaks, and each body is limited to 100,000 characters. At least one of the plain-text or HTML bodies must be present. Duplicate names within one inbox return HTTP 409.
+
+Draft or saved templates can be previewed with nested JSON data. Preview data is limited to 16 KB, 500 values, six levels of nesting, 4,096 characters per string, and 128 characters per object key. Missing variables render as empty strings, and values substituted into HTML are escaped.
+
+```python
+template = client.create_template(
+    "agent@example.com",
+    name="Support update",
+    subject="Update for {{customer.name}}",
+    body_text="Hi {{customer.name}}, your ticket {{ticket_id}} is being reviewed.",
+    body_html="<p>Hi {{customer.name}}, your ticket {{ticket_id}} is being reviewed.</p>",
+)
+preview = client.preview_saved_template(
+    "agent@example.com", template["id"],
+    data={"customer": {"name": "Alex"}, "ticket_id": "T-42"},
+)
+print(preview["subject"], preview["body_text"])
+
+templates = client.list_templates("agent@example.com", limit=100)
+draft_preview = client.preview_template(
+    "agent@example.com", subject="Hello {{name}}", body_text="Welcome, {{name}}!",
+    data={"name": "Alex"},
+)
+client.update_template("agent@example.com", template["id"], name="Support follow-up")
+client.delete_template("agent@example.com", template["id"])
+```
+
 ## Recipient suppressions
 
 Suppressions are explicit, operator-managed blocks scoped to one inbox. Listing requires read access; adding or removing an entry requires full-access scope. The SDK normalizes addresses to lowercase and checks email length (maximum 255 characters), optional reason length (maximum 500 characters), and list limit (1–500) before sending.

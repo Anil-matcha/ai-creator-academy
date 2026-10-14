@@ -79,6 +79,24 @@ class Suppression(TypedDict):
     created_at: str
 
 
+class EmailTemplate(TypedDict):
+    id: str
+    agent_email: str
+    name: str
+    subject: str
+    body_text: str
+    body_html: str
+    created_at: str
+    updated_at: str
+
+
+class EmailTemplatePreview(TypedDict):
+    subject: str
+    body_text: str
+    body_html: str
+    variables: list[str]
+
+
 MessageStatus = Literal[
     "delivered",
     "accepted_by_relay",
@@ -359,6 +377,128 @@ class AgentEmailClient:
             "DELETE",
             f"/v1/agents/{self._inbox_path(inbox)}/contacts/imports/{quote(batch_id, safe='')}",
             query={"confirm": "DELETE"},
+        )
+
+    @staticmethod
+    def _validate_template_fields(
+        *, name: str | None = None, subject: str | None = None,
+        body_text: str | None = None, body_html: str | None = None,
+    ) -> None:
+        if name is not None and not 1 <= len(name.strip()) <= 255:
+            raise ValueError("name must contain 1–255 non-whitespace characters")
+        if subject is not None and (
+            not 1 <= len(subject.strip()) <= 512 or "\r" in subject or "\n" in subject
+        ):
+            raise ValueError("subject must contain 1–512 characters and no line breaks")
+        for field, value in (("body_text", body_text), ("body_html", body_html)):
+            if value is not None and len(value) > 100_000:
+                raise ValueError(f"{field} must be no more than 100,000 characters")
+
+    @staticmethod
+    def _validate_template_preview_data(data: dict[str, Any]) -> None:
+        try:
+            encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        except (TypeError, ValueError):
+            raise ValueError("preview data must contain valid JSON values") from None
+        if len(encoded) > 16_384:
+            raise ValueError("preview data must be no more than 16 KB")
+
+        count = 0
+
+        def visit(value: Any, depth: int) -> None:
+            nonlocal count
+            count += 1
+            if count > 500 or depth > 6:
+                raise ValueError("preview data exceeds 500 values or 6 levels of nesting")
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if not isinstance(key, str) or len(key) > 128:
+                        raise ValueError("preview object keys must be strings of at most 128 characters")
+                    visit(child, depth + 1)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child, depth + 1)
+            elif isinstance(value, str):
+                if len(value) > 4096:
+                    raise ValueError("preview string values must be no more than 4,096 characters")
+            elif value is not None and not isinstance(value, (int, float, bool)):
+                raise ValueError("preview data must contain JSON values")
+
+        visit(data, 0)
+
+    def list_templates(self, inbox: str, *, limit: int = 100) -> list[EmailTemplate]:
+        """List reusable inbox templates (limit 1–500; default 100)."""
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/templates", query={"limit": limit}
+        )
+
+    def get_template(self, inbox: str, template_id: str) -> EmailTemplate:
+        """Fetch one saved template by ID."""
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/templates/{quote(template_id, safe='')}"
+        )
+
+    def create_template(
+        self, inbox: str, *, name: str, subject: str,
+        body_text: str = "", body_html: str = "",
+    ) -> EmailTemplate:
+        """Save an inbox template. At least one body is required; this does not send email."""
+        self._validate_template_fields(name=name, subject=subject, body_text=body_text, body_html=body_html)
+        if not body_text.strip() and not body_html.strip():
+            raise ValueError("at least one of body_text or body_html is required")
+        payload = {
+            "name": name.strip(), "subject": subject.strip(),
+            "body_text": body_text.strip(), "body_html": body_html.strip(),
+        }
+        return self._request("POST", f"/v1/agents/{self._inbox_path(inbox)}/templates", payload=payload)
+
+    def update_template(
+        self, inbox: str, template_id: str, *, name: str | None = None,
+        subject: str | None = None, body_text: str | None = None, body_html: str | None = None,
+    ) -> EmailTemplate:
+        """Update saved template fields; a full-access API key is required."""
+        changes = {key: value for key, value in {
+            "name": name, "subject": subject, "body_text": body_text, "body_html": body_html,
+        }.items() if value is not None}
+        if not changes:
+            raise ValueError("provide at least one template field to update")
+        self._validate_template_fields(**changes)
+        changes = {key: value.strip() for key, value in changes.items()}
+        return self._request(
+            "PATCH", f"/v1/agents/{self._inbox_path(inbox)}/templates/{quote(template_id, safe='')}",
+            payload=changes,
+        )
+
+    def delete_template(self, inbox: str, template_id: str) -> None:
+        """Delete a saved template; a full-access API key is required."""
+        self._request(
+            "DELETE", f"/v1/agents/{self._inbox_path(inbox)}/templates/{quote(template_id, safe='')}"
+        )
+
+    def preview_template(
+        self, inbox: str, *, subject: str, data: dict[str, Any],
+        body_text: str = "", body_html: str = "",
+    ) -> EmailTemplatePreview:
+        """Render a draft without saving it; HTML variable values are escaped by the server."""
+        self._validate_template_fields(subject=subject, body_text=body_text, body_html=body_html)
+        if not body_text.strip() and not body_html.strip():
+            raise ValueError("at least one of body_text or body_html is required")
+        self._validate_template_preview_data(data)
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/templates/preview",
+            payload={"subject": subject.strip(), "body_text": body_text, "body_html": body_html, "data": data},
+        )
+
+    def preview_saved_template(
+        self, inbox: str, template_id: str, *, data: dict[str, Any]
+    ) -> EmailTemplatePreview:
+        """Render a saved template with sample data without sending or changing it."""
+        self._validate_template_preview_data(data)
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/templates/{quote(template_id, safe='')}/preview",
+            payload={"data": data},
         )
 
     @staticmethod
