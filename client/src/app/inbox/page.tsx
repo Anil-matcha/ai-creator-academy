@@ -47,11 +47,38 @@ export default function InboxPage() {
 
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
+  const replyDraftKey = selectedAgentEmail && selectedMessage
+    ? `open-agent-email:reply-draft:${selectedAgentEmail}:${selectedMessage.thread_id}`
+    : "";
+  const previousReplyDraftKey = useRef("");
   const [sendingReply, setSendingReply] = useState<boolean>(false);
   const [handoffRecipient, setHandoffRecipient] = useState<string>("");
   const [handoffNote, setHandoffNote] = useState<string>("");
   const [sendingHandoff, setSendingHandoff] = useState<boolean>(false);
   const [handoffResult, setHandoffResult] = useState<string>("");
+
+  // Keep unsent replies per inbox/thread on this device so navigating away from
+  // a conversation does not discard a human's work.
+  useEffect(() => {
+    const previousKey = previousReplyDraftKey.current;
+    if (previousKey === replyDraftKey) return;
+    if (previousKey) {
+      try {
+        if (replyText) window.localStorage.setItem(previousKey, replyText);
+        else window.localStorage.removeItem(previousKey);
+      } catch { /* Storage can be unavailable in private or restricted contexts. */ }
+    }
+    previousReplyDraftKey.current = replyDraftKey;
+    if (!replyDraftKey) {
+      setReplyText("");
+      return;
+    }
+    try {
+      setReplyText(window.localStorage.getItem(replyDraftKey) || "");
+    } catch {
+      setReplyText("");
+    }
+  }, [replyDraftKey]);
 
   // New Compose Outbound Modal
   const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
@@ -213,6 +240,7 @@ export default function InboxPage() {
       const reply = await api.replyMessage(selectedAgentEmail, latestMessage.id, {
         body_text: replyText,
       });
+      try { window.localStorage.removeItem(replyDraftKey); } catch { /* Best effort cleanup. */ }
       setReplyText("");
       await loadMessages();
       setSelectedMessage(reply);
@@ -635,11 +663,21 @@ export default function InboxPage() {
                 <textarea
                   rows={3}
                   value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setReplyText(value);
+                    if (replyDraftKey) {
+                      try {
+                        if (value) window.localStorage.setItem(replyDraftKey, value);
+                        else window.localStorage.removeItem(replyDraftKey);
+                      } catch { /* Draft remains available while this view is open. */ }
+                    }
+                  }}
                   placeholder="Type in-thread response..."
                   className="w-full bg-[#0d1117] border border-[#30363d] rounded p-2.5 text-xs text-[#e6edf3] placeholder-[#8b949e] focus:outline-none focus:border-zinc-500 resize-none"
                 />
                 <div className="flex justify-end">
+                  {replyText && <span className="mr-auto self-center text-[10px] text-[#8b949e]">Draft saved on this device</span>}
                   <button
                     onClick={handleSendReply}
                     disabled={sendingReply || !replyText.trim()}

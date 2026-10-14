@@ -171,6 +171,11 @@ class OutboundJobResponse(BaseModel):
         from_attributes = True
 
 
+class OutboundJobPageResponse(BaseModel):
+    items: List[OutboundJobResponse]
+    next_cursor: Optional[str] = None
+
+
 class OutboundRetryEventResponse(BaseModel):
     id: str
     job_id: str

@@ -33,6 +33,9 @@ export default function OutboxPage() {
   const [selectedJob, setSelectedJob] = useState<OutboundJob | null>(null);
   const [retryEvents, setRetryEvents] = useState<OutboundRetryEvent[]>([]);
   const [status, setStatus] = useState<OutboundJobStatus | "">("");
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [previousCursors, setPreviousCursors] = useState<(string | undefined)[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -44,20 +47,22 @@ export default function OutboxPage() {
     setLoading(true);
     setError("");
     try {
-      const items = await api.getOutboundJobs(status || undefined, 100);
-      setJobs(items);
+      const page = await api.getOutboundJobPage(status || undefined, 50, cursor);
+      setJobs(page.items);
+      setNextCursor(page.next_cursor || null);
       setSelectedJob((previous) => {
-        if (preserveSelection && previous) return items.find((job) => job.id === previous.id) || items[0] || null;
-        return items[0] || null;
+        if (preserveSelection && previous) return page.items.find((job) => job.id === previous.id) || page.items[0] || null;
+        return page.items[0] || null;
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the outbound queue.");
       setJobs([]);
+      setNextCursor(null);
       setSelectedJob(null);
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, cursor]);
 
   useEffect(() => { void loadJobs(false); }, [loadJobs]);
 
@@ -108,7 +113,7 @@ export default function OutboxPage() {
         </div>
         <div className="flex flex-wrap items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] p-1 text-xs">
           {FILTERS.map((filter) => (
-            <button key={filter.label} onClick={() => setStatus(filter.value)} className={`rounded px-2.5 py-1 transition-colors ${status === filter.value ? "bg-[#21262d] text-[#e6edf3]" : "text-[#8b949e] hover:text-[#e6edf3]"}`}>
+            <button key={filter.label} onClick={() => { setPreviousCursors([]); setCursor(undefined); setStatus(filter.value); }} className={`rounded px-2.5 py-1 transition-colors ${status === filter.value ? "bg-[#21262d] text-[#e6edf3]" : "text-[#8b949e] hover:text-[#e6edf3]"}`}>
               {filter.label}
             </button>
           ))}
@@ -120,7 +125,7 @@ export default function OutboxPage() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 min-h-[560px]">
         <section className="xl:col-span-7 card-simple flex flex-col overflow-hidden">
           <div className="p-3 border-b border-[#30363d] flex items-center justify-between text-xs">
-            <span className="font-medium text-[#e6edf3]">Jobs <span className="text-[#8b949e]">({jobs.length}{jobs.length === 100 ? "+" : ""})</span></span>
+            <span className="font-medium text-[#e6edf3]">Jobs <span className="text-[#8b949e]">({jobs.length}{nextCursor ? "+" : ""})</span></span>
             <button onClick={() => void loadJobs()} disabled={loading} className="flex items-center gap-1 text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-50"><RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh</button>
           </div>
           <div className="flex-1 overflow-auto divide-y divide-[#30363d]">
@@ -138,7 +143,13 @@ export default function OutboxPage() {
               </button>
             ))}
           </div>
-          {!loading && jobs.length === 100 && <div className="px-3 py-2 border-t border-[#30363d] text-[10px] text-[#8b949e]">Showing the newest 100 jobs. Use a status filter to narrow the list.</div>}
+          {!loading && (previousCursors.length > 0 || nextCursor) && <div className="px-3 py-2 border-t border-[#30363d] flex items-center justify-between text-[10px] text-[#8b949e]">
+            <span>Page {previousCursors.length + 1}</span>
+            <div className="flex gap-2">
+              <button disabled={loading || previousCursors.length === 0} onClick={() => { const previous = [...previousCursors]; const target = previous.pop(); setPreviousCursors(previous); setCursor(target); }} className="rounded border border-[#30363d] px-2 py-1 hover:text-[#e6edf3] disabled:opacity-40">Newer</button>
+              <button disabled={loading || !nextCursor} onClick={() => { if (!nextCursor) return; setPreviousCursors((previous) => [...previous, cursor]); setCursor(nextCursor); }} className="rounded border border-[#30363d] px-2 py-1 hover:text-[#e6edf3] disabled:opacity-40">Older</button>
+            </div>
+          </div>}
         </section>
 
         <section className="xl:col-span-5 card-simple flex flex-col overflow-hidden">

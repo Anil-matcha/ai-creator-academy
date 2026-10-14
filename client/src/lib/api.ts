@@ -11,6 +11,7 @@ import {
   ApiKeyItem,
   ApiKeyCreated,
   OutboundJob,
+  OutboundJobPage,
   OutboundJobStatus,
   OutboundRetryEvent,
   WebhookEndpoint,
@@ -197,6 +198,12 @@ export const api = {
     const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 200)) });
     if (status) params.set("status", status);
     return request<OutboundJob[]>(`/v1/outbox?${params.toString()}`);
+  },
+  getOutboundJobPage: (status?: OutboundJobStatus, limit = 50, cursor?: string) => {
+    const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 100)) });
+    if (status) params.set("status", status);
+    if (cursor) params.set("cursor", cursor);
+    return request<OutboundJobPage>(`/v1/outbox/page?${params.toString()}`);
   },
   retryOutboundJob: (jobId: string, confirmDuplicateRisk = false) => {
     const qs = confirmDuplicateRisk ? "?confirm_duplicate_risk=true" : "";

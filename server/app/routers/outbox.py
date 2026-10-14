@@ -1,17 +1,47 @@
 import datetime
+import base64
+import binascii
+import json
+import re
 import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Message, OutboundJob, OutboundRetryEvent
-from app.schemas import OutboundJobResponse, OutboundRetryEventResponse
+from app.schemas import OutboundJobPageResponse, OutboundJobResponse, OutboundRetryEventResponse
 from app.security import Principal, require_admin
 
 router = APIRouter(prefix="/v1/outbox", tags=["Outbound Queue"], dependencies=[Depends(require_admin)])
+OUTBOX_STATUSES = {"pending", "processing", "complete", "failed", "uncertain"}
+
+
+def _encode_outbox_cursor(job: OutboundJob, status: Optional[str]) -> str:
+    raw = json.dumps(
+        {"v": 1, "created_at": job.created_at.isoformat(), "id": job.id, "status": status},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_outbox_cursor(cursor: str, status: Optional[str]) -> tuple[datetime.datetime, str]:
+    if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
+        raise HTTPException(status_code=400, detail="Invalid outbox cursor")
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        created_at = datetime.datetime.fromisoformat(payload["created_at"])
+        job_id = payload["id"]
+        if payload.get("v") != 1 or not isinstance(job_id, str) or not job_id or len(job_id) > 64:
+            raise ValueError("invalid cursor fields")
+        if payload.get("status") != status or created_at.tzinfo is not None:
+            raise ValueError("cursor filters changed")
+        return created_at, job_id
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid or incompatible outbox cursor") from None
 
 
 @router.get("", response_model=List[OutboundJobResponse])
@@ -22,11 +52,41 @@ async def list_outbound_jobs(
 ):
     query = select(OutboundJob)
     if status:
-        if status not in {"pending", "processing", "complete", "failed", "uncertain"}:
+        if status not in OUTBOX_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid outbox status")
         query = query.where(OutboundJob.status == status)
     result = await db.execute(query.order_by(OutboundJob.created_at.desc()).limit(limit))
     return result.scalars().all()
+
+
+@router.get("/page", response_model=OutboundJobPageResponse)
+async def page_outbound_jobs(
+    status: Optional[str] = Query(None, description="pending, processing, complete, failed, or uncertain"),
+    limit: int = Query(50, ge=1, le=100),
+    cursor: Optional[str] = Query(None, max_length=512),
+    db: AsyncSession = Depends(get_db),
+):
+    if status and status not in OUTBOX_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid outbox status")
+    query = select(OutboundJob)
+    if status:
+        query = query.where(OutboundJob.status == status)
+    if cursor:
+        cursor_created_at, cursor_id = _decode_outbox_cursor(cursor, status)
+        query = query.where(
+            or_(
+                OutboundJob.created_at < cursor_created_at,
+                and_(OutboundJob.created_at == cursor_created_at, OutboundJob.id < cursor_id),
+            )
+        )
+    result = await db.execute(
+        query.order_by(OutboundJob.created_at.desc(), OutboundJob.id.desc()).limit(limit + 1)
+    )
+    jobs = result.scalars().all()
+    has_more = len(jobs) > limit
+    items = jobs[:limit]
+    next_cursor = _encode_outbox_cursor(items[-1], status) if has_more and items else None
+    return {"items": items, "next_cursor": next_cursor}
 
 
 @router.post("/{job_id}/retry", response_model=OutboundJobResponse)

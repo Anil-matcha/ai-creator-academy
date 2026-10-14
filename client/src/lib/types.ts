@@ -152,6 +152,11 @@ export interface OutboundJob {
   created_at: string;
 }
 
+export interface OutboundJobPage {
+  items: OutboundJob[];
+  next_cursor?: string | null;
+}
+
 export interface OutboundRetryEvent {
   id: string;
   job_id: string;
