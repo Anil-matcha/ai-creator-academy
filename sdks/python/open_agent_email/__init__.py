@@ -5,6 +5,7 @@ from .client import (
     AgentEmailError,
     Attachment,
     Message,
+    MessagePage,
     OtpResult,
     attachment_from_bytes,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "AgentEmailError",
     "Attachment",
     "Message",
+    "MessagePage",
     "OtpResult",
     "attachment_from_bytes",
     "verify_webhook_signature",

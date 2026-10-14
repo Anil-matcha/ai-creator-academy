@@ -19,6 +19,14 @@ messages = client.list_messages("agent@example.com", limit=20, direction="inboun
 for message in messages:
     print(message["id"], message["sender"], message["subject"])
 
+page = client.get_message_page("agent@example.com", query="invoice", limit=50)
+for message in page["items"]:
+    print(message["id"], message["subject"])
+if page["next_cursor"]:
+    next_page = client.get_message_page(
+        "agent@example.com", query="invoice", limit=50, cursor=page["next_cursor"]
+    )
+
 message = client.get_message("agent@example.com", messages[0]["id"])
 print(message["body_text"])
 
@@ -26,6 +34,8 @@ result = client.get_recent_otp("agent@example.com", since_seconds=600, wait_seco
 if result.get("found"):
     print("Verification code:", result["code"])
 ```
+
+`get_message_page` searches sender and subject and accepts only `inbound` or `outbound` direction filters. Keep the same search and direction parameters when following a `next_cursor`.
 
 The SDK sends the key in the `Authorization: Bearer` header. Keep it in a secret manager or environment variable, and use HTTPS except for local development. The client never prints or includes the token in its API exceptions. Each socket operation uses a bounded timeout (15 seconds by default, configurable up to 60 seconds).
 

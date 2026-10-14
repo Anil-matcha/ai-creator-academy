@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Mail,
@@ -25,6 +25,12 @@ export default function InboxPage() {
   const [threadAttachments, setThreadAttachments] = useState<Record<string, MessageAttachment[]>>({});
   const [filterDirection, setFilterDirection] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [listError, setListError] = useState<string>("");
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const messageRequestId = useRef(0);
 
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
@@ -60,29 +66,50 @@ export default function InboxPage() {
   }, []);
 
   // Load Messages for Selected Agent
-  const loadMessages = async () => {
+  const loadMessages = async (cursor?: string, append = false) => {
     if (!selectedAgentEmail) return;
+    const requestId = ++messageRequestId.current;
     try {
-      setLoading(true);
-      const msgs = await api.getMessages(selectedAgentEmail, {
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setListError("");
+      const page = await api.getMessagePage(selectedAgentEmail, {
+        q: searchQuery || undefined,
         direction: filterDirection || undefined,
+        limit: 50,
+        cursor,
       });
-      setMessages(msgs);
-      if (msgs.length > 0 && !selectedMessage) {
-        setSelectedMessage(msgs[0]);
-      } else if (msgs.length === 0) {
-        setSelectedMessage(null);
+      if (requestId !== messageRequestId.current) return;
+      const updated = append
+        ? [...messages, ...page.items.filter((item) => !messages.some((existing) => existing.id === item.id))]
+        : page.items;
+      setMessages(updated);
+      setNextCursor(page.next_cursor);
+      if (!append) {
+        if (page.items.length === 0) setSelectedMessage(null);
+        else if (!selectedMessage || !page.items.some((item) => item.id === selectedMessage.id)) setSelectedMessage(page.items[0]);
       }
     } catch (err) {
       console.error("Failed to fetch messages:", err);
+      if (requestId === messageRequestId.current) setListError(err instanceof Error ? err.message : "Could not load messages.");
     } finally {
-      setLoading(false);
+      if (requestId === messageRequestId.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setMessages([]);
+    setNextCursor(null);
     loadMessages();
-  }, [selectedAgentEmail, filterDirection]);
+  }, [selectedAgentEmail, filterDirection, searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -257,6 +284,14 @@ export default function InboxPage() {
               onChange={setFilterDirection}
             />
           </div>
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search messages…"
+            aria-label="Search messages"
+            className="w-full sm:w-64 bg-[#0d1117] border border-[#30363d] rounded p-2 text-xs text-[#e6edf3] placeholder-[#8b949e] focus:outline-none focus:border-zinc-500"
+          />
         </div>
 
         <button
@@ -274,17 +309,22 @@ export default function InboxPage() {
         <div className="lg:col-span-5 card-simple flex flex-col overflow-hidden">
           <div className="p-3 border-b border-[#30363d] flex items-center justify-between text-xs text-[#8b949e]">
             <span className="font-medium text-[#e6edf3]">
-              Messages ({messages.length})
+              Messages {messages.length ? `(${messages.length}${nextCursor ? "+" : ""})` : ""}
             </span>
-            <button onClick={loadMessages} className="hover:text-[#e6edf3] text-[11px]">
+            <button onClick={() => loadMessages()} disabled={loading} className="hover:text-[#e6edf3] disabled:opacity-50 text-[11px]">
               Refresh
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-[#30363d]">
-            {messages.length === 0 ? (
+            {listError && (
+              <div role="alert" className="p-3 text-xs text-[#f85149]">{listError}</div>
+            )}
+            {loading && messages.length === 0 ? (
+              <div className="p-10 text-center text-xs text-[#8b949e]">Loading messages…</div>
+            ) : messages.length === 0 ? (
               <div className="p-10 text-center text-xs text-[#8b949e]">
-                No messages found for this inbox.
+                {searchQuery ? "No messages match this search." : "No messages found for this inbox."}
               </div>
             ) : (
               messages.map((msg) => {
@@ -343,6 +383,17 @@ export default function InboxPage() {
                   </div>
                 );
               })
+            )}
+            {nextCursor && messages.length > 0 && (
+              <div className="p-3 text-center">
+                <button
+                  onClick={() => loadMessages(nextCursor, true)}
+                  disabled={loadingMore || loading}
+                  className="px-3 py-1.5 rounded border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] disabled:opacity-50 text-[#e6edf3] text-xs"
+                >
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
             )}
           </div>
         </div>

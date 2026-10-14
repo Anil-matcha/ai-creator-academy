@@ -1,17 +1,47 @@
+import base64
+import binascii
+import json
+import re
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 
 from app.database import get_db
 from app.models import Agent, Message, MessageAttachment
-from app.schemas import MessageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
+from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
 from app.services.otp_finder import find_recent_otp
 from app.security import require_agent_access, require_write
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
+
+
+def _encode_message_cursor(created_at: datetime, message_id: str) -> str:
+    payload = json.dumps(
+        {"v": 1, "created_at": created_at.isoformat(), "id": message_id},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_message_cursor(cursor: str) -> tuple[datetime, str]:
+    if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
+        raise HTTPException(status_code=400, detail="Invalid message cursor")
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        created_at = datetime.fromisoformat(payload["created_at"])
+        message_id = payload["id"]
+        if payload.get("v") != 1 or not isinstance(message_id, str) or not message_id or len(message_id) > 64:
+            raise ValueError("invalid cursor fields")
+        if created_at.tzinfo is not None:
+            raise ValueError("cursor timestamp must be naive")
+        return created_at, message_id
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid message cursor") from None
 
 @router.get("", response_model=List[MessageResponse])
 async def list_messages(
@@ -49,6 +79,41 @@ async def get_recent_otp(
         wait_seconds=wait_seconds,
     )
     return match or {"found": False}
+
+
+@router.get("/page", response_model=MessagePageResponse)
+async def page_messages(
+    email: str,
+    limit: int = Query(50, ge=1, le=100),
+    direction: Optional[str] = Query(None, pattern="^(inbound|outbound)$"),
+    q: Optional[str] = Query(None, max_length=200, description="Search sender and subject"),
+    cursor: Optional[str] = Query(None, max_length=512),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Message).where(Message.agent_email == email)
+    if direction:
+        query = query.where(Message.direction == direction)
+    if q and q.strip():
+        search = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{search}%"
+        query = query.where(
+            or_(Message.sender.ilike(pattern, escape="\\"), Message.subject.ilike(pattern, escape="\\"))
+        )
+    if cursor:
+        cursor_created_at, cursor_id = _decode_message_cursor(cursor)
+        query = query.where(
+            or_(
+                Message.created_at < cursor_created_at,
+                and_(Message.created_at == cursor_created_at, Message.id < cursor_id),
+            )
+        )
+    query = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1)
+    result = await db.execute(query)
+    messages = result.scalars().all()
+    has_more = len(messages) > limit
+    items = messages[:limit]
+    next_cursor = _encode_message_cursor(items[-1].created_at, items[-1].id) if has_more and items else None
+    return {"items": items, "next_cursor": next_cursor}
 
 @router.get("/{message_id}", response_model=MessageResponse)
 async def get_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):

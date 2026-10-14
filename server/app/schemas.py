@@ -106,6 +106,11 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class MessagePageResponse(BaseModel):
+    items: List[MessageResponse]
+    next_cursor: Optional[str] = None
+
+
 class RecentOtpResponse(BaseModel):
     found: bool
     code: Optional[str] = None

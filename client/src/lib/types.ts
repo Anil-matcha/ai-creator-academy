@@ -52,6 +52,11 @@ export interface Message {
   created_at: string;
 }
 
+export interface MessagePage {
+  items: Message[];
+  next_cursor: string | null;
+}
+
 export interface MessageAttachment {
   id: string;
   message_id: string;
