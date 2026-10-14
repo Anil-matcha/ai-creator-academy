@@ -13,7 +13,7 @@ import time
 import uuid
 from urllib.parse import quote, urlsplit
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import or_, select, update
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -31,6 +31,18 @@ MAX_RESPONSE_HEADERS = 16 * 1024
 # Eight attempts in total. Entry n is the wait after the nth failed attempt before attempt n+1;
 # entry 0 is unused because the first attempt is immediate. The last wait is 16 hours.
 RETRY_DELAYS_SECONDS = (0, 60, 300, 900, 3600, 14400, 28800, 57600)
+
+
+async def prune_expired_deliveries(db, *, now: datetime.datetime | None = None) -> int:
+    """Drop retained payloads after the configured window while keeping ID tombstones."""
+    current = now or datetime.datetime.utcnow()
+    cutoff = current - datetime.timedelta(days=settings.WEBHOOK_DELIVERY_RETENTION_DAYS)
+    result = await db.execute(update(WebhookDelivery).where(
+        WebhookDelivery.status.in_({"delivered", "failed"}),
+        WebhookDelivery.created_at < cutoff,
+    ).values(status="expired", payload={}, last_error=None, locked_at=None,
+             lease_token=None, replayed_by=None, replayed_at=None, replay_count=0))
+    return int(result.rowcount or 0)
 
 
 def retry_delay_seconds(failed_attempts: int) -> int:
@@ -285,12 +297,9 @@ async def run_webhook_worker() -> None:
         try:
             now = time.monotonic()
             if now >= next_prune:
-                cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=settings.WEBHOOK_DELIVERY_RETENTION_DAYS)
                 async with AsyncSessionLocal() as db:
-                    await db.execute(delete(WebhookDelivery).where(
-                        WebhookDelivery.status.in_({"delivered", "failed"}),
-                        WebhookDelivery.created_at < cutoff,
-                    ))
+                    # Retain compact ID tombstones so known expired events return 410.
+                    await prune_expired_deliveries(db, now=datetime.datetime.utcnow())
                     await db.commit()
                 next_prune = now + 3600
             claim = await _claim_one()

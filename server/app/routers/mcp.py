@@ -157,9 +157,11 @@ MCP_TOOLS = [
     }
 ]
 
-SEND_AT_PROP = {"type": "string", "format": "date-time", "description": "Defer submission until this UTC time (at most 90 days ahead)"}
+SEND_AT_PROP = {"type": "string", "format": "date-time", "description": "Deprecated alias for scheduled_at"}
+SCHEDULED_AT_PROP = {"type": "string", "format": "date-time", "description": "Defer submission until this offset-qualified time (at most 90 days ahead)"}
 for _tool_def in MCP_TOOLS:
     if _tool_def["name"] in {"send_message", "reply_to_message"}:
+        _tool_def["inputSchema"]["properties"]["scheduled_at"] = SCHEDULED_AT_PROP
         _tool_def["inputSchema"]["properties"]["send_at"] = SEND_AT_PROP
 MCP_TOOLS.extend(EXT_TOOLS)
 
@@ -172,6 +174,13 @@ def _parse_send_at(value):
         return normalize_send_at(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
     except ValueError as exc:
         raise ValueError(f"send_at: {exc}") from exc
+
+
+def _parse_scheduling_args(args):
+    old, new = args.get("send_at"), args.get("scheduled_at")
+    if old is not None and new is not None and _parse_send_at(old) != _parse_send_at(new):
+        raise ValueError("scheduled_at and send_at must match when both are provided")
+    return _parse_send_at(new if new is not None else old)
 
 
 @router.get("")
@@ -365,7 +374,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             conversation_id=args.get("conversation_id"),
             attachments=decode_attachment_inputs(args.get("attachments")),
             idempotency_key=args.get("idempotency_key"),
-            send_at=_parse_send_at(args.get("send_at")),
+            send_at=_parse_scheduling_args(args),
         )
         return json.dumps({
             "status": msg.status,
@@ -401,7 +410,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             in_reply_to=in_reply_to,
             references=references,
             idempotency_key=args.get("idempotency_key"),
-            send_at=_parse_send_at(args.get("send_at")),
+            send_at=_parse_scheduling_args(args),
         )
         return json.dumps({
             "status": reply_msg.status,

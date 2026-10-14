@@ -1,7 +1,9 @@
 import datetime
 
+from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import WebhookDelivery
+from app.services.webhook_delivery import prune_expired_deliveries
 from tests.conftest import ADMIN, make_agent, make_key
 
 
@@ -49,3 +51,39 @@ async def test_get_webhook_and_its_deliveries(client):
     assert len((await client.get(f"/v1/webhooks/{eid}/deliveries", headers=ADMIN)).json()) == 1
     # static route still wins over the {endpoint_id} capture
     assert (await client.get("/v1/webhooks/deliveries", headers=ADMIN)).status_code == 200
+
+
+async def test_event_filter_is_bound_to_cursor(client):
+    eid = await _endpoint(client)
+    async with AsyncSessionLocal() as db:
+        db.add_all([
+            WebhookDelivery(id="evt_a1", endpoint_id=eid, agent_email="a@agents.local", event_type="email.received",
+                            payload={"n": 1}, status="failed", created_at=datetime.datetime.utcnow()),
+            WebhookDelivery(id="evt_a2", endpoint_id=eid, agent_email="a@agents.local", event_type="email.received",
+                            payload={"n": 2}, status="failed", created_at=datetime.datetime.utcnow()),
+        ])
+        await db.commit()
+    first = await client.get("/v1/events?limit=1&agent_email=a%40agents.local", headers=ADMIN)
+    assert first.status_code == 200 and first.json()["next_cursor"]
+    cursor = first.json()["next_cursor"]
+    mismatched = await client.get(f"/v1/events?limit=1&agent_email=other%40agents.local&cursor={cursor}", headers=ADMIN)
+    assert mismatched.status_code == 400
+    assert mismatched.json()["error"]["code"] == "invalid_cursor"
+
+
+async def test_event_payload_expires_but_id_returns_gone(client, monkeypatch):
+    eid = await _endpoint(client)
+    now = datetime.datetime.utcnow()
+    await _delivery(eid)
+    monkeypatch.setattr(settings, "WEBHOOK_DELIVERY_RETENTION_DAYS", 30)
+    async with AsyncSessionLocal() as db:
+        row = await db.get(WebhookDelivery, "evt_1")
+        row.created_at = now - datetime.timedelta(days=31)
+        await db.commit()
+        assert await prune_expired_deliveries(db, now=now) == 1
+        await db.commit()
+        expired = await db.get(WebhookDelivery, "evt_1")
+        assert expired.status == "expired" and expired.payload == {}
+    assert (await client.get("/v1/events/evt_1", headers=ADMIN)).status_code == 410
+    assert (await client.post("/v1/events/evt_1/redeliver", headers=ADMIN)).status_code == 410
+    assert (await client.get("/v1/events", headers=ADMIN)).json()["items"] == []

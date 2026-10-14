@@ -29,7 +29,7 @@ router = APIRouter(
     dependencies=[Depends(require_agent_access)],
 )
 
-_VARIABLE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
+_VARIABLE = re.compile(r"\{\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}\}|\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
 _MAX_DATA_BYTES = 16_384
 _MAX_NODES = 500
 _MAX_DEPTH = 6
@@ -87,10 +87,12 @@ def _render(source: str, data: dict[str, Any], *, html_part: bool = False) -> tu
     used: set[str] = set()
 
     def substitute(match: re.Match[str]) -> str:
-        path = match.group(1)
+        path = match.group(1) or match.group(2)
         used.add(path)
         value = _lookup(data, path)
-        return html.escape(value, quote=True) if html_part else value
+        # Triple braces explicitly request raw insertion. This is useful for
+        # prebuilt HTML fragments; callers must escape any untrusted content.
+        return html.escape(value, quote=True) if html_part and match.group(2) else value
 
     rendered = _VARIABLE.sub(substitute, source)
     if "{{" in rendered or "}}" in rendered:
@@ -171,7 +173,7 @@ async def create_template(email: str, payload: EmailTemplateCreate, db: AsyncSes
     _validate_sources(payload.subject, payload.body_text, payload.body_html)
     now = datetime.datetime.utcnow()
     item = EmailTemplate(
-        id=f"tpl_{uuid.uuid4().hex[:16]}", agent_email=email, name=payload.name,
+        id=f"tpl_{uuid.uuid4().hex[:16]}", agent_email=email, name=payload.name, alias=payload.alias,
         subject=payload.subject, body_text=payload.body_text, body_html=payload.body_html,
         created_at=now, updated_at=now,
     )
@@ -219,6 +221,8 @@ async def update_template(
         raise HTTPException(status_code=422, detail="Provide at least one field to update")
     if "name" in changes and not changes["name"]:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
+    if changes.get("alias") == "":
+        changes["alias"] = None
     if "subject" in changes and (not changes["subject"] or "\r" in changes["subject"] or "\n" in changes["subject"]):
         raise HTTPException(status_code=422, detail="Subject must be non-empty and cannot contain line breaks")
     _validate_sources(changes.get("subject", item.subject), changes.get("body_text", item.body_text), changes.get("body_html", item.body_html))

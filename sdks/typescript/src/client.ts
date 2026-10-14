@@ -17,7 +17,22 @@ type Query = Record<string, string | number | boolean | undefined | null>;
 interface Req { query?: Query; body?: unknown; raw?: { body: string; contentType: string }; headers?: Record<string, string>; signal?: AbortSignal }
 
 const seg = (value: string) => encodeURIComponent(value);
-const iso = (value: string | Date | undefined) => (value instanceof Date ? value.toISOString() : value);
+const iso = (value: string | Date | undefined) => {
+  if (value === undefined) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) || Number.isNaN(Date.parse(value))) {
+    throw new TypeError("scheduled_at must be a valid ISO-8601 datetime with a timezone offset");
+  }
+  return value;
+};
+const scheduledAt = (opts: { scheduled_at?: string | Date; send_at?: string | Date }) => {
+  const canonical = iso(opts.scheduled_at);
+  const legacy = iso(opts.send_at);
+  if (canonical !== undefined && legacy !== undefined && canonical !== legacy) {
+    throw new TypeError("scheduled_at and send_at must match when both are provided");
+  }
+  return canonical ?? legacy;
+};
 
 /** Encode bytes as an attachment payload accepted by send and reply. */
 export function attachmentFromBytes(filename: string, content: Uint8Array, contentType = "application/octet-stream"): T.Attachment {
@@ -122,11 +137,11 @@ export class AgentEmailClient {
       this.request<T.Message[]>("GET", `/v1/agents/${seg(inbox)}/messages/thread/${seg(threadId)}`),
     send: (inbox: string, opts: T.SendOptions, ro?: T.RequestOptions) =>
       this.request<T.Message>("POST", `/v1/agents/${seg(inbox)}/messages`, {
-        ...this.#idem(ro), body: { ...opts, send_at: iso(opts.send_at) },
+        ...this.#idem(ro), body: { ...opts, scheduled_at: scheduledAt(opts), send_at: undefined },
       }),
     reply: (inbox: string, id: string, opts: T.ReplyOptions, ro?: T.RequestOptions) =>
       this.request<T.Message>("POST", `/v1/agents/${seg(inbox)}/messages/${seg(id)}/reply`, {
-        ...this.#idem(ro), body: { ...opts, send_at: iso(opts.send_at) },
+        ...this.#idem(ro), body: { ...opts, scheduled_at: scheduledAt(opts), send_at: undefined },
       }),
     forward: (inbox: string, id: string, recipient: string, note?: string) =>
       this.request<T.Message>("POST", `/v1/agents/${seg(inbox)}/messages/${seg(id)}/forward`, { body: { recipient, note } }),

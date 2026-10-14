@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 
@@ -6,11 +6,12 @@ MAX_SEND_AT_DAYS = 90
 
 
 def normalize_send_at(value):
-    """Return a naive-UTC send time that is in the future and within the scheduling horizon."""
+    """Normalize an offset-qualified scheduling instant to naive UTC for storage."""
     if value is None:
         return None
-    if value.tzinfo is not None:
-        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("scheduled_at must include a timezone offset")
+    value = value.astimezone(timezone.utc).replace(tzinfo=None)
     now = datetime.utcnow()
     if value <= now:
         raise ValueError("send_at must be in the future")
@@ -266,6 +267,7 @@ TEMPLATE_PART_MAX = 100_000
 
 class EmailTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    alias: Optional[str] = Field(None, min_length=1, max_length=128, pattern=r"^[A-Za-z][A-Za-z0-9._-]*$")
     subject: str = Field(..., min_length=1, max_length=512)
     body_text: str = Field("", max_length=TEMPLATE_PART_MAX)
     body_html: str = Field("", max_length=TEMPLATE_PART_MAX)
@@ -300,6 +302,7 @@ class EmailTemplateCreate(BaseModel):
 
 class EmailTemplateUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
+    alias: Optional[str] = Field(None, max_length=128, pattern=r"^$|^[A-Za-z][A-Za-z0-9._-]*$")
     subject: Optional[str] = Field(None, min_length=1, max_length=512)
     body_text: Optional[str] = Field(None, max_length=TEMPLATE_PART_MAX)
     body_html: Optional[str] = Field(None, max_length=TEMPLATE_PART_MAX)
@@ -314,6 +317,7 @@ class EmailTemplateResponse(BaseModel):
     id: str
     agent_email: str
     name: str
+    alias: Optional[str] = None
     subject: str
     body_text: str
     body_html: str
@@ -370,30 +374,48 @@ class MessageSendRequest(BaseModel):
     body_text: Optional[str] = Field(None, max_length=100_000, example="Hello! We have reviewed your inquiry and resolved the issue.")
     body_html: Optional[str] = None
     template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_alias: Optional[str] = Field(None, min_length=1, max_length=128)
     template_data: Dict[str, Any] = Field(default_factory=dict)
     thread_id: Optional[str] = None
     conversation_id: Optional[str] = Field(None, min_length=1, max_length=255)
     attachments: Optional[List[MessageAttachmentInput]] = None
-    send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
+    scheduled_at: Optional[datetime] = Field(None, description="Defer submission until this offset-qualified time (at most 90 days ahead)")
+    send_at: Optional[datetime] = Field(None, description="Deprecated alias for scheduled_at")
 
-    @field_validator("send_at")
+    @field_validator("scheduled_at", "send_at")
     @classmethod
     def _validate_send_at(cls, value):
         return normalize_send_at(value)
+
+    @model_validator(mode="after")
+    def _scheduled_aliases(self):
+        if self.scheduled_at is not None and self.send_at is not None and self.scheduled_at != self.send_at:
+            raise ValueError("scheduled_at and send_at must match when both are provided")
+        self.scheduled_at = self.scheduled_at or self.send_at
+        return self
 
 class MessageReplyRequest(BaseModel):
     body_text: Optional[str] = Field(None, max_length=100_000, example="Thank you for confirming. I am closing this ticket now.")
     body_html: Optional[str] = None
     template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_alias: Optional[str] = Field(None, min_length=1, max_length=128)
     template_data: Dict[str, Any] = Field(default_factory=dict)
     conversation_id: Optional[str] = Field(None, min_length=1, max_length=255)
     attachments: Optional[List[MessageAttachmentInput]] = None
-    send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
+    scheduled_at: Optional[datetime] = Field(None, description="Defer submission until this offset-qualified time (at most 90 days ahead)")
+    send_at: Optional[datetime] = Field(None, description="Deprecated alias for scheduled_at")
 
-    @field_validator("send_at")
+    @field_validator("scheduled_at", "send_at")
     @classmethod
     def _validate_send_at(cls, value):
         return normalize_send_at(value)
+
+    @model_validator(mode="after")
+    def _scheduled_aliases(self):
+        if self.scheduled_at is not None and self.send_at is not None and self.scheduled_at != self.send_at:
+            raise ValueError("scheduled_at and send_at must match when both are provided")
+        self.scheduled_at = self.scheduled_at or self.send_at
+        return self
 
 class MessageForwardRequest(BaseModel):
     recipient: str = Field(..., min_length=3, max_length=320, example="support-lead@example.com")

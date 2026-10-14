@@ -930,6 +930,20 @@
       },
       "EmailTemplateCreate": {
         "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z][A-Za-z0-9._-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
           "body_html": {
             "default": "",
             "maxLength": 100000,
@@ -1011,6 +1025,17 @@
             "title": "Agent Email",
             "type": "string"
           },
+          "alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
           "body_html": {
             "title": "Body Html",
             "type": "string"
@@ -1057,6 +1082,19 @@
       },
       "EmailTemplateUpdate": {
         "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^$|^[A-Za-z][A-Za-z0-9._-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
           "body_html": {
             "anyOf": [
               {
@@ -1327,6 +1365,19 @@
             ],
             "title": "Conversation Id"
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defer submission until this offset-qualified time (at most 90 days ahead)",
+            "title": "Scheduled At"
+          },
           "send_at": {
             "anyOf": [
               {
@@ -1337,8 +1388,21 @@
                 "type": "null"
               }
             ],
-            "description": "Defer submission until this UTC time (at most 90 days ahead)",
+            "description": "Deprecated alias for scheduled_at",
             "title": "Send At"
+          },
+          "template_alias": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Alias"
           },
           "template_data": {
             "additionalProperties": true,
@@ -1674,6 +1738,19 @@
             "title": "Recipient",
             "type": "string"
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defer submission until this offset-qualified time (at most 90 days ahead)",
+            "title": "Scheduled At"
+          },
           "send_at": {
             "anyOf": [
               {
@@ -1684,7 +1761,7 @@
                 "type": "null"
               }
             ],
-            "description": "Defer submission until this UTC time (at most 90 days ahead)",
+            "description": "Deprecated alias for scheduled_at",
             "title": "Send At"
           },
           "subject": {
@@ -1699,6 +1776,19 @@
             ],
             "example": "Update on your support ticket #492",
             "title": "Subject"
+          },
+          "template_alias": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Alias"
           },
           "template_data": {
             "additionalProperties": true,
@@ -8566,6 +8656,23 @@
           },
           {
             "in": "query",
+            "name": "agent_email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Email"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8656,6 +8763,23 @@
                 }
               ],
               "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Email"
             }
           },
           {

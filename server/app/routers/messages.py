@@ -29,14 +29,17 @@ router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], depe
 
 async def _outbound_content(email: str, payload, db: AsyncSession, *, reply_subject: str | None = None):
     """Resolve either direct message content or one inbox-scoped saved template."""
-    if payload.template_id:
+    template_ref = payload.template_id or payload.template_alias
+    if template_ref:
+        if payload.template_id and payload.template_alias:
+            raise HTTPException(status_code=422, detail="Provide either template_id or template_alias, not both")
         supplied_content = {"subject", "body_text", "body_html"} & payload.model_fields_set
         if supplied_content:
             raise HTTPException(status_code=422, detail="Provide either template_id or message content, not both")
         template = await db.scalar(
             select(EmailTemplate).where(
                 EmailTemplate.agent_email == email,
-                EmailTemplate.id == payload.template_id,
+                (EmailTemplate.id == payload.template_id) if payload.template_id else (EmailTemplate.alias == payload.template_alias),
             )
         )
         if template is None:
@@ -48,7 +51,7 @@ async def _outbound_content(email: str, payload, db: AsyncSession, *, reply_subj
         return subject, rendered["body_text"], rendered["body_html"] or None
 
     if "template_data" in payload.model_fields_set:
-        raise HTTPException(status_code=422, detail="template_data requires template_id")
+        raise HTTPException(status_code=422, detail="template_data requires template_id or template_alias")
     if (reply_subject is None and getattr(payload, "subject", None) is None) or payload.body_text is None:
         raise HTTPException(status_code=422, detail="subject and body_text are required without template_id")
     return reply_subject if reply_subject is not None else payload.subject, payload.body_text, payload.body_html
@@ -419,7 +422,7 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
         conversation_id=req.conversation_id,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
-        send_at=req.send_at,
+        send_at=req.scheduled_at,
     )
     return message
 
@@ -457,7 +460,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
         references=references,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
-        send_at=req.send_at,
+        send_at=req.scheduled_at,
     )
     return reply_msg
 

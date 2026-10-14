@@ -20,12 +20,12 @@ async def setup(client):
     return (await client.post("/v1/agents/a@agents.local/messages", headers=ADMIN, json=PAYLOAD)).json()
 
 
-async def test_tool_catalog_grew_and_send_schema_has_send_at(client):
+async def test_tool_catalog_grew_and_send_schema_has_scheduling_fields(client):
     tools = (await client.get("/mcp/tools", headers=ADMIN)).json()["tools"]
     names = {t["name"] for t in tools}
     assert {"whoami", "list_conversations", "update_message_labels", "delete_message", "get_message_lifecycle"} <= names
     send = next(t for t in tools if t["name"] == "send_message")
-    assert "send_at" in send["inputSchema"]["properties"]
+    assert {"scheduled_at", "send_at"} <= set(send["inputSchema"]["properties"])
 
 
 async def test_labels_trash_restore_and_lifecycle_via_mcp(client):
@@ -48,6 +48,10 @@ async def test_scheduled_send_via_mcp(client):
     when = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)).isoformat()
     err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", send_at=when, **PAYLOAD)
     assert not err and out["status"] == "scheduled" and out["scheduled_for"]
+    err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", scheduled_at=when, **PAYLOAD)
+    assert not err and out["status"] == "scheduled" and out["scheduled_for"]
+    err, _ = await call(client, ADMIN, "send_message", agent_email="a@agents.local", scheduled_at="2030-01-01T00:00:00", **PAYLOAD)
+    assert err
     err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", send_at="not-a-date", **PAYLOAD)
     assert err
     err, _ = await call(client, ADMIN, "send_message", agent_email="a@agents.local", send_at="2001-01-01T00:00:00Z", **PAYLOAD)

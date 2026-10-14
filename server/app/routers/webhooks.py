@@ -52,6 +52,7 @@ def _validate_event_types(value: list[str]) -> list[str]:
 
 def _encode_delivery_cursor(
     item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
+    agent_email: Optional[str] = None,
 ) -> str:
     payload = {
         "created_at": item.created_at.isoformat(),
@@ -59,6 +60,7 @@ def _encode_delivery_cursor(
         "endpoint_id": endpoint_id,
         "status": status,
         "event_type": event_type,
+        "agent_email": agent_email,
     }
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -66,17 +68,19 @@ def _encode_delivery_cursor(
 
 def _decode_delivery_cursor(
     cursor: str, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
+    agent_email: Optional[str] = None,
 ):
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         raw = base64.b64decode(padded.encode("ascii"), altchars=b"-_", validate=True)
         payload = json.loads(raw.decode("utf-8"))
         old_keys = {"created_at", "id", "endpoint_id", "status"}
-        new_keys = old_keys | {"event_type"}
-        if not isinstance(payload, dict) or set(payload) not in (old_keys, new_keys):
+        prior_keys = old_keys | {"event_type"}
+        new_keys = prior_keys | {"agent_email"}
+        if not isinstance(payload, dict) or set(payload) not in (old_keys, prior_keys, new_keys):
             raise ValueError
         cursor_event_type = payload.get("event_type")
-        if cursor_event_type != event_type:
+        if cursor_event_type != event_type or payload.get("agent_email") != agent_email:
             raise ValueError("filter mismatch")
         if payload["endpoint_id"] != endpoint_id or payload["status"] != status:
             raise ValueError("filter mismatch")
@@ -315,6 +319,7 @@ async def delete_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
 async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64),
                           status: Optional[str] = Query(None),
                           event_type: Optional[str] = Query(None, min_length=1, max_length=64),
+                          agent_email: Optional[str] = Query(None, max_length=255),
                           limit: int = Query(100, ge=1, le=200),
                           db: AsyncSession = Depends(get_db)):
     if status and status not in {"pending", "processing", "delivered", "failed"}:
@@ -326,6 +331,9 @@ async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
         query = query.where(WebhookDelivery.status == status)
     if event_type is not None:
         query = query.where(WebhookDelivery.event_type == event_type)
+    if agent_email:
+        query = query.where(WebhookDelivery.agent_email == agent_email.strip().lower())
+    query = query.where(WebhookDelivery.status != "expired")
     items = (await db.execute(query.order_by(WebhookDelivery.created_at.desc()).limit(limit))).scalars().all()
     return [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
              "event_type": item.event_type, "payload": item.payload, "status": item.status,
@@ -338,21 +346,25 @@ async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
 async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64),
                           status: Optional[str] = Query(None),
                           event_type: Optional[str] = Query(None, min_length=1, max_length=64),
+                          agent_email: Optional[str] = Query(None, max_length=255),
                           limit: int = Query(50, ge=1, le=100),
                           cursor: Optional[str] = Query(None, max_length=2048),
                           db: AsyncSession = Depends(get_db)):
     if status and status not in DELIVERY_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid webhook delivery status")
 
-    query = select(WebhookDelivery)
+    normalized_agent_email = agent_email.strip().lower() if agent_email else None
+    query = select(WebhookDelivery).where(WebhookDelivery.status != "expired")
     if endpoint_id:
         query = query.where(WebhookDelivery.endpoint_id == endpoint_id)
     if status:
         query = query.where(WebhookDelivery.status == status)
     if event_type is not None:
         query = query.where(WebhookDelivery.event_type == event_type)
+    if normalized_agent_email:
+        query = query.where(WebhookDelivery.agent_email == normalized_agent_email)
     if cursor is not None:
-        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status, event_type)
+        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status, event_type, normalized_agent_email)
         query = query.where(or_(
             WebhookDelivery.created_at < created_at,
             and_(WebhookDelivery.created_at == created_at, WebhookDelivery.id < delivery_id),
@@ -363,7 +375,7 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
     ).limit(limit + 1))).scalars().all()
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status, event_type) if has_more and items else None
+    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status, event_type, normalized_agent_email) if has_more and items else None
     return {
         "items": [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
                    "event_type": item.event_type, "payload": item.payload, "status": item.status,
@@ -381,6 +393,8 @@ async def replay_delivery(delivery_id: str, principal: Principal = Depends(requi
     delivery = await db.get(WebhookDelivery, delivery_id)
     if not delivery:
         raise HTTPException(status_code=404, detail="Webhook delivery not found")
+    if delivery.status == "expired":
+        raise HTTPException(status_code=410, detail="Webhook event has expired")
     if delivery.status not in {"failed", "delivered"}:
         raise HTTPException(status_code=409, detail="Only failed or previously delivered events can be replayed")
     endpoint = await db.get(WebhookEndpoint, delivery.endpoint_id)
@@ -413,4 +427,4 @@ async def list_webhook_deliveries(endpoint_id: str, status: Optional[str] = Quer
                                   limit: int = Query(100, ge=1, le=200), db: AsyncSession = Depends(get_db)):
     if not await db.get(WebhookEndpoint, endpoint_id):
         raise HTTPException(status_code=404, detail="Webhook endpoint not found")
-    return await list_deliveries(endpoint_id=endpoint_id, status=status, event_type=None, limit=limit, db=db)
+    return await list_deliveries(endpoint_id=endpoint_id, status=status, event_type=None, agent_email=None, limit=limit, db=db)

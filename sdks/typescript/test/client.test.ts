@@ -39,7 +39,7 @@ test("undefined query params are omitted", async () => {
   assert.equal(calls[0]!.url.searchParams.has("wait_seconds"), false);
 });
 
-test("send passes Idempotency-Key and serialises Date send_at", async () => {
+test("send passes Idempotency-Key and serialises Date schedule as scheduled_at", async () => {
   const { client, calls } = mock({ status: 201, json: { id: "m1", status: "scheduled" } });
   const when = new Date("2030-01-01T00:00:00Z");
   const message = await client.messages.send(INBOX, { recipient: "x@example.com", subject: "s", body_text: "b", send_at: when }, { idempotencyKey: "k-1" });
@@ -48,7 +48,15 @@ test("send passes Idempotency-Key and serialises Date send_at", async () => {
   assert.equal(call.method, "POST");
   assert.equal(call.url.pathname, `${base}/messages`);
   assert.equal(call.headers["Idempotency-Key"], "k-1");
-  assert.equal(JSON.parse(call.body!).send_at, "2030-01-01T00:00:00.000Z");
+  assert.equal(JSON.parse(call.body!).scheduled_at, "2030-01-01T00:00:00.000Z");
+  assert.equal(JSON.parse(call.body!).send_at, undefined);
+});
+
+test("send rejects timezone-naive scheduled_at strings", async () => {
+  const { client } = mock();
+  assert.throws(() => client.messages.send(INBOX, {
+    recipient: "x@example.com", subject: "s", body_text: "b", scheduled_at: "2030-01-01T00:00:00",
+  }), /timezone offset/);
 });
 
 test("no Idempotency-Key header unless requested", async () => {

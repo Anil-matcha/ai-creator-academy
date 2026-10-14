@@ -22,12 +22,15 @@ export interface SendOptions {
   recipient: string; subject?: string; body_text?: string; body_html?: string;
   template_id?: string; template_data?: Record<string, unknown>; thread_id?: string; conversation_id?: string;
   attachments?: Attachment[];
-  /** Defer submission (ISO string or Date, UTC, at most 90 days ahead). */
+  /** Defer submission (offset-qualified ISO string or Date, at most 90 days ahead). */
+  scheduled_at?: string | Date;
+  /** @deprecated Use scheduled_at. */
   send_at?: string | Date;
 }
 export interface ReplyOptions {
   body_text?: string; body_html?: string; template_id?: string; template_data?: Record<string, unknown>;
-  conversation_id?: string; attachments?: Attachment[]; send_at?: string | Date;
+  conversation_id?: string; attachments?: Attachment[]; scheduled_at?: string | Date;
+  /** @deprecated Use scheduled_at. */ send_at?: string | Date;
 }
 export interface RequestOptions { idempotencyKey?: string; signal?: AbortSignal }
 

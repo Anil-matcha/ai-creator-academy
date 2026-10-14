@@ -7,9 +7,9 @@ import { AgentEmailClient, constructEvent } from "@open-agent-email/sdk";
 
 const client = new AgentEmailClient({ baseUrl: "http://127.0.0.1:8000", apiKey: process.env.OAE_KEY! });
 
-// Send with a retry-safe key; defer delivery with send_at.
+// Send with a retry-safe key; defer delivery with scheduled_at.
 await client.messages.send("support@agents.local",
-  { recipient: "person@example.com", subject: "Hi", body_text: "Hello", send_at: new Date(Date.now() + 3600_000) },
+  { recipient: "person@example.com", subject: "Hi", body_text: "Hello", scheduled_at: new Date(Date.now() + 3600_000) },
   { idempotencyKey: "welcome-42" });
 
 // Iterate every unread message across pages.

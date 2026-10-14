@@ -91,6 +91,27 @@ async def test_copied_starter_can_be_used_to_send(client):
     assert r.status_code == 201 and "123456" in r.json()["subject"]
 
 
+async def test_raw_slots_and_saved_template_alias_send(client):
+    await make_agent(client, A)
+    created = await client.post(f"/v1/agents/{A}/templates", headers=ADMIN, json={
+        "name": "alias template", "alias": "receipt-v1", "subject": "Hi {{name}}",
+        "body_text": "{{{fragment}}}", "body_html": "<div>{{name}}|{{{fragment}}}</div>",
+    })
+    assert created.status_code == 201, created.text
+    tid = created.json()["id"]
+    rendered = await client.post(f"/v1/agents/{A}/templates/{tid}/preview", headers=ADMIN,
+                                 json={"data": {"name": "<Ada>", "fragment": "<b>raw</b>"}})
+    assert rendered.status_code == 200
+    body = rendered.json()
+    assert body["body_text"] == "<b>raw</b>"
+    assert body["body_html"] == "<div>&lt;Ada&gt;|<b>raw</b></div>"
+    sent = await client.post(f"/v1/agents/{A}/messages", headers=ADMIN, json={
+        "recipient": "to@example.com", "template_alias": "receipt-v1",
+        "template_data": {"name": "Ada", "fragment": "raw"},
+    })
+    assert sent.status_code in (201, 202), sent.text
+
+
 async def test_copy_starter_scope_and_inbox_isolation(client):
     await make_agent(client, A)
     await make_agent(client, B)

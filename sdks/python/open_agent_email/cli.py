@@ -223,7 +223,7 @@ def cmd_messages(args: argparse.Namespace) -> int:
                                                       "dkim_status", "dmarc_status"]) + "\n\n" + d.get("body_text", ""))
     elif action in {"send", "reply"}:
         body, data_json = _body(args), _json_arg(args.data_json, "--data-json")
-        common: dict[str, Any] = {"idempotency_key": args.idempotency_key, "send_at": args.send_at,
+        common: dict[str, Any] = {"idempotency_key": args.idempotency_key, "scheduled_at": args.scheduled_at,
                                   "conversation_id": args.conversation_id}
         if args.template:
             content: dict[str, Any] = {"template_id": args.template, "template_data": data_json or {}}
@@ -546,7 +546,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--body-file", help="read body from a file, or - for stdin")
         p.add_argument("--template", help="saved template id")
         p.add_argument("--data-json", help="template variables as a JSON object")
-        p.add_argument("--send-at", type=_send_at_arg, help="defer until this UTC time (ISO-8601, <= 90 days)")
+        p.add_argument("--scheduled-at", "--send-at", dest="scheduled_at", type=_send_at_arg,
+                       help="defer until this timezone-qualified time (ISO-8601, <= 90 days)")
         p.add_argument("--idempotency-key")
     acts["send"].add_argument("--to", required=True)
     acts["send"].add_argument("--subject")

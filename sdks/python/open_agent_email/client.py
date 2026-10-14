@@ -131,14 +131,21 @@ MessageStatus = Literal[
 
 
 def _format_send_at(value: datetime.datetime | str) -> str:
-    """Serialize a send time; naive datetimes are treated as UTC."""
+    """Serialize an offset-qualified scheduling instant."""
     if isinstance(value, datetime.datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=datetime.timezone.utc)
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("scheduled_at must include a timezone offset")
         return value.isoformat()
     if not isinstance(value, str) or not value.strip():
-        raise ValueError("send_at must be a datetime or ISO-8601 string")
-    return value.strip()
+        raise ValueError("scheduled_at must be a datetime or ISO-8601 string")
+    result = value.strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(result.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("scheduled_at must be an ISO-8601 datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("scheduled_at must include a timezone offset")
+    return result
 
 
 class AgentEmailError(Exception):
@@ -738,14 +745,18 @@ class AgentEmailClient:
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
         send_at: datetime.datetime | str | None = None,
+        scheduled_at: datetime.datetime | str | None = None,
     ) -> Message:
         """Send direct content or render an inbox template for this message.
 
-        `send_at` defers submission (UTC, at most 90 days ahead); the message status is `scheduled`.
+        `scheduled_at` defers submission (at most 90 days ahead); `send_at` remains a deprecated alias.
         """
         payload: dict[str, Any] = {"recipient": recipient}
-        if send_at is not None:
-            payload["send_at"] = _format_send_at(send_at)
+        if send_at is not None and scheduled_at is not None and _format_send_at(send_at) != _format_send_at(scheduled_at):
+            raise ValueError("scheduled_at and send_at must match when both are provided")
+        schedule = scheduled_at if scheduled_at is not None else send_at
+        if schedule is not None:
+            payload["scheduled_at"] = _format_send_at(schedule)
         if template_id is not None:
             payload["template_id"] = template_id
             if template_data is not None:
@@ -784,11 +795,15 @@ class AgentEmailClient:
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
         send_at: datetime.datetime | str | None = None,
+        scheduled_at: datetime.datetime | str | None = None,
     ) -> Message:
         """Reply with direct content or render an inbox template in-thread (optionally scheduled)."""
         payload: dict[str, Any] = {}
-        if send_at is not None:
-            payload["send_at"] = _format_send_at(send_at)
+        if send_at is not None and scheduled_at is not None and _format_send_at(send_at) != _format_send_at(scheduled_at):
+            raise ValueError("scheduled_at and send_at must match when both are provided")
+        schedule = scheduled_at if scheduled_at is not None else send_at
+        if schedule is not None:
+            payload["scheduled_at"] = _format_send_at(schedule)
         if conversation_id is not None:
             payload["conversation_id"] = conversation_id
         if template_id is not None:

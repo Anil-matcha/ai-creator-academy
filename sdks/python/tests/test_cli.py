@@ -73,7 +73,7 @@ def test_request_shape(server, oae, argv, method, path, query, body):
     assert req["headers"]["authorization"] == f"Bearer {SECRET_KEY}"
 
 
-def test_send_direct_content_idempotency_and_send_at(server, oae):
+def test_send_direct_content_idempotency_and_scheduled_at(server, oae):
     code, _, err = oae("messages", "send", "--agent", AG, "--to", "p@example.com", "--subject", "Hi",
                        "--body", "Body", "--idempotency-key", "k-1", "--send-at", "2099-01-01T00:00:00Z")
     assert code == 0, err
@@ -81,7 +81,7 @@ def test_send_direct_content_idempotency_and_send_at(server, oae):
     assert req["path"] == f"{BASE}/messages"
     assert req["headers"]["idempotency-key"] == "k-1"
     assert req["body"] == {"recipient": "p@example.com", "subject": "Hi", "body_text": "Body",
-                           "send_at": "2099-01-01T00:00:00Z"}
+                           "scheduled_at": "2099-01-01T00:00:00Z"}
 
 
 def test_send_with_template_and_data(server, oae):

@@ -21,10 +21,7 @@ async def list_events(agent_email: Optional[str] = Query(None, max_length=255),
                       cursor: Optional[str] = Query(None, max_length=2048),
                       db: AsyncSession = Depends(get_db)):
     page = await webhooks.page_deliveries(endpoint_id=None, status=status, event_type=event_type,
-                                          limit=limit, cursor=cursor, db=db)
-    if agent_email:
-        wanted = agent_email.strip().lower()
-        page["items"] = [i for i in page["items"] if (i["agent_email"] or "").lower() == wanted]
+                                          agent_email=agent_email, limit=limit, cursor=cursor, db=db)
     return page
 
 
@@ -33,6 +30,8 @@ async def get_event(event_id: str, db: AsyncSession = Depends(get_db)):
     item = await db.get(WebhookDelivery, event_id)
     if not item:
         raise HTTPException(status_code=404, detail="Event not found")
+    if item.status == "expired":
+        raise HTTPException(status_code=410, detail="Event has expired")
     return {"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
             "event_type": item.event_type, "payload": item.payload, "status": item.status,
             "attempts": item.attempts, "last_error": item.last_error, "created_at": item.created_at,

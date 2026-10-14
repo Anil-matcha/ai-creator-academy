@@ -17,7 +17,7 @@ Back up **both** of these together; one without the other is not recoverable:
 1. **The database.**
    - SQLite: stop writes (or use `sqlite3 open_agent_email.db ".backup backup.db"`), then copy the file.
    - PostgreSQL: `pg_dump --format=custom "$DATABASE_URL" > backup.dump`.
-2. **`SMTP_CONFIG_ENCRYPTION_KEY`** (and `SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS` during a rotation). SMTP relay passwords and webhook signing secrets are encrypted with it; a restored database without the key fails startup by design.
+2. **`SMTP_CONFIG_ENCRYPTION_KEY`** (and `SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS` during a rotation). SMTP relay passwords and webhook signing secrets are encrypted with it; a restored database without the key fails startup by design. Also back up `ATTACHMENT_URL_SIGNING_KEY` if you set it explicitly; without that key, previously issued attachment links cannot be verified.
 
 Message bodies and attachments live in the database, so they are covered by the database backup.
 
@@ -38,6 +38,14 @@ Rehearse a restore into a scratch environment on a schedule; an untested backup 
 3. Confirm `/ready` is healthy and a webhook test succeeds, then remove the previous-key setting and restart.
 4. Back up the new key with the database.
 
+## Attachment download links
+
+Message attachment metadata contains signed download URLs that expire after five minutes. Set `ATTACHMENT_URL_SIGNING_KEY` to a stable secret if links must remain valid across restarts or independently of the SMTP encryption key; otherwise the server derives the signing key from `SMTP_CONFIG_ENCRYPTION_KEY`, falling back to the admin API key. Back up an explicitly configured signing key with the database and protect it as a secret.
+
+## Webhook event retention
+
+`WEBHOOK_DELIVERY_RETENTION_DAYS` defaults to 30. The delivery worker erases payloads, retry errors, replay metadata, and leases for older delivered or terminally failed events, while keeping a compact event ID tombstone. Listing excludes expired tombstones; `GET /v1/events/{id}` and replay return HTTP 410 after expiry. Endpoint deletion removes its deliveries and tombstones.
+
 ## Review approval links and expiry
 
 - Approval links need a public `https` `PUBLIC_BASE_URL` reachable by the reviewer and an enabled upstream SMTP relay (Settings → SMTP). The reviewer email is sent directly through the relay, not through the inbox's own outbound queue, so it is never itself held for review.
@@ -48,9 +56,9 @@ Rehearse a restore into a scratch environment on a schedule; an untested backup 
 
 ## Scheduled sending
 
-`send_at` (UTC, at most 90 days ahead) on send/reply defers submission. A scheduled message has status `scheduled`; trashing it before submission (`DELETE /v1/agents/{email}/messages/{id}`) cancels it. With the approval gate on, the message is held for review first and the deferral is honored on approval. Delivery time is best-effort within the worker poll interval, and a message whose time passes while the service is down is sent on recovery.
+`scheduled_at` (an ISO-8601 datetime with an explicit timezone offset, at most 90 days ahead) on send/reply defers submission. `send_at` remains accepted as a deprecated compatibility alias. Timezone-naive values are rejected. A scheduled message has status `scheduled`; trashing it before submission (`DELETE /v1/agents/{email}/messages/{id}`) cancels it. With the approval gate on, the message is held for review first and the deferral is honored on approval. Delivery time is best-effort within the worker poll interval, and a message whose time passes while the service is down is sent on recovery.
 
-Restoring a message from trash before its `send_at` re-arms the send (the canceled queue job returns to pending, using an atomic compare-and-set so a job that has since changed is never touched). Restoring after `send_at` has passed leaves it canceled rather than sending late.
+Restoring a message from trash before its `scheduled_at` re-arms the send (the canceled queue job returns to pending, using an atomic compare-and-set so a job that has since changed is never touched). Restoring after `scheduled_at` has passed leaves it canceled rather than sending late.
 
 ## Trash, permanent deletion and retention
 

@@ -81,11 +81,15 @@ class ContactConsentEvent(Base):
 class EmailTemplate(Base):
     """Reusable, inbox-scoped message content; templates never send by themselves."""
     __tablename__ = "email_templates"
-    __table_args__ = (UniqueConstraint("agent_email", "name", name="uq_email_templates_agent_name"),)
+    __table_args__ = (
+        UniqueConstraint("agent_email", "name", name="uq_email_templates_agent_name"),
+        UniqueConstraint("agent_email", "alias", name="uq_email_templates_agent_alias"),
+    )
 
     id = Column(String(64), primary_key=True, index=True)
     agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
+    alias = Column(String(128), nullable=True)
     subject = Column(String(512), nullable=False)
     body_text = Column(Text, nullable=False, default="")
     body_html = Column(Text, nullable=False, default="")

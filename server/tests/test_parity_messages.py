@@ -73,6 +73,17 @@ async def test_send_at_validation(client):
         assert (await client.post(f"{BASE}/messages", headers=ADMIN, json={**PAYLOAD, "send_at": bad})).status_code == 422
 
 
+async def test_scheduled_at_alias_and_offset_requirement(client):
+    await _agent(client)
+    when = _later()
+    canonical = await client.post(f"{BASE}/messages", headers=ADMIN, json={**PAYLOAD, "scheduled_at": when})
+    assert canonical.status_code == 201 and canonical.json()["status"] == "scheduled"
+    assert (await client.post(f"{BASE}/messages", headers=ADMIN,
+                             json={**PAYLOAD, "scheduled_at": when, "send_at": _later(3)})).status_code == 422
+    assert (await client.post(f"{BASE}/messages", headers=ADMIN,
+                             json={**PAYLOAD, "scheduled_at": when.removesuffix("+00:00").removesuffix("Z")})).status_code == 422
+
+
 async def test_scheduled_review_approval_keeps_deferral(client):
     await _agent(client, hitl=True)
     mid = (await client.post(f"{BASE}/messages", headers=ADMIN, json={**PAYLOAD, "send_at": _later()})).json()["id"]
