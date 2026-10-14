@@ -121,7 +121,7 @@ event = json.loads(raw_body)
 # Atomically record the event ID and apply the event; reject an already-recorded ID.
 ```
 
-The helper checks the timestamp window and compares the HMAC-SHA256 signature in constant time. The receiver still needs an atomic event-ID deduplication store to handle retries safely.
+The helper checks the timestamp window and compares the HMAC-SHA256 signature in constant time. The receiver still needs an atomic event-ID deduplication store to handle retries safely. Route on the payload's `event_type`; acknowledge `webhook.test` without treating it as an email.
 
 ## Local install
 

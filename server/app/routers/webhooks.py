@@ -148,6 +148,38 @@ async def update_webhook(endpoint_id: str, payload: WebhookUpdate, db: AsyncSess
     return _endpoint_response(endpoint)
 
 
+@router.post("/{endpoint_id}/test", status_code=202)
+async def send_test_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
+    """Queue a signed synthetic event to verify an enabled endpoint."""
+    endpoint = await db.get(WebhookEndpoint, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+    if not endpoint.enabled:
+        raise HTTPException(status_code=409, detail="Enable the webhook endpoint before sending a test event")
+
+    now = datetime.datetime.utcnow()
+    delivery_id = f"evt_{uuid.uuid4().hex}"
+    db.add(WebhookDelivery(
+        id=delivery_id,
+        endpoint_id=endpoint.id,
+        agent_email=endpoint.agent_email,
+        event_type="webhook.test",
+        payload={
+            "id": delivery_id,
+            "event_type": "webhook.test",
+            "test": True,
+            "created_at": now.isoformat(),
+            "message": "Synthetic test event; no email was sent or received.",
+        },
+        status="pending",
+        attempts=0,
+        available_at=now,
+        created_at=now,
+    ))
+    await db.commit()
+    return {"delivery_id": delivery_id, "status": "pending"}
+
+
 @router.delete("/{endpoint_id}", status_code=204)
 async def delete_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
     endpoint = await db.get(WebhookEndpoint, endpoint_id)

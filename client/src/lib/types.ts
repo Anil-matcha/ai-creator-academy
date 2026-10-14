@@ -197,6 +197,11 @@ export interface WebhookDeliveryPage {
   next_cursor: string | null;
 }
 
+export interface WebhookTestResult {
+  delivery_id: string;
+  status: "pending";
+}
+
 export interface Stats {
   total_agents: number;
   total_messages: number;

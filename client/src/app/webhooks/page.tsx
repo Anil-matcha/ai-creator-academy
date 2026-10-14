@@ -33,6 +33,7 @@ export default function WebhooksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
   const [agentFilter, setAgentFilter] = useState("");
   const [endpointFilter, setEndpointFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<WebhookDeliveryStatus | "">("");
@@ -46,6 +47,7 @@ export default function WebhooksPage() {
   const [editUrl, setEditUrl] = useState("");
   const [savingId, setSavingId] = useState("");
   const [replayingId, setReplayingId] = useState("");
+  const [testingId, setTestingId] = useState("");
 
   const loadEndpoints = useCallback(async () => {
     setError("");
@@ -178,6 +180,20 @@ export default function WebhooksPage() {
     } finally { setReplayingId(""); }
   };
 
+  const sendTestEvent = async (endpoint: WebhookEndpoint) => {
+    if (!window.confirm(`Send a signed test event to the live configured URL for ${endpoint.agent_email}? Destination: ${endpoint.url}`)) return;
+    setTestingId(endpoint.id);
+    setActionError("");
+    setActionNotice("");
+    try {
+      const result = await api.testWebhook(endpoint.id);
+      await loadDeliveries();
+      setActionNotice(`Test event queued (${result.delivery_id}). Check delivery history for its result.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not send webhook test event.");
+    } finally { setTestingId(""); }
+  };
+
   return (
     <div className="space-y-4">
       <section className="card-simple flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
@@ -193,6 +209,7 @@ export default function WebhooksPage() {
 
       {error && <div className="rounded border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#ff7b72]">{error}</div>}
       {actionError && <div className="rounded border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#ff7b72]">{actionError}<button className="ml-2 underline" onClick={() => setActionError("")}>Dismiss</button></div>}
+      {actionNotice && <div className="rounded border border-[#3fb950]/40 bg-[#3fb950]/10 p-3 text-xs text-[#3fb950]">{actionNotice}<button className="ml-2 underline" onClick={() => setActionNotice("")}>Dismiss</button></div>}
 
       {createdSecret && <section className="card-simple space-y-3 border border-[#d29922]/40 p-4">
         <div className="flex items-start justify-between gap-3">
@@ -217,6 +234,7 @@ export default function WebhooksPage() {
               </div>
               <div className="flex shrink-0 flex-wrap gap-1.5">
                 <button className={buttonClass} onClick={() => void toggleEndpoint(endpoint)} disabled={savingId === endpoint.id}>{endpoint.enabled ? "Disable" : "Enable"}</button>
+                <button className={buttonClass} onClick={() => void sendTestEvent(endpoint)} disabled={!endpoint.enabled || testingId === endpoint.id || savingId === endpoint.id} title={!endpoint.enabled ? "Enable endpoint to send a test event" : undefined}>{testingId === endpoint.id ? "Sending test…" : "Send test event"}</button>
                 {editingId !== endpoint.id && <button className={buttonClass} onClick={() => { setEditingId(endpoint.id); setEditUrl(""); }}>Edit URL</button>}
                 <button className="inline-flex items-center gap-1.5 rounded border border-[#da3633]/40 px-2.5 py-1.5 text-xs text-[#f85149] hover:bg-[#da3633]/10 disabled:opacity-50" onClick={() => void deleteEndpoint(endpoint)} disabled={savingId === endpoint.id}><Trash2 className="h-3.5 w-3.5" />Delete</button>
               </div>

@@ -17,7 +17,8 @@ import {
   WebhookEndpointCreated,
   WebhookDelivery,
   WebhookDeliveryStatus,
-  WebhookDeliveryPage
+  WebhookDeliveryPage,
+  WebhookTestResult
 } from "./types";
 
 const API_BASE = "/api/backend";
@@ -207,6 +208,8 @@ export const api = {
     request<WebhookEndpointCreated>("/v1/webhooks", { method: "POST", body: JSON.stringify(data) }),
   updateWebhook: (id: string, data: { url?: string; enabled?: boolean }) =>
     request<WebhookEndpoint>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+  testWebhook: (id: string) =>
+    request<WebhookTestResult>(`/v1/webhooks/${encodeURIComponent(id)}/test`, { method: "POST" }),
   deleteWebhook: (id: string) =>
     request<void>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getWebhookDeliveries: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; limit?: number }) => {
