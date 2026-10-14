@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     SHARED_DOMAIN: str = "agents.local"
     # Public HTTPS origin used for outbound unsubscribe links. Invalid/empty values disable links.
     PUBLIC_BASE_URL: str = ""
+    # Optional AWS SES feedback delivered through one trusted SNS topic.
+    SES_FEEDBACK_TOPIC_ARN: str = ""
     DEFAULT_SENSITIVITY: str = "medium"  # low, medium, high
     
     # Security & CORS

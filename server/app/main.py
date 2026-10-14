@@ -8,7 +8,7 @@ import asyncio
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -26,6 +26,10 @@ async def lifespan(app: FastAPI):
             from sqlalchemy import inspect, text
             inspector = inspect(sync_conn)
             timestamp_type = "DATETIME" if sync_conn.dialect.name == "sqlite" else "TIMESTAMP"
+            contact_columns = {column["name"] for column in inspector.get_columns("contacts")}
+            if "import_batch_id" not in contact_columns:
+                sync_conn.execute(text("ALTER TABLE contacts ADD COLUMN import_batch_id VARCHAR(64)"))
+                sync_conn.execute(text("CREATE INDEX ix_contacts_import_batch_id ON contacts (import_batch_id)"))
             key_columns = {column["name"] for column in inspector.get_columns("api_keys")}
             message_columns = {column["name"] for column in inspector.get_columns("messages")}
             if "agent_email" not in key_columns:
@@ -228,6 +232,8 @@ app.include_router(agents.router)
 app.include_router(contacts.router)
 app.include_router(suppressions.router)
 app.include_router(public_unsubscribe.router)
+app.include_router(ses_feedback.router)
+app.include_router(templates.router)
 app.include_router(messages.router)
 app.include_router(reviews.router)
 app.include_router(domains.router)

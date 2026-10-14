@@ -155,6 +155,88 @@ class RecipientSuppressionResponse(BaseModel):
         from_attributes = True
 
 
+# --- Reusable email template schemas ---
+TEMPLATE_PART_MAX = 100_000
+
+
+class EmailTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    subject: str = Field(..., min_length=1, max_length=512)
+    body_text: str = Field("", max_length=TEMPLATE_PART_MAX)
+    body_html: str = Field("", max_length=TEMPLATE_PART_MAX)
+
+    @field_validator("name", "subject", "body_text", "body_html")
+    @classmethod
+    def trim_template_fields(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("name")
+    @classmethod
+    def require_template_name(cls, value: str) -> str:
+        if not value:
+            raise ValueError("Name cannot be empty")
+        return value
+
+    @field_validator("subject")
+    @classmethod
+    def validate_template_subject(cls, value: str) -> str:
+        if not value or "\r" in value or "\n" in value:
+            raise ValueError("Subject must be non-empty and cannot contain line breaks")
+        return value
+
+    @field_validator("body_html")
+    @classmethod
+    def require_template_body(cls, value: str, info) -> str:
+        text_body = info.data.get("body_text", "")
+        if not value and not text_body:
+            raise ValueError("At least one of body_text or body_html is required")
+        return value
+
+
+class EmailTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    subject: Optional[str] = Field(None, min_length=1, max_length=512)
+    body_text: Optional[str] = Field(None, max_length=TEMPLATE_PART_MAX)
+    body_html: Optional[str] = Field(None, max_length=TEMPLATE_PART_MAX)
+
+    @field_validator("name", "subject", "body_text", "body_html")
+    @classmethod
+    def trim_template_patch(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value is not None else None
+
+
+class EmailTemplateResponse(BaseModel):
+    id: str
+    agent_email: str
+    name: str
+    subject: str
+    body_text: str
+    body_html: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EmailTemplatePreviewRequest(BaseModel):
+    subject: str = Field(..., min_length=1, max_length=512)
+    body_text: str = Field("", max_length=TEMPLATE_PART_MAX)
+    body_html: str = Field("", max_length=TEMPLATE_PART_MAX)
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("subject")
+    @classmethod
+    def validate_preview_subject(cls, value: str) -> str:
+        if "\r" in value or "\n" in value:
+            raise ValueError("Subject cannot contain line breaks")
+        return value
+
+
+class EmailTemplateRenderData(BaseModel):
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+
 # --- Threat Scan Schemas ---
 class ThreatDetail(BaseModel):
     threat_type: str

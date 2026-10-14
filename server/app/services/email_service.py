@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
 from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery, UnsubscribeToken
+from app.config import settings
 from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
@@ -52,6 +53,7 @@ def _send_smtp_sync(
     custom_msg_id: Optional[str] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
     unsubscribe_url: Optional[str] = None,
+    feedback_correlation_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     submission_started = False
     try:
@@ -63,6 +65,8 @@ def _send_smtp_sync(
             msg["Reply-To"] = reply_to
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = custom_msg_id or make_msgid()
+        if feedback_correlation_id:
+            msg["X-Open-Agent-Email-Message-ID"] = feedback_correlation_id
         if unsubscribe_url:
             msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
             msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
@@ -239,6 +243,7 @@ class EmailService:
             reply_to=agent.email,
             custom_msg_id=message.rfc_message_id,
             unsubscribe_url=unsubscribe_url,
+            feedback_correlation_id=message.id if settings.SES_FEEDBACK_TOPIC_ARN.strip() else None,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )

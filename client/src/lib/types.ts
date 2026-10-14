@@ -23,6 +23,33 @@ export interface Contact {
   updated_at: string;
 }
 
+export interface EmailTemplate {
+  id: string;
+  agent_email: string;
+  name: string;
+  subject: string;
+  body_text: string;
+  body_html: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailTemplatePreview {
+  subject: string;
+  body_text: string;
+  body_html: string;
+  variables: string[];
+}
+
+export interface ContactImportResult {
+  batch_id: string;
+  created: number;
+  skipped: number;
+  results: Array<{ row: number; email: string; status: "created" | "skipped"; reason?: string }>;
+  notice: string;
+}
+export interface ContactImportBatch { batch_id: string; created_at: string; created: number }
+
 export interface RecipientSuppression {
   id: string;
   agent_email: string;

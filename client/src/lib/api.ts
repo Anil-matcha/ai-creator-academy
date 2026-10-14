@@ -1,6 +1,10 @@
 import {
   Agent,
   Contact,
+  ContactImportResult,
+  ContactImportBatch,
+  EmailTemplate,
+  EmailTemplatePreview,
   RecipientSuppression,
   Message,
   MessagePage,
@@ -82,6 +86,45 @@ export const api = {
   deleteContact: (agentEmail: string, contactId: string) =>
     request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}`, {
       method: "DELETE",
+    }),
+  importContactsCsv: (agentEmail: string, csv: string) =>
+    request<ContactImportResult>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/imports`, {
+      method: "POST",
+      headers: { "Content-Type": "text/csv; charset=utf-8" },
+      body: csv,
+    }),
+  getContactImports: (agentEmail: string) =>
+    request<ContactImportBatch[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/imports`),
+  reverseContactImport: (agentEmail: string, batchId: string) =>
+    request<{ batch_id: string; deleted: number; retained_after_edits: number }>(
+      `/v1/agents/${encodeURIComponent(agentEmail)}/contacts/imports/${encodeURIComponent(batchId)}?confirm=DELETE`,
+      { method: "DELETE" },
+    ),
+
+  // Inbox-scoped reusable email templates
+  getEmailTemplates: (agentEmail: string, limit = 100) =>
+    request<EmailTemplate[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates?limit=${limit}`),
+  createEmailTemplate: (agentEmail: string, data: Pick<EmailTemplate, "name" | "subject" | "body_text" | "body_html">) =>
+    request<EmailTemplate>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateEmailTemplate: (agentEmail: string, templateId: string, data: Partial<Pick<EmailTemplate, "name" | "subject" | "body_text" | "body_html">>) =>
+    request<EmailTemplate>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates/${encodeURIComponent(templateId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteEmailTemplate: (agentEmail: string, templateId: string) =>
+    request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
+  previewEmailTemplate: (agentEmail: string, data: { subject: string; body_text: string; body_html: string; data: Record<string, unknown> }) =>
+    request<EmailTemplatePreview>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates/preview`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  previewSavedEmailTemplate: (agentEmail: string, templateId: string, data: Record<string, unknown>) =>
+    request<EmailTemplatePreview>(`/v1/agents/${encodeURIComponent(agentEmail)}/templates/${encodeURIComponent(templateId)}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ data }),
     }),
 
   // Inbox-scoped outbound recipient suppressions

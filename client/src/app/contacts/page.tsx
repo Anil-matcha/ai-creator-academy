@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Contact, Agent } from "@/lib/types";
+import { Contact, Agent, ContactImportBatch, ContactImportResult } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ContactRound, Pencil, Plus, Trash2, X } from "lucide-react";
 
@@ -19,6 +19,9 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imports, setImports] = useState<ContactImportBatch[]>([]);
+  const [importResult, setImportResult] = useState<ContactImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     api.getAgents().then((items) => {
@@ -32,6 +35,7 @@ export default function ContactsPage() {
     try {
       setLoading(true);
       setContacts(await api.getContacts(agentEmail));
+      setImports(await api.getContactImports(agentEmail));
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load contacts");
@@ -64,6 +68,29 @@ export default function ContactsPage() {
     if (!agentEmail || !window.confirm(`Delete ${contact.name} (${contact.email})?`)) return;
     try { await api.deleteContact(agentEmail, contact.id); await loadContacts(); }
     catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not delete contact"); }
+  };
+
+  const importCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !agentEmail) return;
+    try {
+      setImporting(true); setError(null); setImportResult(null);
+      const result = await api.importContactsCsv(agentEmail, await file.text());
+      setImportResult(result);
+      await loadContacts();
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not import contacts"); }
+    finally { setImporting(false); }
+  };
+
+  const reverseImport = async (batchId: string) => {
+    if (!agentEmail || !window.confirm("Reverse this import? Contacts edited after import will be kept.")) return;
+    try {
+      const result = await api.reverseContactImport(agentEmail, batchId);
+      setImportResult(null);
+      setError(`Import reversed: ${result.deleted} removed, ${result.retained_after_edits} edited contact(s) kept.`);
+      await loadContacts();
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Could not reverse import"); }
   };
 
   const visibleContacts = contacts.filter((contact) =>
@@ -100,6 +127,14 @@ export default function ContactsPage() {
         </div>
         <button disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-[#238636] px-3 py-2 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50"><Plus className="h-3.5 w-3.5"/>{saving ? "Saving…" : editingId ? "Save contact" : "Add contact"}</button>
       </form>}
+
+      {agentEmail && <section className="space-y-3 rounded-lg border border-[#30363d] bg-[#161b22] p-5">
+        <div><h2 className="text-sm font-semibold text-[#e6edf3]">Import contacts from CSV</h2><p className="mt-1 text-xs text-[#8b949e]">Headers: email, name, company, notes. Up to 1,000 rows and 1 MB. Duplicate and suppressed addresses are skipped and reported.</p></div>
+        <input aria-label="Choose contacts CSV" type="file" accept=".csv,text/csv" disabled={importing} onChange={(event) => void importCsv(event)} className="text-xs text-[#8b949e] file:mr-3 file:rounded file:border-0 file:bg-[#21262d] file:px-3 file:py-2 file:text-xs file:text-white" />
+        {importing && <p className="text-xs text-[#8b949e]">Importing…</p>}
+        {importResult && <div className="space-y-2 text-xs text-[#c9d1d9]"><p>Created {importResult.created}; skipped {importResult.skipped}. {importResult.notice}</p>{importResult.results.filter((row) => row.status === "skipped").slice(0, 15).map((row) => <p key={`${row.row}-${row.email}`} className="text-[#8b949e]">Row {row.row}: {row.email || "(blank email)"} — {row.reason}</p>)}</div>}
+        {imports.length > 0 && <div className="space-y-2 border-t border-[#30363d] pt-3"><p className="text-xs font-medium text-[#c9d1d9]">Recent import batches</p>{imports.map((batch) => <div key={batch.batch_id} className="flex items-center justify-between gap-3 text-xs"><span className="text-[#8b949e]">{new Date(batch.created_at).toLocaleString()} · {batch.created} created · {batch.batch_id}</span><button onClick={() => void reverseImport(batch.batch_id)} className="text-[#ff7b72] hover:underline">Reverse</button></div>)}</div>}
+      </section>}
 
       <section className="overflow-hidden rounded-lg border border-[#30363d] bg-[#161b22]">
         <div className="flex flex-col justify-between gap-3 border-b border-[#30363d] p-4 sm:flex-row sm:items-center">

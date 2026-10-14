@@ -1,15 +1,18 @@
 import datetime
+import csv
+import io
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import select, delete, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Agent, Contact
+from app.models import Agent, Contact, ContactImportBatch, RecipientSuppression
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate
+from pydantic import ValidationError
 from app.security import require_agent_access, require_write
 
 
@@ -103,3 +106,113 @@ async def delete_contact(email: str, contact_id: str, db: AsyncSession = Depends
     await db.delete(contact)
     await db.commit()
     return Response(status_code=204)
+
+
+@router.post("/imports", dependencies=[Depends(require_write)])
+async def import_contacts(email: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Import inert contacts from a bounded CSV with email,name,company,notes columns."""
+    await _ensure_agent_exists(email, db)
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > 1_000_000:
+            raise HTTPException(status_code=413, detail="CSV file must be at most 1 MB")
+        body.extend(chunk)
+    try:
+        text = bytes(body).decode("utf-8-sig")
+        rows = csv.DictReader(io.StringIO(text, newline=""), strict=True)
+        raw_headers = rows.fieldnames or []
+        normalized_headers = [str(header or "").strip().lower() for header in raw_headers]
+        allowed_headers = {"email", "name", "company", "notes"}
+        if len(set(normalized_headers)) != len(normalized_headers):
+            raise HTTPException(status_code=400, detail="CSV headers must be unique after trimming and case normalization")
+        unexpected_headers = set(normalized_headers) - allowed_headers
+        if unexpected_headers:
+            raise HTTPException(status_code=400, detail="CSV may contain only email, name, company, and notes columns")
+        # DictReader otherwise silently overwrites duplicate header names.
+        rows.fieldnames = normalized_headers
+        headers = set(normalized_headers)
+        if "email" not in headers:
+            raise HTTPException(status_code=400, detail="CSV must include an email header")
+        parsed = list(rows)
+    except (UnicodeDecodeError, csv.Error):
+        raise HTTPException(status_code=400, detail="CSV is malformed or is not UTF-8") from None
+    if not parsed:
+        raise HTTPException(status_code=400, detail="CSV must contain at least one contact row")
+    if len(parsed) > 1000:
+        raise HTTPException(status_code=413, detail="CSV may contain at most 1,000 data rows")
+
+    # Normalize header casing/spacing and reject overlong records before writing anything.
+    if any(None in row or any(value is None for value in row.values()) for row in parsed):
+        raise HTTPException(status_code=400, detail="Every CSV row must have exactly the same number of columns as the header")
+    normalized_rows = [{str(k or "").strip().lower(): (v or "").strip() for k, v in row.items()} for row in parsed]
+    addresses = [row.get("email", "").strip().lower() for row in normalized_rows if row.get("email", "").strip()]
+    existing = set((await db.execute(select(Contact.email).where(Contact.agent_email == email, Contact.email.in_(addresses)))).scalars().all())
+    suppressed = set((await db.execute(select(RecipientSuppression.email).where(RecipientSuppression.agent_email == email, RecipientSuppression.email.in_(addresses)))).scalars().all())
+    seen: set[str] = set()
+    batch_id = f"ci_{uuid.uuid4().hex[:16]}"
+    now = datetime.datetime.utcnow()
+    outcomes = []
+    created_ids = []
+    new_contacts = []
+    for index, row in enumerate(normalized_rows, start=2):
+        address = row.get("email", "").lower()
+        name = row.get("name", "") or address
+        company, notes = row.get("company", ""), row.get("notes", "")
+        try:
+            validated = ContactCreate(email=address, name=name, company=company, notes=notes)
+            address, name, company, notes = validated.email, validated.name, validated.company, validated.notes
+        except ValidationError:
+            outcomes.append({"row": index, "email": address, "status": "skipped", "reason": "invalid_row"})
+            continue
+        reason = None
+        if address in seen:
+            reason = "duplicate_in_file"
+        elif address in existing:
+            reason = "already_exists"
+        elif address in suppressed:
+            reason = "suppressed"
+        if reason:
+            outcomes.append({"row": index, "email": address, "status": "skipped", "reason": reason})
+            continue
+        seen.add(address)
+        contact_id = f"ct_{uuid.uuid4().hex[:12]}"
+        new_contacts.append(Contact(id=contact_id, agent_email=email, email=address, name=name, company=company, notes=notes, import_batch_id=batch_id, created_at=now, updated_at=now))
+        created_ids.append(contact_id)
+        outcomes.append({"row": index, "email": address, "status": "created"})
+    batch = ContactImportBatch(id=batch_id, agent_email=email, contact_ids=created_ids, created_at=now)
+    db.add(batch)
+    db.add_all(new_contacts)
+    await db.commit()
+    return {"batch_id": batch_id, "created": len(created_ids), "skipped": len(outcomes) - len(created_ids), "results": outcomes,
+            "notice": "Imported contacts are records only. This operation does not send email or record consent."}
+
+
+@router.get("/imports")
+async def list_contact_imports(email: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ContactImportBatch).where(ContactImportBatch.agent_email == email).order_by(ContactImportBatch.created_at.desc()).limit(50))
+    batches = result.scalars().all()
+    return [{"batch_id": batch.id, "created_at": batch.created_at, "created": len(batch.contact_ids)} for batch in batches]
+
+
+@router.delete("/imports/{batch_id}", dependencies=[Depends(require_write)])
+async def reverse_contact_import(email: str, batch_id: str, confirm: str = Query(""), db: AsyncSession = Depends(get_db)):
+    if confirm != "DELETE":
+        raise HTTPException(status_code=400, detail="Pass confirm=DELETE to reverse this import")
+    result = await db.execute(select(ContactImportBatch).where(ContactImportBatch.agent_email == email, ContactImportBatch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Contact import batch not found")
+    deleted_result = await db.execute(
+        delete(Contact).where(
+            Contact.agent_email == email,
+            Contact.import_batch_id == batch.id,
+            Contact.updated_at == Contact.created_at,
+        )
+    )
+    deleted = deleted_result.rowcount or 0
+    retained = await db.scalar(
+        select(func.count()).select_from(Contact).where(Contact.agent_email == email, Contact.import_batch_id == batch.id)
+    ) or 0
+    await db.delete(batch)
+    await db.commit()
+    return {"batch_id": batch_id, "deleted": deleted, "retained_after_edits": retained}

@@ -14,6 +14,7 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./open_agent_email.db
       - SHARED_DOMAIN=agents.local
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - SES_FEEDBACK_TOPIC_ARN=${SES_FEEDBACK_TOPIC_ARN:-}
       - ADMIN_API_KEY=${ADMIN_API_KEY:?Set ADMIN_API_KEY before starting the stack}
       - SMTP_CONFIG_ENCRYPTION_KEY=${SMTP_CONFIG_ENCRYPTION_KEY:-}
       - SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS=${SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS:-}

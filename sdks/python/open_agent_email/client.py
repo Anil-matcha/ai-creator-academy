@@ -150,6 +150,8 @@ class AgentEmailClient:
         *,
         query: dict[str, str | int | float] | None = None,
         payload: dict[str, Any] | None = None,
+        raw_body: bytes | None = None,
+        content_type: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
@@ -160,6 +162,9 @@ class AgentEmailClient:
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        elif raw_body is not None:
+            data = raw_body
+            headers["Content-Type"] = content_type or "application/octet-stream"
         if idempotency_key is not None:
             if not 1 <= len(idempotency_key) <= 128:
                 raise ValueError("idempotency_key must contain 1–128 characters")
@@ -332,6 +337,28 @@ class AgentEmailClient:
         self._request(
             "DELETE",
             f"/v1/agents/{self._inbox_path(inbox)}/contacts/{quote(contact_id, safe='')}",
+        )
+
+    def import_contacts_csv(self, inbox: str, csv_text: str) -> dict[str, Any]:
+        """Import up to 1,000 inert contacts from CSV; returns per-row duplicate/suppression outcomes."""
+        data = csv_text.encode("utf-8")
+        if len(data) > 1_000_000:
+            raise ValueError("CSV must be at most 1 MB")
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/contacts/imports",
+            raw_body=data, content_type="text/csv; charset=utf-8",
+        )
+
+    def list_contact_imports(self, inbox: str) -> list[dict[str, Any]]:
+        """List the 50 most recent reversible contact import batches."""
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/contacts/imports")
+
+    def reverse_contact_import(self, inbox: str, batch_id: str) -> dict[str, Any]:
+        """Reverse an import, deleting untouched imported records and retaining edited contacts."""
+        return self._request(
+            "DELETE",
+            f"/v1/agents/{self._inbox_path(inbox)}/contacts/imports/{quote(batch_id, safe='')}",
+            query={"confirm": "DELETE"},
         )
 
     @staticmethod

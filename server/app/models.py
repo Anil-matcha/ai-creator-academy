@@ -33,10 +33,35 @@ class Contact(Base):
     name = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False, default="")
     notes = Column(Text, nullable=False, default="")
+    import_batch_id = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     agent = relationship("Agent", back_populates="contacts")
+
+
+class EmailTemplate(Base):
+    """Reusable, inbox-scoped message content; templates never send by themselves."""
+    __tablename__ = "email_templates"
+    __table_args__ = (UniqueConstraint("agent_email", "name", name="uq_email_templates_agent_name"),)
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    subject = Column(String(512), nullable=False)
+    body_text = Column(Text, nullable=False, default="")
+    body_html = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class ContactImportBatch(Base):
+    __tablename__ = "contact_import_batches"
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    contact_ids = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
 class RecipientSuppression(Base):
@@ -49,6 +74,15 @@ class RecipientSuppression(Base):
     email = Column(String(255), nullable=False)
     reason = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+
+class ProviderFeedbackReceipt(Base):
+    """Durable SNS message IDs prevent feedback retries from being re-applied."""
+    __tablename__ = "provider_feedback_receipts"
+
+    provider_event_id = Column(String(255), primary_key=True)
+    provider = Column(String(32), nullable=False, default="ses")
+    received_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
 class UnsubscribeToken(Base):

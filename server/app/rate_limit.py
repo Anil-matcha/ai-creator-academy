@@ -93,6 +93,7 @@ class ApiRateLimitMiddleware:
             path.startswith("/v1/") or path == "/v1"
             or path.startswith("/mcp/") or path == "/mcp"
             or path.startswith("/unsubscribe/")
+            or path == "/webhooks/ses"
         )
 
     def _prune(self, now: float) -> None:

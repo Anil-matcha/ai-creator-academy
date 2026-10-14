@@ -69,6 +69,18 @@ client.delete_contact("agent@example.com", contact["id"])
 
 The list limit is 1–500 (default 100). Email and name are limited to 255 characters, company to 255, and notes to 4,000. The SDK checks these bounds before sending requests. Contacts are inert records; creating one does not send an email.
 
+CSV import accepts UTF-8 text with an `email` header and optional `name`, `company`, and `notes` headers. The file may contain at most 1,000 rows and 1 MB. Duplicate and suppressed addresses are skipped with row-level reasons; no email is sent and import does not establish consent.
+
+```python
+result = client.import_contacts_csv("agent@example.com", csv_text)
+print(result["batch_id"], result["created"], result["skipped"])
+batches = client.list_contact_imports("agent@example.com")
+reversal = client.reverse_contact_import("agent@example.com", result["batch_id"])
+print(reversal["deleted"], reversal["retained_after_edits"])
+```
+
+Reversal removes only contacts that have not been edited since import. Full-access scope is required for import and reversal.
+
 ## Recipient suppressions
 
 Suppressions are explicit, operator-managed blocks scoped to one inbox. Listing requires read access; adding or removing an entry requires full-access scope. The SDK normalizes addresses to lowercase and checks email length (maximum 255 characters), optional reason length (maximum 500 characters), and list limit (1–500) before sending.
