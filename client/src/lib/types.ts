@@ -163,12 +163,23 @@ export interface OutboundRetryEvent {
 }
 
 export type WebhookDeliveryStatus = "pending" | "processing" | "delivered" | "failed";
+export type WebhookEventType =
+  | "email.received"
+  | "email.review_requested"
+  | "email.review_approved"
+  | "email.review_rejected"
+  | "email.flagged"
+  | "email.blocked"
+  | "email.accepted_by_relay"
+  | "email.failed"
+  | "email.delivery_unknown";
 
 export interface WebhookEndpoint {
   id: string;
   agent_email: string;
   url: string;
   enabled: boolean;
+  events?: string[];
   created_at: string;
   updated_at: string;
 }

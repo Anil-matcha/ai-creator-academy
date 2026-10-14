@@ -211,11 +211,11 @@ export const api = {
     if (agentEmail) params.set("agent_email", agentEmail);
     return request<WebhookEndpoint[]>(`/v1/webhooks?${params.toString()}`);
   },
-  createWebhook: (data: { agent_email: string; url: string; enabled?: boolean }) =>
+  createWebhook: (data: { agent_email: string; url: string; enabled?: boolean; events: string[] }) =>
     request<WebhookEndpointCreated>("/v1/webhooks", { method: "POST", body: JSON.stringify(data) }),
   rotateWebhookSecret: (id: string) =>
     request<WebhookEndpointSecretRotated>(`/v1/webhooks/${encodeURIComponent(id)}/rotate-secret`, { method: "POST" }),
-  updateWebhook: (id: string, data: { url?: string; enabled?: boolean }) =>
+  updateWebhook: (id: string, data: { url?: string; enabled?: boolean; events?: string[] }) =>
     request<WebhookEndpoint>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
   testWebhook: (id: string) =>
     request<WebhookTestResult>(`/v1/webhooks/${encodeURIComponent(id)}/test`, { method: "POST" }),

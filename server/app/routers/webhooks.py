@@ -10,7 +10,7 @@ from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,26 @@ from app.services.webhook_delivery import validate_webhook_url
 router = APIRouter(prefix="/v1/webhooks", tags=["Webhooks"], dependencies=[Depends(require_admin)])
 MAX_ENDPOINTS_PER_INBOX = 50
 DELIVERY_STATUSES = {"pending", "processing", "delivered", "failed"}
+WEBHOOK_EVENT_TYPES = {
+    "email.received", "email.review_requested", "email.review_approved",
+    "email.review_rejected", "email.flagged", "email.blocked",
+    "email.accepted_by_relay", "email.failed", "email.delivery_unknown",
+}
+
+
+def _validate_event_types(value: list[str]) -> list[str]:
+    if not value:
+        raise ValueError("event_types must contain at least one event")
+    if len(value) > 32:
+        raise ValueError("event_types may contain at most 32 values")
+    if len(set(value)) != len(value):
+        raise ValueError("event_types values must be unique")
+    if "*" in value and value != ["*"]:
+        raise ValueError("'*' must be the sole event_types value")
+    invalid = set(value) - WEBHOOK_EVENT_TYPES - {"*"}
+    if invalid:
+        raise ValueError(f"Unsupported webhook event type: {sorted(invalid)[0]}")
+    return value
 
 
 def _encode_delivery_cursor(item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str]) -> str:
@@ -63,11 +83,23 @@ class WebhookCreate(BaseModel):
     agent_email: str = Field(min_length=3, max_length=255)
     url: str = Field(min_length=9, max_length=2048)
     enabled: bool = True
+    events: list[str] = Field(default_factory=lambda: ["*"], max_length=32)
+
+    @field_validator("events")
+    @classmethod
+    def validate_events(cls, value: list[str]) -> list[str]:
+        return _validate_event_types(value)
 
 
 class WebhookUpdate(BaseModel):
     url: Optional[str] = Field(None, min_length=9, max_length=2048)
     enabled: Optional[bool] = None
+    events: Optional[list[str]] = Field(None, max_length=32)
+
+    @field_validator("events")
+    @classmethod
+    def validate_events(cls, value: Optional[list[str]]) -> Optional[list[str]]:
+        return _validate_event_types(value) if value is not None else value
 
 
 class WebhookResponse(BaseModel):
@@ -75,6 +107,7 @@ class WebhookResponse(BaseModel):
     agent_email: str
     url: str
     enabled: bool
+    events: list[str]
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -87,7 +120,8 @@ def _endpoint_response(endpoint: WebhookEndpoint) -> dict:
     parsed = urlsplit(endpoint.url)
     display_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "[redacted]" if parsed.query else "", ""))
     return {"id": endpoint.id, "agent_email": endpoint.agent_email, "url": display_url,
-            "enabled": endpoint.enabled, "created_at": endpoint.created_at, "updated_at": endpoint.updated_at}
+            "enabled": endpoint.enabled, "events": endpoint.event_types or ["*"],
+            "created_at": endpoint.created_at, "updated_at": endpoint.updated_at}
 
 
 @router.post("", response_model=WebhookCreated, status_code=201)
@@ -113,7 +147,8 @@ async def create_webhook(payload: WebhookCreate, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     now = datetime.datetime.utcnow()
     endpoint = WebhookEndpoint(id=f"wh_{uuid.uuid4().hex}", agent_email=agent.email, url=url,
-                               signing_secret=encrypted, enabled=payload.enabled, created_at=now, updated_at=now)
+                               signing_secret=encrypted, enabled=payload.enabled,
+                               event_types=payload.events, created_at=now, updated_at=now)
     db.add(endpoint)
     await db.commit()
     await db.refresh(endpoint)
@@ -142,6 +177,8 @@ async def update_webhook(endpoint_id: str, payload: WebhookUpdate, db: AsyncSess
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     if payload.enabled is not None:
         endpoint.enabled = payload.enabled
+    if payload.events is not None:
+        endpoint.event_types = payload.events
     endpoint.updated_at = datetime.datetime.utcnow()
     await db.commit()
     await db.refresh(endpoint)

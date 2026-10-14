@@ -116,6 +116,7 @@ class WebhookEndpoint(Base):
     id = Column(String(64), primary_key=True, index=True)
     agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
     url = Column(Text, nullable=False)
+    event_types = Column(JSON, nullable=False, default=lambda: ["*"])
     signing_secret = Column(Text, nullable=False)
     previous_signing_secret = Column(Text, nullable=True)
     previous_secret_expires_at = Column(DateTime, nullable=True)

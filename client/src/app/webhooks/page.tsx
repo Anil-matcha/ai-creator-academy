@@ -4,11 +4,51 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Agent } from "@/lib/types";
-import { WebhookDelivery, WebhookDeliveryStatus, WebhookEndpoint } from "@/lib/types";
+import { WebhookDelivery, WebhookDeliveryStatus, WebhookEndpoint, WebhookEventType } from "@/lib/types";
 
 const inputClass = "w-full rounded border border-[#30363d] bg-[#0d1117] px-2.5 py-2 text-xs text-[#e6edf3] placeholder:text-[#6e7681] focus:border-blue-400 focus:outline-none";
 const buttonClass = "inline-flex items-center gap-1.5 rounded border border-[#30363d] px-2.5 py-1.5 text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50";
 const statuses: (WebhookDeliveryStatus | "")[] = ["", "pending", "processing", "delivered", "failed"];
+const webhookEventTypes: { value: WebhookEventType; label: string }[] = [
+  { value: "email.received", label: "Email received" },
+  { value: "email.review_requested", label: "Review requested" },
+  { value: "email.review_approved", label: "Review approved" },
+  { value: "email.review_rejected", label: "Review rejected" },
+  { value: "email.flagged", label: "Email flagged" },
+  { value: "email.blocked", label: "Email blocked" },
+  { value: "email.accepted_by_relay", label: "Accepted by relay" },
+  { value: "email.failed", label: "Email failed" },
+  { value: "email.delivery_unknown", label: "Delivery unknown" },
+];
+
+function endpointEventTypes(endpoint: WebhookEndpoint) {
+  return endpoint.events ?? ["*"];
+}
+
+function eventTypesLabel(eventTypes: string[]) {
+  if (eventTypes.includes("*")) return "All events";
+  if (!eventTypes.length) return "No events";
+  return eventTypes.map((value) => webhookEventTypes.find((item) => item.value === value)?.label ?? value).join(", ");
+}
+
+function EventTypeSelector({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  const allEvents = value.includes("*");
+  const toggleAll = (checked: boolean) => onChange(checked ? ["*"] : []);
+  const toggleEvent = (eventType: WebhookEventType, checked: boolean) => {
+    const selected = allEvents ? [] : [...value];
+    const next = checked ? [...selected, eventType] : selected.filter((item) => item !== eventType);
+    onChange(next);
+  };
+  return <fieldset className="space-y-2 rounded border border-[#30363d] p-3">
+    <legend className="px-1 text-xs text-[#8b949e]">Event subscriptions</legend>
+    <label className="flex items-center gap-2 text-xs text-[#c9d1d9]"><input type="checkbox" checked={allEvents} onChange={(event) => toggleAll(event.target.checked)} />All events</label>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {webhookEventTypes.map((eventType) => <label key={eventType.value} className="flex items-center gap-2 text-xs text-[#8b949e]"><input type="checkbox" checked={!allEvents && value.includes(eventType.value)} onChange={(event) => toggleEvent(eventType.value, event.target.checked)} />{eventType.label}<span className="font-mono text-[10px] text-[#6e7681]">{eventType.value}</span></label>)}
+    </div>
+    {!allEvents && !value.length && <p className="text-[11px] text-[#f85149]">Select at least one event.</p>}
+    <p className="text-[10px] text-[#6e7681]">Signed test events are always sent, even when event subscriptions are filtered.</p>
+  </fieldset>;
+}
 
 function date(value?: string | null) {
   if (!value) return "—";
@@ -40,11 +80,14 @@ export default function WebhooksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createAgent, setCreateAgent] = useState("");
   const [createUrl, setCreateUrl] = useState("");
+  const [createEventTypes, setCreateEventTypes] = useState<string[]>(["*"]);
   const [creating, setCreating] = useState(false);
   const [secretNotice, setSecretNotice] = useState<{ endpoint: WebhookEndpoint; secret: string; kind: "created" | "rotated" } | null>(null);
   const [copied, setCopied] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editUrl, setEditUrl] = useState("");
+  const [editingEventsId, setEditingEventsId] = useState("");
+  const [editEventTypes, setEditEventTypes] = useState<string[]>(["*"]);
   const [savingId, setSavingId] = useState("");
   const [replayingId, setReplayingId] = useState("");
   const [testingId, setTestingId] = useState("");
@@ -105,11 +148,12 @@ export default function WebhooksPage() {
     setCreating(true);
     setActionError("");
     try {
-      const created = await api.createWebhook({ agent_email: createAgent, url: createUrl.trim() });
+      const created = await api.createWebhook({ agent_email: createAgent, url: createUrl.trim(), events: createEventTypes });
       // Keep the one-time secret only in this transient component state; never persist it.
       setSecretNotice({ endpoint: created, secret: created.signing_secret, kind: "created" });
       setCreateOpen(false);
       setCreateUrl("");
+      setCreateEventTypes(["*"]);
       setEndpointFilter(created.id);
       await loadEndpoints();
     } catch (err) {
@@ -166,6 +210,18 @@ export default function WebhooksPage() {
       await loadEndpoints();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not update endpoint URL.");
+    } finally { setSavingId(""); }
+  };
+
+  const saveEventTypes = async (endpoint: WebhookEndpoint) => {
+    setSavingId(endpoint.id);
+    setActionError("");
+    try {
+      await api.updateWebhook(endpoint.id, { events: editEventTypes });
+      setEditingEventsId("");
+      await loadEndpoints();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update event subscriptions.");
     } finally { setSavingId(""); }
   };
 
@@ -247,6 +303,8 @@ export default function WebhooksPage() {
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0"><div className="flex items-center gap-2"><span className="text-xs font-semibold text-[#e6edf3]">{endpoint.agent_email}</span><span className={`rounded border px-1.5 py-0.5 text-[10px] ${endpoint.enabled ? "border-[#3fb950]/40 bg-[#3fb950]/10 text-[#3fb950]" : "border-[#8b949e]/30 text-[#8b949e]"}`}>{endpoint.enabled ? "Enabled" : "Disabled"}</span></div>
                 {editingId === endpoint.id ? <div className="mt-2 flex gap-2"><input className={inputClass} value={editUrl} onChange={(event) => setEditUrl(event.target.value)} placeholder="Enter the full URL, including query values" /><button className={buttonClass} onClick={() => void saveUrl(endpoint)} disabled={savingId === endpoint.id || !editUrl.trim()}>Save URL</button><button className={buttonClass} onClick={() => setEditingId("")}>Cancel</button></div> : <div className="mt-1 break-all font-mono text-[11px] text-[#8b949e]">{endpoint.url}</div>}
+                <div className="mt-1 text-[11px] text-[#8b949e]">Events: {eventTypesLabel(endpointEventTypes(endpoint))}</div>
+                {editingEventsId === endpoint.id && <div className="mt-2 max-w-2xl space-y-2"><EventTypeSelector value={editEventTypes} onChange={setEditEventTypes} /><div className="flex gap-2"><button className={buttonClass} onClick={() => void saveEventTypes(endpoint)} disabled={savingId === endpoint.id || !editEventTypes.length}>Save subscriptions</button><button className={buttonClass} onClick={() => setEditingEventsId("")}>Cancel</button></div></div>}
                 <div className="mt-1 text-[10px] text-[#6e7681]">Created {date(endpoint.created_at)} · Updated {date(endpoint.updated_at)}</div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-1.5">
@@ -254,6 +312,7 @@ export default function WebhooksPage() {
                 <button className={buttonClass} onClick={() => void rotateSecret(endpoint)} disabled={savingId === endpoint.id}><RefreshCw className="h-3.5 w-3.5" />Rotate secret</button>
                 <button className={buttonClass} onClick={() => void sendTestEvent(endpoint)} disabled={!endpoint.enabled || testingId === endpoint.id || savingId === endpoint.id} title={!endpoint.enabled ? "Enable endpoint to send a test event" : undefined}>{testingId === endpoint.id ? "Sending test…" : "Send test event"}</button>
                 {editingId !== endpoint.id && <button className={buttonClass} onClick={() => { setEditingId(endpoint.id); setEditUrl(""); }}>Edit URL</button>}
+                {editingEventsId !== endpoint.id && <button className={buttonClass} onClick={() => { setEditingEventsId(endpoint.id); setEditEventTypes(endpointEventTypes(endpoint)); }}>Edit events</button>}
                 <button className="inline-flex items-center gap-1.5 rounded border border-[#da3633]/40 px-2.5 py-1.5 text-xs text-[#f85149] hover:bg-[#da3633]/10 disabled:opacity-50" onClick={() => void deleteEndpoint(endpoint)} disabled={savingId === endpoint.id}><Trash2 className="h-3.5 w-3.5" />Delete</button>
               </div>
             </div>
@@ -276,7 +335,8 @@ export default function WebhooksPage() {
         <div><h3 className="text-sm font-semibold text-[#e6edf3]">Add webhook endpoint</h3><p className="mt-1 text-xs text-[#8b949e]">Only HTTPS destinations on port 443 are accepted. A new signing secret is generated for each endpoint.</p></div>
         <label className="block space-y-1 text-xs text-[#8b949e]">Inbox<select required className={inputClass} value={createAgent} onChange={(event) => setCreateAgent(event.target.value)}><option value="" disabled>Select inbox</option>{agents.map((agent) => <option key={agent.id} value={agent.email}>{agent.email}</option>)}</select></label>
         <label className="block space-y-1 text-xs text-[#8b949e]">HTTPS URL<input required type="url" pattern="https://.*" className={`${inputClass} font-mono`} placeholder="https://example.com/hooks/email" value={createUrl} onChange={(event) => setCreateUrl(event.target.value)} /></label>
-        <div className="flex justify-end gap-2"><button type="button" className={buttonClass} onClick={() => setCreateOpen(false)}>Cancel</button><button type="submit" disabled={creating || !createAgent} className="rounded bg-[#238636] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50">{creating ? "Creating…" : "Create endpoint"}</button></div>
+        <EventTypeSelector value={createEventTypes} onChange={setCreateEventTypes} />
+        <div className="flex justify-end gap-2"><button type="button" className={buttonClass} onClick={() => setCreateOpen(false)}>Cancel</button><button type="submit" disabled={creating || !createAgent || !createEventTypes.length} className="rounded bg-[#238636] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2ea043] disabled:opacity-50">{creating ? "Creating…" : "Create endpoint"}</button></div>
       </form></div>}
     </div>
   );

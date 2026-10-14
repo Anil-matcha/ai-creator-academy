@@ -10,6 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import WebhookDelivery, WebhookEndpoint
 
 
+async def _subscribed_endpoints(db: AsyncSession, agent_email: str, event_type: str) -> list[WebhookEndpoint]:
+    endpoints = (await db.execute(select(WebhookEndpoint).where(
+        WebhookEndpoint.agent_email == agent_email,
+        WebhookEndpoint.enabled.is_(True),
+    ))).scalars().all()
+    return [
+        endpoint for endpoint in endpoints
+        if not endpoint.event_types or "*" in endpoint.event_types or event_type in endpoint.event_types
+    ]
+
+
 async def enqueue_email_webhook_event(
     db: AsyncSession,
     *,
@@ -27,10 +38,7 @@ async def enqueue_email_webhook_event(
     associated message/review transition. Payloads intentionally contain only
     stable identifiers and lifecycle metadata.
     """
-    endpoints = (await db.execute(select(WebhookEndpoint).where(
-        WebhookEndpoint.agent_email == agent_email,
-        WebhookEndpoint.enabled.is_(True),
-    ))).scalars().all()
+    endpoints = await _subscribed_endpoints(db, agent_email, event_type)
     timestamp = created_at.isoformat()
     for endpoint in endpoints:
         event_id = f"evt_{uuid.uuid4().hex}"
@@ -68,10 +76,7 @@ async def enqueue_email_received_webhook_event(
     created_at: datetime.datetime,
 ) -> None:
     """Queue the existing inbound receipt contract for an inbox release."""
-    endpoints = (await db.execute(select(WebhookEndpoint).where(
-        WebhookEndpoint.agent_email == agent_email,
-        WebhookEndpoint.enabled.is_(True),
-    ))).scalars().all()
+    endpoints = await _subscribed_endpoints(db, agent_email, "email.received")
     for endpoint in endpoints:
         event_id = f"evt_{uuid.uuid4().hex}"
         db.add(WebhookDelivery(
@@ -108,10 +113,7 @@ async def enqueue_outbound_status_webhook_event(
     created_at: datetime.datetime,
 ) -> None:
     """Queue metadata-only outbound lifecycle events for this inbox."""
-    endpoints = (await db.execute(select(WebhookEndpoint).where(
-        WebhookEndpoint.agent_email == agent_email,
-        WebhookEndpoint.enabled.is_(True),
-    ))).scalars().all()
+    endpoints = await _subscribed_endpoints(db, agent_email, event_type)
     for endpoint in endpoints:
         event_id = f"evt_{uuid.uuid4().hex}"
         db.add(WebhookDelivery(
@@ -152,10 +154,7 @@ async def enqueue_inbound_security_webhook_event(
     category = threat_category[:64] if threat_category in categories else "other"
     severity = threat_severity[:16] if threat_severity in severities else "unknown"
     score = round(min(1.0, max(0.0, float(threat_score))), 2)
-    endpoints = (await db.execute(select(WebhookEndpoint).where(
-        WebhookEndpoint.agent_email == agent_email,
-        WebhookEndpoint.enabled.is_(True),
-    ))).scalars().all()
+    endpoints = await _subscribed_endpoints(db, agent_email, event_type)
     for endpoint in endpoints:
         event_id = f"evt_{uuid.uuid4().hex}"
         db.add(WebhookDelivery(

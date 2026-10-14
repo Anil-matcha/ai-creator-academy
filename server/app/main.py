@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
                 if name not in webhook_delivery_columns:
                     sync_conn.execute(text(f"ALTER TABLE webhook_deliveries ADD COLUMN {name} {definition}"))
             webhook_endpoint_columns = {column["name"] for column in inspector.get_columns("webhook_endpoints")}
+            if "event_types" not in webhook_endpoint_columns:
+                # Existing endpoints receive every event to preserve their prior behavior.
+                sync_conn.execute(text("ALTER TABLE webhook_endpoints ADD COLUMN event_types JSON NOT NULL DEFAULT '[\"*\"]'"))
             for name, definition in {
                 "previous_signing_secret": "TEXT",
                 "previous_secret_expires_at": timestamp_type,
