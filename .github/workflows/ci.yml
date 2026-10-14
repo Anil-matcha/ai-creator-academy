@@ -49,3 +49,16 @@ jobs:
           cache-dependency-path: sdks/typescript/package-lock.json
       - run: npm ci
       - run: npm test
+
+  sdk-py:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]'
+      - run: python -m pytest -q

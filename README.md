@@ -357,6 +357,23 @@ When an inbox holds outbound mail for approval, the operator can be emailed two 
 - **Requirements:** a public `https` `PUBLIC_BASE_URL` and an enabled upstream SMTP relay. If either is missing the notification is skipped and logged; the review stays pending in the dashboard and API as usual.
 - **Expiry:** with `review_expiry_hours` set, a background sweeper resolves pending reviews older than that window as `system:expiry`, emitting the normal review webhooks. The default action is **reject**; messages are auto-approved only if you set `review_expiry_action` to `approve` explicitly.
 
+## ⌨️ `oae` command-line client
+
+The Python SDK package ships a dependency-free CLI (`pip install ./sdks/python`, or `pip install './sdks/python[listen]'` for `oae listen`).
+
+```bash
+oae login --base-url http://127.0.0.1:8000 --api-key "$KEY"   # verifies, then saves ~/.config/oae/config.json (0600)
+oae whoami
+oae messages list --agent support@agents.local --label needs-human
+oae messages send --agent support@agents.local --to person@example.com --subject Hi --body "Hello" --send-at 2026-12-01T09:00:00Z
+oae messages reply --agent support@agents.local MSG_ID --template tpl_1 --data-json '{"name":"Ada"}'
+oae otp --agent support@agents.local --wait 10
+oae reviews list --status pending && oae reviews approve REV_ID
+oae listen --agent support@agents.local --forward-to http://localhost:3000/hook   # or --command './handle.sh'
+```
+
+Settings come from `--base-url/--api-key`, then `OAE_BASE_URL/OAE_API_KEY`, then the config file. Every command accepts `--json`. Exit codes: `0` success, `1` API or connection error, `2` usage or configuration error. The key is never printed. `oae listen` reconnects with backoff, fetches each new message, and POSTs it as JSON to a local handler (HTTP only on localhost, no redirects) or pipes it to a command on stdin (no shell); it exits non-zero if the server rejects the credential. Run `oae --help` for all commands.
+
 ## 🧪 Tests
 
 ```bash

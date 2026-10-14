@@ -129,6 +129,17 @@ MessageStatus = Literal[
 ]
 
 
+def _format_send_at(value: datetime.datetime | str) -> str:
+    """Serialize a send time; naive datetimes are treated as UTC."""
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=datetime.timezone.utc)
+        return value.isoformat()
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("send_at must be a datetime or ISO-8601 string")
+    return value.strip()
+
+
 class AgentEmailError(Exception):
     """An API or transport error. The bearer token is never included in errors."""
 
@@ -242,6 +253,8 @@ class AgentEmailClient:
         status: str | None = None,
         thread_id: str | None = None,
         limit: int = 50,
+        label: str | None = None,
+        trashed: bool = False,
     ) -> list[Message]:
         """List messages, newest first (server limit is 1–500)."""
         if not 1 <= limit <= 500:
@@ -250,6 +263,10 @@ class AgentEmailClient:
         for key, value in (("direction", direction), ("status", status), ("thread_id", thread_id)):
             if value is not None:
                 query[key] = value
+        if label is not None:
+            query["label"] = label
+        if trashed:
+            query["trashed"] = "true"
         return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/messages", query=query)
 
     def get_message(self, inbox: str, message_id: str) -> Message:
@@ -669,9 +686,15 @@ class AgentEmailClient:
         thread_id: str | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
+        send_at: datetime.datetime | str | None = None,
     ) -> Message:
-        """Send direct content or render an inbox template for this message."""
+        """Send direct content or render an inbox template for this message.
+
+        `send_at` defers submission (UTC, at most 90 days ahead); the message status is `scheduled`.
+        """
         payload: dict[str, Any] = {"recipient": recipient}
+        if send_at is not None:
+            payload["send_at"] = _format_send_at(send_at)
         if template_id is not None:
             payload["template_id"] = template_id
             if template_data is not None:
@@ -706,9 +729,12 @@ class AgentEmailClient:
         template_data: dict[str, Any] | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
+        send_at: datetime.datetime | str | None = None,
     ) -> Message:
-        """Reply with direct content or render an inbox template in-thread."""
+        """Reply with direct content or render an inbox template in-thread (optionally scheduled)."""
         payload: dict[str, Any] = {}
+        if send_at is not None:
+            payload["send_at"] = _format_send_at(send_at)
         if template_id is not None:
             payload["template_id"] = template_id
             if template_data is not None:
@@ -749,3 +775,167 @@ class AgentEmailClient:
             f"/v1/agents/{self._inbox_path(inbox)}/messages/otp",
             query={"since_seconds": since_seconds, "wait_seconds": wait_seconds},
         )
+
+    # ---- identity, discovery and inbox administration -------------------------------------
+
+    def info(self) -> dict[str, Any]:
+        """Public service discovery document."""
+        return self._request("GET", "/v1/info")
+
+    def whoami(self) -> dict[str, Any]:
+        """Describe the credential making the call."""
+        return self._request("GET", "/v1/whoami")
+
+    def list_agents(self, *, include_deleted: bool = False) -> list[dict[str, Any]]:
+        """List inboxes (administrator key required)."""
+        query = {"include_deleted": "true"} if include_deleted else None
+        return self._request("GET", "/v1/agents", query=query)
+
+    def create_agent(
+        self, email: str, display_name: str, *, description: str | None = None,
+        threat_sensitivity: str = "medium", hitl_enabled: bool = True,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "email": email, "display_name": display_name,
+            "threat_sensitivity": threat_sensitivity, "hitl_enabled": hitl_enabled,
+        }
+        if description is not None:
+            payload["description"] = description
+        return self._request("POST", "/v1/agents", payload=payload)
+
+    def get_agent(self, inbox: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}")
+
+    def get_agent_metrics(self, inbox: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/metrics")
+
+    def get_protection(self, inbox: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/protection")
+
+    def update_protection(self, inbox: str, *, threat_sensitivity: str, hitl_enabled: bool) -> dict[str, Any]:
+        """Administrator only: an inbox key cannot weaken its own approval gate."""
+        return self._request(
+            "PUT", f"/v1/agents/{self._inbox_path(inbox)}/protection",
+            payload={"threat_sensitivity": threat_sensitivity, "hitl_enabled": hitl_enabled},
+        )
+
+    # ---- message triage ------------------------------------------------------------------
+
+    def _message_path(self, inbox: str, message_id: str) -> str:
+        return f"/v1/agents/{self._inbox_path(inbox)}/messages/{quote(message_id, safe='')}"
+
+    def update_message_labels(self, inbox: str, message_id: str, labels: list[str]) -> Message:
+        """Replace a message's labels."""
+        return self._request("PATCH", self._message_path(inbox, message_id), payload={"labels": labels})
+
+    def trash_message(self, inbox: str, message_id: str) -> Message:
+        """Move to trash; cancels a scheduled send that has not been submitted."""
+        return self._request("DELETE", self._message_path(inbox, message_id))
+
+    def restore_message(self, inbox: str, message_id: str) -> Message:
+        return self._request("POST", f"{self._message_path(inbox, message_id)}/restore")
+
+    def get_message_lifecycle(self, inbox: str, message_id: str) -> dict[str, Any]:
+        return self._request("GET", f"{self._message_path(inbox, message_id)}/lifecycle")
+
+    def forward_message(self, inbox: str, message_id: str, *, recipient: str, note: str | None = None) -> Message:
+        payload: dict[str, Any] = {"recipient": recipient}
+        if note is not None:
+            payload["note"] = note
+        return self._request("POST", f"{self._message_path(inbox, message_id)}/forward", payload=payload)
+
+    def list_conversations(self, inbox: str, *, limit: int = 50) -> dict[str, Any]:
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/conversations", query={"limit": limit}
+        )
+
+    def get_conversation(self, inbox: str, conversation_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"/v1/agents/{self._inbox_path(inbox)}/conversations/{quote(conversation_id, safe='')}",
+        )
+
+    # ---- human review --------------------------------------------------------------------
+
+    def list_reviews(
+        self, *, status: Literal["pending", "approved", "rejected"] | None = None,
+        agent_email: str | None = None, limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        query: dict[str, str | int | float] = {"limit": limit}
+        if status is not None:
+            query["status"] = status
+        if agent_email is not None:
+            query["agent_email"] = agent_email
+        return self._request("GET", "/v1/reviews", query=query)
+
+    def approve_review(self, review_id: str, *, notes: str | None = None) -> dict[str, Any]:
+        return self._request(
+            "POST", f"/v1/reviews/{quote(review_id, safe='')}/approve",
+            payload={"action": "approve", "notes": notes},
+        )
+
+    def reject_review(self, review_id: str, *, notes: str | None = None) -> dict[str, Any]:
+        return self._request(
+            "POST", f"/v1/reviews/{quote(review_id, safe='')}/reject",
+            payload={"action": "reject", "notes": notes},
+        )
+
+    # ---- webhooks and events (administrator key) -----------------------------------------
+
+    def list_webhooks(self, *, agent_email: str | None = None) -> list[dict[str, Any]]:
+        query = {"agent_email": agent_email} if agent_email else None
+        return self._request("GET", "/v1/webhooks", query=query)
+
+    def create_webhook(
+        self, agent_email: str, url: str, *, events: list[str] | None = None, enabled: bool = True,
+    ) -> dict[str, Any]:
+        """Create an endpoint. The response contains the signing secret exactly once."""
+        return self._request(
+            "POST", "/v1/webhooks",
+            payload={"agent_email": agent_email, "url": url, "enabled": enabled, "events": events or ["*"]},
+        )
+
+    def test_webhook(self, endpoint_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/webhooks/{quote(endpoint_id, safe='')}/test")
+
+    def rotate_webhook_secret(self, endpoint_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/webhooks/{quote(endpoint_id, safe='')}/rotate-secret")
+
+    def delete_webhook(self, endpoint_id: str) -> None:
+        self._request("DELETE", f"/v1/webhooks/{quote(endpoint_id, safe='')}")
+
+    def list_webhook_deliveries(
+        self, *, endpoint_id: str | None = None, status: str | None = None,
+        event_type: str | None = None, limit: int = 50, cursor: str | None = None,
+    ) -> dict[str, Any]:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        query: dict[str, str | int | float] = {"limit": limit}
+        for key, value in (("endpoint_id", endpoint_id), ("status", status),
+                           ("event_type", event_type), ("cursor", cursor)):
+            if value is not None:
+                query[key] = value
+        return self._request("GET", "/v1/webhooks/deliveries/page", query=query)
+
+    def list_events(
+        self, *, agent_email: str | None = None, event_type: str | None = None,
+        status: str | None = None, limit: int = 50, cursor: str | None = None,
+    ) -> dict[str, Any]:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        query: dict[str, str | int | float] = {"limit": limit}
+        for key, value in (("agent_email", agent_email), ("event_type", event_type),
+                           ("status", status), ("cursor", cursor)):
+            if value is not None:
+                query[key] = value
+        return self._request("GET", "/v1/events", query=query)
+
+    def get_event(self, event_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/events/{quote(event_id, safe='')}")
+
+    def redeliver_event(self, event_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/events/{quote(event_id, safe='')}/redeliver")
