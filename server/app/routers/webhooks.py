@@ -45,24 +45,34 @@ def _validate_event_types(value: list[str]) -> list[str]:
     return value
 
 
-def _encode_delivery_cursor(item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str]) -> str:
+def _encode_delivery_cursor(
+    item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
+) -> str:
     payload = {
         "created_at": item.created_at.isoformat(),
         "id": item.id,
         "endpoint_id": endpoint_id,
         "status": status,
+        "event_type": event_type,
     }
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
-def _decode_delivery_cursor(cursor: str, endpoint_id: Optional[str], status: Optional[str]):
+def _decode_delivery_cursor(
+    cursor: str, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
+):
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         raw = base64.b64decode(padded.encode("ascii"), altchars=b"-_", validate=True)
         payload = json.loads(raw.decode("utf-8"))
-        if not isinstance(payload, dict) or set(payload) != {"created_at", "id", "endpoint_id", "status"}:
+        old_keys = {"created_at", "id", "endpoint_id", "status"}
+        new_keys = old_keys | {"event_type"}
+        if not isinstance(payload, dict) or set(payload) not in (old_keys, new_keys):
             raise ValueError
+        cursor_event_type = payload.get("event_type")
+        if cursor_event_type != event_type:
+            raise ValueError("filter mismatch")
         if payload["endpoint_id"] != endpoint_id or payload["status"] != status:
             raise ValueError("filter mismatch")
         if not isinstance(payload["id"], str) or not payload["id"] or len(payload["id"]) > 64:
@@ -70,6 +80,10 @@ def _decode_delivery_cursor(cursor: str, endpoint_id: Optional[str], status: Opt
         if payload["endpoint_id"] is not None and not isinstance(payload["endpoint_id"], str):
             raise ValueError
         if payload["status"] is not None and not isinstance(payload["status"], str):
+            raise ValueError
+        if cursor_event_type is not None and (
+            not isinstance(cursor_event_type, str) or not cursor_event_type or len(cursor_event_type) > 64
+        ):
             raise ValueError
         created_at = datetime.datetime.fromisoformat(payload["created_at"])
         if created_at.tzinfo is not None:
@@ -268,7 +282,9 @@ async def delete_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/deliveries")
 async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64),
-                          status: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=200),
+                          status: Optional[str] = Query(None),
+                          event_type: Optional[str] = Query(None, min_length=1, max_length=64),
+                          limit: int = Query(100, ge=1, le=200),
                           db: AsyncSession = Depends(get_db)):
     if status and status not in {"pending", "processing", "delivered", "failed"}:
         raise HTTPException(status_code=400, detail="Invalid webhook delivery status")
@@ -277,6 +293,8 @@ async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
         query = query.where(WebhookDelivery.endpoint_id == endpoint_id)
     if status:
         query = query.where(WebhookDelivery.status == status)
+    if event_type is not None:
+        query = query.where(WebhookDelivery.event_type == event_type)
     items = (await db.execute(query.order_by(WebhookDelivery.created_at.desc()).limit(limit))).scalars().all()
     return [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
              "event_type": item.event_type, "payload": item.payload, "status": item.status,
@@ -287,7 +305,9 @@ async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
 
 @router.get("/deliveries/page")
 async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64),
-                          status: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=100),
+                          status: Optional[str] = Query(None),
+                          event_type: Optional[str] = Query(None, min_length=1, max_length=64),
+                          limit: int = Query(50, ge=1, le=100),
                           cursor: Optional[str] = Query(None, max_length=2048),
                           db: AsyncSession = Depends(get_db)):
     if status and status not in DELIVERY_STATUSES:
@@ -298,8 +318,10 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
         query = query.where(WebhookDelivery.endpoint_id == endpoint_id)
     if status:
         query = query.where(WebhookDelivery.status == status)
+    if event_type is not None:
+        query = query.where(WebhookDelivery.event_type == event_type)
     if cursor is not None:
-        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status)
+        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status, event_type)
         query = query.where(or_(
             WebhookDelivery.created_at < created_at,
             and_(WebhookDelivery.created_at == created_at, WebhookDelivery.id < delivery_id),
@@ -310,7 +332,7 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
     ).limit(limit + 1))).scalars().all()
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status) if has_more and items else None
+    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status, event_type) if has_more and items else None
     return {
         "items": [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
                    "event_type": item.event_type, "payload": item.payload, "status": item.status,

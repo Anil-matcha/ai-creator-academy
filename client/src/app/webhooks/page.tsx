@@ -20,6 +20,10 @@ const webhookEventTypes: { value: WebhookEventType; label: string }[] = [
   { value: "email.failed", label: "Email failed" },
   { value: "email.delivery_unknown", label: "Delivery unknown" },
 ];
+const deliveryEventTypes: { value: string; label: string }[] = [
+  ...webhookEventTypes,
+  { value: "webhook.test", label: "Test event" },
+];
 
 function endpointEventTypes(endpoint: WebhookEndpoint) {
   return endpoint.events ?? ["*"];
@@ -77,6 +81,7 @@ export default function WebhooksPage() {
   const [agentFilter, setAgentFilter] = useState("");
   const [endpointFilter, setEndpointFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<WebhookDeliveryStatus | "">("");
+  const [eventTypeFilter, setEventTypeFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createAgent, setCreateAgent] = useState("");
   const [createUrl, setCreateUrl] = useState("");
@@ -114,7 +119,7 @@ export default function WebhooksPage() {
     }
     setActionError("");
     try {
-      const page = await api.getWebhookDeliveryPage({ endpoint_id: endpointFilter || undefined, status: statusFilter || undefined, limit: 100, cursor });
+      const page = await api.getWebhookDeliveryPage({ endpoint_id: endpointFilter || undefined, status: statusFilter || undefined, event_type: eventTypeFilter || undefined, limit: 100, cursor });
       if (requestId !== deliveryRequestId.current) return;
       setDeliveries((current) => {
         if (!append) return page.items;
@@ -130,7 +135,7 @@ export default function WebhooksPage() {
         setLoadingOlder(false);
       }
     }
-  }, [endpointFilter, statusFilter]);
+  }, [endpointFilter, eventTypeFilter, statusFilter]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -323,7 +328,7 @@ export default function WebhooksPage() {
       <section className="card-simple overflow-hidden">
         <div className="flex flex-col gap-2 border-b border-[#30363d] p-3 sm:flex-row sm:items-center sm:justify-between">
           <div><h3 className="text-xs font-semibold text-[#e6edf3]">Delivery history <span className="font-mono text-[#8b949e]">({deliveries.length})</span></h3><p className="mt-0.5 text-[11px] text-[#8b949e]">Event payloads contain message metadata only, without body or attachments.</p></div>
-          <div className="flex gap-2"><select className={`${inputClass} sm:w-52`} value={endpointFilter} onChange={(event) => setEndpointFilter(event.target.value)}><option value="">All endpoints</option>{endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.agent_email} · {endpoint.id.slice(-8)}</option>)}</select><select className={`${inputClass} sm:w-36`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as WebhookDeliveryStatus | "")}><option value="">All statuses</option>{statuses.filter(Boolean).map((status) => <option key={status} value={status}>{status}</option>)}</select></div>
+          <div className="flex flex-wrap gap-2"><select className={`${inputClass} sm:w-52`} value={endpointFilter} onChange={(event) => setEndpointFilter(event.target.value)}><option value="">All endpoints</option>{endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.agent_email} · {endpoint.id.slice(-8)}</option>)}</select><select className={`${inputClass} sm:w-36`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as WebhookDeliveryStatus | "")}><option value="">All statuses</option>{statuses.filter(Boolean).map((status) => <option key={status} value={status}>{status}</option>)}</select><select className={`${inputClass} sm:w-48`} value={eventTypeFilter} onChange={(event) => { deliveryRequestId.current += 1; setDeliveries([]); setNextCursor(null); setEventTypeFilter(event.target.value); }}><option value="">All event types</option>{deliveryEventTypes.map((eventType) => <option key={eventType.value} value={eventType.value}>{eventType.label} · {eventType.value}</option>)}</select></div>
         </div>
         {deliveryLoading && !deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">Loading delivery history…</div> : !deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">No delivery events match these filters.</div> : <div className="divide-y divide-[#30363d]">
           {deliveries.map((delivery) => <DeliveryRow key={delivery.id} delivery={delivery} endpoint={endpointById.get(delivery.endpoint_id)} replaying={replayingId === delivery.id} onReplay={() => void replay(delivery)} />)}

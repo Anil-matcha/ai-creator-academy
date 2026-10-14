@@ -221,16 +221,18 @@ export const api = {
     request<WebhookTestResult>(`/v1/webhooks/${encodeURIComponent(id)}/test`, { method: "POST" }),
   deleteWebhook: (id: string) =>
     request<void>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  getWebhookDeliveries: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; limit?: number }) => {
+  getWebhookDeliveries: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; event_type?: string; limit?: number }) => {
     const params = new URLSearchParams({ limit: String(Math.min(Math.max(filters?.limit ?? 100, 1), 200)) });
     if (filters?.endpoint_id) params.set("endpoint_id", filters.endpoint_id);
     if (filters?.status) params.set("status", filters.status);
+    if (filters?.event_type) params.set("event_type", filters.event_type);
     return request<WebhookDelivery[]>(`/v1/webhooks/deliveries?${params.toString()}`);
   },
-  getWebhookDeliveryPage: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; limit?: number; cursor?: string }) => {
+  getWebhookDeliveryPage: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; event_type?: string; limit?: number; cursor?: string }) => {
     const params = new URLSearchParams({ limit: String(Math.min(Math.max(filters?.limit ?? 100, 1), 200)) });
     if (filters?.endpoint_id) params.set("endpoint_id", filters.endpoint_id);
     if (filters?.status) params.set("status", filters.status);
+    if (filters?.event_type) params.set("event_type", filters.event_type);
     if (filters?.cursor) params.set("cursor", filters.cursor);
     return request<WebhookDeliveryPage>(`/v1/webhooks/deliveries/page?${params.toString()}`);
   },
