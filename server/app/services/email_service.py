@@ -509,6 +509,7 @@ class EmailService:
             recipient=recipient,
             subject=subject,
             body_text="\n".join(body_parts),
+            thread_id=original.thread_id,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in attachment_rows],
         )
