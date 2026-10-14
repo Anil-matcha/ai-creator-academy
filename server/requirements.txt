@@ -5,6 +5,7 @@ aiosqlite>=0.20.0
 asyncpg>=0.29.0
 greenlet>=3.0.3
 pydantic>=2.6.4
+email-validator>=2.1.0
 pydantic-settings>=2.2.1
 websockets>=12.0
 python-multipart>=0.0.9

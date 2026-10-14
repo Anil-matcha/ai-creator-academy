@@ -20,6 +20,23 @@ class Agent(Base):
 
     messages = relationship("Message", back_populates="agent", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="agent", cascade="all, delete-orphan")
+    contacts = relationship("Contact", back_populates="agent", cascade="all, delete-orphan")
+
+
+class Contact(Base):
+    __tablename__ = "contacts"
+    __table_args__ = (UniqueConstraint("agent_email", "email", name="uq_contacts_agent_email_email"),)
+
+    id = Column(String(64), primary_key=True, index=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)
+    company = Column(String(255), nullable=False, default="")
+    notes = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    agent = relationship("Agent", back_populates="contacts")
 
 
 class Message(Base):

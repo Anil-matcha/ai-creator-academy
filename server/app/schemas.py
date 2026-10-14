@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -31,6 +31,83 @@ class AgentResponse(BaseModel):
     hitl_enabled: bool
     auto_reply_enabled: bool
     auto_reply_prompt: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Contact Schemas ---
+class ContactCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=255)
+    company: str = Field("", max_length=255)
+    notes: str = Field("", max_length=4000)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if len(normalized) > 255:
+            raise ValueError("Email address must be at most 255 characters")
+        return normalized
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Name cannot be empty")
+        return trimmed
+
+    @field_validator("company", "notes")
+    @classmethod
+    def trim_optional_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class ContactUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    company: Optional[str] = Field(None, max_length=255)
+    notes: Optional[str] = Field(None, max_length=4000)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if len(normalized) > 255:
+            raise ValueError("Email address must be at most 255 characters")
+        return normalized
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Name cannot be empty")
+        return trimmed
+
+    @field_validator("company", "notes")
+    @classmethod
+    def trim_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value is not None else None
+
+
+class ContactResponse(BaseModel):
+    id: str
+    agent_email: str
+    email: EmailStr
+    name: str
+    company: str
+    notes: str
     created_at: datetime
     updated_at: datetime
 

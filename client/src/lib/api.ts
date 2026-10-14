@@ -1,5 +1,6 @@
 import {
   Agent,
+  Contact,
   Message,
   MessagePage,
   MessageAttachment,
@@ -61,6 +62,24 @@ export const api = {
     }),
   deleteAgent: (email: string) =>
     request<void>(`/v1/agents/${encodeURIComponent(email)}`, {
+      method: "DELETE",
+    }),
+
+  // Inbox-scoped contacts
+  getContacts: (agentEmail: string, limit = 500) =>
+    request<Contact[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts?limit=${limit}`),
+  createContact: (agentEmail: string, data: Pick<Contact, "email" | "name"> & Partial<Pick<Contact, "company" | "notes">>) =>
+    request<Contact>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateContact: (agentEmail: string, contactId: string, data: Partial<Pick<Contact, "email" | "name" | "company" | "notes">>) =>
+    request<Contact>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteContact: (agentEmail: string, contactId: string) =>
+    request<void>(`/v1/agents/${encodeURIComponent(agentEmail)}/contacts/${encodeURIComponent(contactId)}`, {
       method: "DELETE",
     }),
 

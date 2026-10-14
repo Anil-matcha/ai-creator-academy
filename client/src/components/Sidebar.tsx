@@ -13,7 +13,8 @@ import {
   Bot,
   Cpu,
   Archive,
-  Webhook
+  Webhook,
+  Users
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -59,6 +60,7 @@ export function Sidebar() {
     { name: "Upstream SMTP", href: "/settings", icon: Sliders },
     { name: "API Keys", href: "/api-keys", icon: Key },
     { name: "Agents", href: "/agents", icon: Bot },
+    { name: "Contacts", href: "/contacts", icon: Users },
     { name: "MCP Gateway", href: "/mcp", icon: Cpu },
   ];
 

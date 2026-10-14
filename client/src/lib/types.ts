@@ -12,6 +12,17 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface Contact {
+  id: string;
+  agent_email: string;
+  email: string;
+  name: string;
+  company: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ThreatDetail {
   threat_type: string;
   severity: "low" | "medium" | "high" | "critical";
