@@ -8,8 +8,9 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import Domain
 from app.schemas import DomainCreate, DomainResponse
+from app.security import require_admin
 
-router = APIRouter(prefix="/v1/domains", tags=["Domains"])
+router = APIRouter(prefix="/v1/domains", tags=["Domains"], dependencies=[Depends(require_admin)])
 
 @router.get("", response_model=List[DomainResponse])
 async def list_domains(db: AsyncSession = Depends(get_db)):
@@ -55,17 +56,7 @@ async def verify_domain(domain_name: str, db: AsyncSession = Depends(get_db)):
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
 
-    # In a full deployment, this queries DNS resolvers.
-    # We simulate active verification for DNS records:
-    domain.mx_status = "verified"
-    domain.spf_status = "verified"
-    domain.dkim_status = "verified"
-    domain.dmarc_status = "verified"
-    domain.status = "verified"
-
-    await db.commit()
-    await db.refresh(domain)
-    return domain
+    raise HTTPException(status_code=501, detail="DNS verification is not implemented yet; records have not been verified")
 
 @router.delete("/{domain_name}", status_code=204)
 async def delete_domain(domain_name: str, db: AsyncSession = Depends(get_db)):

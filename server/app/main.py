@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
 from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats
+from app.security import authenticate_token
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("open_agent_email")
@@ -18,6 +19,12 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database schema...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        def add_api_key_agent_column(sync_conn):
+            from sqlalchemy import inspect, text
+            columns = {column["name"] for column in inspect(sync_conn).get_columns("api_keys")}
+            if "agent_email" not in columns:
+                sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN agent_email VARCHAR(255)"))
+        await conn.run_sync(add_api_key_agent_column)
     logger.info("Database schema ready.")
 
     # 2. Start inbound SMTP server daemon on port 2525
@@ -52,7 +59,7 @@ app = FastAPI(
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow Next.js dev server on :3000
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,6 +68,18 @@ app.add_middleware(
 # Global Live Event WebSocket for Dashboard
 @app.websocket("/v1/ws/live")
 async def live_dashboard_websocket(websocket: WebSocket):
+    scheme, _, token = websocket.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer":
+        token = websocket.query_params.get("api_key", "")
+    async with AsyncSessionLocal() as db:
+        try:
+            principal = await authenticate_token(token, db)
+        except Exception:
+            await websocket.close(code=1008)
+            return
+    if not principal.is_admin:
+        await websocket.close(code=1008)
+        return
     await ws_manager.connect_broadcast(websocket)
     try:
         while True:

@@ -7,8 +7,9 @@ from app.database import get_db
 from app.models import Agent, Message
 from app.schemas import MessageResponse, MessageSendRequest, MessageReplyRequest
 from app.services.email_service import EmailService
+from app.security import require_agent_access, require_write
 
-router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"])
+router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
 
 @router.get("", response_model=List[MessageResponse])
 async def list_messages(
@@ -39,7 +40,7 @@ async def get_message(email: str, message_id: str, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=404, detail="Message not found")
     return msg
 
-@router.post("", response_model=MessageResponse, status_code=201)
+@router.post("", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
 async def send_message(email: str, req: MessageSendRequest, db: AsyncSession = Depends(get_db)):
     # Verify agent exists
     ag_res = await db.execute(select(Agent).where(Agent.email == email))
@@ -58,7 +59,7 @@ async def send_message(email: str, req: MessageSendRequest, db: AsyncSession = D
     )
     return message
 
-@router.post("/{message_id}/reply", response_model=MessageResponse, status_code=201)
+@router.post("/{message_id}/reply", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
 async def reply_message(email: str, message_id: str, req: MessageReplyRequest, db: AsyncSession = Depends(get_db)):
     # Verify agent exists
     ag_res = await db.execute(select(Agent).where(Agent.email == email))

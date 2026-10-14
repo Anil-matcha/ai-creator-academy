@@ -40,9 +40,9 @@ export interface Message {
   in_reply_to?: string;
   references?: string;
   rfc_message_id: string;
-  spf_status: "pass" | "fail" | "neutral" | "none";
-  dkim_status: "pass" | "fail" | "none";
-  dmarc_status: "pass" | "fail" | "none";
+  spf_status: "pass" | "fail" | "neutral" | "none" | "unverified";
+  dkim_status: "pass" | "fail" | "none" | "unverified";
+  dmarc_status: "pass" | "fail" | "none" | "unverified";
   verified_domain?: string;
   status: "delivered" | "pending_review" | "rejected" | "blocked";
   threat_score: number;
@@ -97,6 +97,7 @@ export interface ApiKeyItem {
   name: string;
   prefix: string;
   scope: string;
+  agent_email?: string | null;
   created_at: string;
 }
 
@@ -106,6 +107,7 @@ export interface ApiKeyCreated {
   key: string;
   prefix: string;
   scope: string;
+  agent_email: string;
   created_at: string;
 }
 

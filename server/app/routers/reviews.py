@@ -8,8 +8,9 @@ from app.database import get_db
 from app.models import ReviewItem
 from app.schemas import ReviewItemResponse, ReviewDecisionRequest
 from app.services.hitl_service import HitlService
+from app.security import require_admin
 
-router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"])
+router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"], dependencies=[Depends(require_admin)])
 
 @router.get("", response_model=List[ReviewItemResponse])
 async def list_reviews(

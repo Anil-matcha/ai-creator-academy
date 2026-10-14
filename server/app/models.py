@@ -19,6 +19,7 @@ class Agent(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     messages = relationship("Message", back_populates="agent", cascade="all, delete-orphan")
+    api_keys = relationship("ApiKey", back_populates="agent", cascade="all, delete-orphan")
 
 
 class Message(Base):
@@ -40,9 +41,9 @@ class Message(Base):
     rfc_message_id = Column(String(255), unique=True, index=True, nullable=False)
     
     # Authentication & Security
-    spf_status = Column(String(32), default="pass")
-    dkim_status = Column(String(32), default="pass")
-    dmarc_status = Column(String(32), default="pass")
+    spf_status = Column(String(32), default="unverified")
+    dkim_status = Column(String(32), default="unverified")
+    dmarc_status = Column(String(32), default="unverified")
     verified_domain = Column(String(255), nullable=True)
     
     # State & Threat
@@ -80,7 +81,10 @@ class ApiKey(Base):
     prefix = Column(String(16), nullable=False)
     key_hash = Column(String(128), nullable=False)
     scope = Column(String(64), default="full_access")
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    agent = relationship("Agent", back_populates="api_keys")
 
 
 class SecurityEvent(Base):

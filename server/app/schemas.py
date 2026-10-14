@@ -167,13 +167,15 @@ class SmtpTestResponse(BaseModel):
 # --- API Key Schemas ---
 class ApiKeyCreate(BaseModel):
     name: str = Field(..., example="Cursor AI Integration")
-    scope: str = Field("full_access", example="full_access")
+    agent_email: str
+    scope: str = Field("full_access", example="full_access", pattern="^(read_only|full_access)$")
 
 class ApiKeyResponse(BaseModel):
     id: str
     name: str
     prefix: str
     scope: str
+    agent_email: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -185,6 +187,7 @@ class ApiKeyCreatedResponse(BaseModel):
     key: str
     prefix: str
     scope: str
+    agent_email: str
     created_at: datetime
 
 # --- Stats Schema ---

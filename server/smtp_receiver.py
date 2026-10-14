@@ -55,6 +55,8 @@ class SmtpSession:
                     await self.process_email(bytes(data_buffer))
                     await self.send_response(250, "Message accepted for agent delivery")
                     data_buffer.clear()
+                    self.mail_from = ""
+                    self.rcpt_to = []
                 else:
                     data_buffer.extend(line_bytes)
                 continue
@@ -68,11 +70,18 @@ class SmtpSession:
                 await self.send_response(250, "Hello, pleased to meet you")
             elif cmd_upper.startswith("MAIL FROM:"):
                 self.mail_from = line[10:].strip("<> ")
+                self.rcpt_to = []
                 await self.send_response(250, "Sender OK")
             elif cmd_upper.startswith("RCPT TO:"):
                 recipient = line[8:].strip("<> ")
-                self.rcpt_to.append(recipient)
-                await self.send_response(250, "Recipient OK")
+                async with AsyncSessionLocal() as db:
+                    res = await db.execute(select(Agent).where(Agent.email == recipient, Agent.status == "active"))
+                    known_agent = res.scalar_one_or_none()
+                if known_agent:
+                    self.rcpt_to.append(recipient)
+                    await self.send_response(250, "Recipient OK")
+                else:
+                    await self.send_response(550, "No active agent inbox for recipient")
             elif cmd_upper == "DATA":
                 data_mode = True
                 await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
@@ -115,7 +124,7 @@ class SmtpSession:
         if not body_text and body_html:
             body_text = body_html
 
-        target_recipient = self.rcpt_to[0] if self.rcpt_to else msg.get("To", "")
+        target_recipient = self.rcpt_to[0] if self.rcpt_to else ""
         # Clean email string
         if "<" in target_recipient:
             target_recipient = target_recipient.split("<")[1].split(">")[0]
@@ -126,11 +135,6 @@ class SmtpSession:
             # Match recipient agent
             res = await db.execute(select(Agent).where(Agent.email == target_recipient))
             agent = res.scalar_one_or_none()
-            if not agent:
-                # If no direct match, check if any agent is active or use the first agent
-                res_any = await db.execute(select(Agent).limit(1))
-                agent = res_any.scalar_one_or_none()
-
             if agent:
                 message, scan_result, review = await EmailService.process_inbound(
                     db=db,
@@ -139,9 +143,9 @@ class SmtpSession:
                     subject=subject,
                     body_text=body_text or "(Empty Body)",
                     body_html=body_html,
-                    spf_status="pass",
-                    dkim_status="pass",
-                    dmarc_status="pass"
+                    spf_status="unverified",
+                    dkim_status="unverified",
+                    dmarc_status="unverified"
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
             else:

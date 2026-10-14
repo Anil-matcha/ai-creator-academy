@@ -9,8 +9,11 @@ from app.database import get_db
 from app.models import Agent
 from app.schemas import AgentCreate, AgentUpdate, AgentResponse
 from app.services.ws_manager import ws_manager
+from app.security import require_admin
+from app.security import authenticate_token
+from app.database import AsyncSessionLocal
 
-router = APIRouter(prefix="/v1/agents", tags=["Agents"])
+router = APIRouter(prefix="/v1/agents", tags=["Agents"], dependencies=[Depends(require_admin)])
 
 @router.get("", response_model=List[AgentResponse])
 async def list_agents(db: AsyncSession = Depends(get_db)):
@@ -83,6 +86,18 @@ async def agent_websocket_endpoint(websocket: WebSocket, email: str):
     Real-time inbound message push stream for an agent.
     Agents connect without needing public URLs or ngrok tunnels.
     """
+    scheme, _, token = websocket.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer":
+        token = websocket.query_params.get("api_key", "")
+    async with AsyncSessionLocal() as db:
+        try:
+            principal = await authenticate_token(token, db)
+        except HTTPException:
+            await websocket.close(code=1008)
+            return
+    if not principal.is_admin and principal.agent_email != email:
+        await websocket.close(code=1008)
+        return
     await ws_manager.connect_agent(email, websocket)
     try:
         while True:

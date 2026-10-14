@@ -33,6 +33,7 @@ export default function McpPage() {
       mcpServers: {
         "open-agent-email": {
           url: "http://127.0.0.1:8000/mcp/rpc",
+          headers: { Authorization: "Bearer PASTE_AGENT_API_KEY" },
         },
       },
     },
@@ -40,7 +41,7 @@ export default function McpPage() {
     2
   );
 
-  const claudeCommand = "claude mcp add open-agent-email http://127.0.0.1:8000/mcp/rpc";
+  const claudeCommand = 'claude mcp add --transport http open-agent-email http://127.0.0.1:8000/mcp/rpc --header "Authorization: Bearer PASTE_AGENT_API_KEY"';
 
   const copyToClipboard = (text: string, type: "cursor" | "claude") => {
     navigator.clipboard.writeText(text);
@@ -105,7 +106,7 @@ export default function McpPage() {
           Model Context Protocol (MCP) Server
         </h2>
         <p className="text-xs text-[#8b949e]">
-          Connect coding agents (Cursor, Claude Code, Windsurf) directly to email inboxes via streamable HTTP JSON-RPC.
+          Create an inbox key in API Keys, then add it as a Bearer token in your MCP client configuration.
         </p>
       </div>
 

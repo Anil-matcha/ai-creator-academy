@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Agent, Message, ReviewItem
 from app.services.email_service import EmailService
 from app.services.hitl_service import HitlService
+from app.security import Principal, get_principal
 
 router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
 
@@ -111,7 +112,7 @@ MCP_TOOLS = [
 
 @router.get("")
 @router.get("/info")
-async def mcp_info():
+async def mcp_info(principal: Principal = Depends(get_principal)):
     """
     Returns server metadata and ready-to-paste configurations for Cursor and Claude Code.
     """
@@ -134,11 +135,11 @@ async def mcp_info():
     }
 
 @router.get("/tools")
-async def get_tools():
+async def get_tools(principal: Principal = Depends(get_principal)):
     return {"tools": MCP_TOOLS}
 
 @router.post("/rpc")
-async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db)):
+async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db), principal: Principal = Depends(get_principal)):
     """
     Handles standard JSON-RPC 2.0 requests from MCP hosts (Cursor, Claude, etc.).
     """
@@ -175,7 +176,7 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db)):
         args = params.get("arguments", {})
 
         try:
-            res_text = await execute_mcp_tool(db, tool_name, args)
+            res_text = await execute_mcp_tool(db, tool_name, args, principal)
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -200,7 +201,16 @@ async def mcp_rpc_handler(request: Request, db: AsyncSession = Depends(get_db)):
         "error": {"code": -32601, "message": f"Method {method} not found"}
     }
 
-async def execute_mcp_tool(db: AsyncSession, name: str, args: dict) -> str:
+async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: Principal) -> str:
+    admin_tools = {"list_agents", "list_reviews", "approve_review", "reject_review"}
+    write_tools = {"send_message", "reply_to_message"}
+    if name in admin_tools and not principal.is_admin:
+        raise PermissionError("Administrator token required")
+    if name in write_tools and not principal.is_admin and principal.scope != "full_access":
+        raise PermissionError("Token does not permit sending messages")
+    if name in {"list_messages", "get_message", *write_tools} and not principal.is_admin:
+        if args.get("agent_email") != principal.agent_email:
+            raise PermissionError("Token is not authorized for this agent inbox")
     if name == "list_agents":
         res = await db.execute(select(Agent))
         agents = res.scalars().all()
@@ -226,7 +236,10 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict) -> str:
         } for m in msgs], indent=2)
 
     elif name == "get_message":
-        res = await db.execute(select(Message).where(Message.id == args["message_id"]))
+        query = select(Message).where(Message.id == args["message_id"])
+        if not principal.is_admin:
+            query = query.where(Message.agent_email == principal.agent_email)
+        res = await db.execute(query)
         msg = res.scalar_one_or_none()
         if not msg:
             raise ValueError(f"Message {args['message_id']} not found")
@@ -261,7 +274,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict) -> str:
         ag = res.scalar_one_or_none()
         if not ag:
             raise ValueError(f"Agent {args['agent_email']} not found")
-        m_res = await db.execute(select(Message).where(Message.id == args["message_id"]))
+        m_res = await db.execute(select(Message).where(Message.id == args["message_id"], Message.agent_email == args["agent_email"]))
         orig = m_res.scalar_one_or_none()
         if not orig:
             raise ValueError(f"Message {args['message_id']} not found")

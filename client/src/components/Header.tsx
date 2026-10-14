@@ -1,11 +1,50 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Terminal, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Terminal, Shield, LogIn, LogOut } from "lucide-react";
 import Link from "next/link";
 
 export function Header() {
   const pathname = usePathname();
+  const [authenticated, setAuthenticated] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [token, setToken] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/session", { cache: "no-store" }).then((r) => setAuthenticated(r.ok)).catch(() => setAuthenticated(false));
+  }, []);
+
+  const connect = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setConnecting(true);
+    setAuthError("");
+    try {
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not connect to the API");
+      setAuthenticated(true);
+      setShowLogin(false);
+      setToken("");
+      window.location.reload();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Could not connect to the API");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    await fetch("/api/session", { method: "DELETE" });
+    setAuthenticated(false);
+    window.location.reload();
+  };
 
   const getPageTitle = () => {
     switch (pathname) {
@@ -40,6 +79,15 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        {authenticated ? (
+          <button onClick={disconnect} className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#30363d] text-xs text-[#8b949e] hover:text-[#e6edf3]">
+            <LogOut className="w-3.5 h-3.5" /> Disconnect
+          </button>
+        ) : (
+          <button onClick={() => setShowLogin(true)} className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#30363d] bg-[#238636] text-xs text-white hover:bg-[#2ea043]">
+            <LogIn className="w-3.5 h-3.5" /> Connect dashboard
+          </button>
+        )}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#30363d] bg-[#0d1117] text-xs text-[#8b949e]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#2ea043]" />
           <span className="font-mono text-[11px] text-[#e6edf3]">@agents.local</span>
@@ -62,6 +110,22 @@ export function Header() {
           <Terminal className="w-3.5 h-3.5" />
         </a>
       </div>
+      {showLogin && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <form onSubmit={connect} className="w-full max-w-md rounded-lg border border-[#30363d] bg-[#161b22] p-6 space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-[#e6edf3]">Connect to Open Agent Email</h2>
+              <p className="mt-2 text-xs leading-5 text-[#8b949e]">Enter the <code>ADMIN_API_KEY</code> configured for the API server. The dashboard keeps it in a secure, HttpOnly session cookie.</p>
+            </div>
+            <input autoFocus type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Administrator API key" className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-[#e6edf3]" />
+            {authError && <p className="text-xs text-[#f85149]">{authError}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowLogin(false)} className="px-3 py-2 text-xs text-[#8b949e]">Cancel</button>
+              <button type="submit" disabled={!token.trim() || connecting} className="px-3 py-2 rounded bg-[#238636] text-xs text-white disabled:opacity-50">{connecting ? "Connecting…" : "Connect"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </header>
   );
 }

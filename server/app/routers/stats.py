@@ -5,9 +5,10 @@ from sqlalchemy import select, func
 from app.database import get_db
 from app.models import Agent, Message, ReviewItem, SecurityEvent
 from app.schemas import StatsResponse
+from app.security import require_admin
 from app.services.ws_manager import ws_manager
 
-router = APIRouter(prefix="/v1/stats", tags=["Stats"])
+router = APIRouter(prefix="/v1/stats", tags=["Stats"], dependencies=[Depends(require_admin)])
 
 @router.get("", response_model=StatsResponse)
 async def get_overview_stats(db: AsyncSession = Depends(get_db)):

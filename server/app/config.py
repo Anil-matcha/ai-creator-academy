@@ -23,8 +23,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
     ]
     
-    # Admin master key for demo/local setup
-    ADMIN_API_KEY: str = "oak_live_demo_key_998877"
+    # Set explicitly in the environment; no built-in administrator credential.
+    ADMIN_API_KEY: str = ""
     
     class Config:
         env_file = ".env"

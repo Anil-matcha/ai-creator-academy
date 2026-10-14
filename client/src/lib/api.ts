@@ -9,7 +9,7 @@ import {
   ApiKeyCreated
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_BASE = "/api/backend";
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
@@ -135,10 +135,10 @@ export const api = {
 
   // API Keys
   getApiKeys: () => request<ApiKeyItem[]>("/v1/api-keys"),
-  createApiKey: (name: string, scope: string = "full_access") =>
+  createApiKey: (name: string, agent_email: string, scope: string = "full_access") =>
     request<ApiKeyCreated>("/v1/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name, scope }),
+      body: JSON.stringify({ name, agent_email, scope }),
     }),
   deleteApiKey: (id: string) =>
     request<void>(`/v1/api-keys/${id}`, {

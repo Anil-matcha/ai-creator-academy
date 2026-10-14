@@ -13,6 +13,15 @@ const PORT_OPTIONS = [
   { value: "2525", label: "Port 2525 (Alternative SMTP / Cloud Dev)" },
 ];
 
+const SMTP_PRESETS: Record<string, { label: string; host: string; port: string; username: string; use_tls: boolean; use_ssl: boolean }> = {
+  gmail: { label: "Gmail", host: "smtp.gmail.com", port: "587", username: "", use_tls: true, use_ssl: false },
+  ses: { label: "Amazon SES", host: "email-smtp.us-east-1.amazonaws.com", port: "587", username: "", use_tls: true, use_ssl: false },
+  resend: { label: "Resend", host: "smtp.resend.com", port: "465", username: "resend", use_tls: false, use_ssl: true },
+  sendgrid: { label: "SendGrid", host: "smtp.sendgrid.net", port: "587", username: "apikey", use_tls: true, use_ssl: false },
+  postmark: { label: "Postmark", host: "smtp.postmarkapp.com", port: "587", username: "", use_tls: true, use_ssl: false },
+  custom: { label: "Custom SMTP", host: "", port: "587", username: "", use_tls: true, use_ssl: false },
+};
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<Partial<SmtpConfig>>({
     host: "",
@@ -25,6 +34,7 @@ export default function SettingsPage() {
     enabled: false,
   });
   const [password, setPassword] = useState<string>("");
+  const [provider, setProvider] = useState<string>("custom");
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
@@ -132,6 +142,17 @@ export default function SettingsPage() {
 
       {/* Main Form */}
       <form onSubmit={handleSave} className="bg-[#161b22] border border-[#30363d] rounded-lg p-6 space-y-5">
+        <div>
+          <label className="block text-xs font-medium text-[#e6edf3] mb-1.5">Choose your SMTP provider</label>
+          <select value={provider} onChange={(e) => {
+            const preset = SMTP_PRESETS[e.target.value];
+            setProvider(e.target.value);
+            setConfig((current) => ({ ...current, host: preset.host, port: preset.port, username: preset.username, use_tls: preset.use_tls, use_ssl: preset.use_ssl }));
+          }} className="w-full md:w-1/2 bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-[#e6edf3]">
+            {Object.entries(SMTP_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
+          </select>
+          <p className="text-[11px] text-[#8b949e] mt-1">Presets fill in SMTP connection details. Enter credentials from your provider; Amazon SES requires replacing the host with your region’s SMTP endpoint.</p>
+        </div>
         <div className="flex items-center justify-between pb-4 border-b border-[#30363d]">
           <div>
             <h2 className="text-xs font-semibold text-[#e6edf3] uppercase tracking-wider">

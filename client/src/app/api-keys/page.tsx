@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { ApiKeyItem, ApiKeyCreated } from "@/lib/types";
+import { ApiKeyItem, ApiKeyCreated, Agent } from "@/lib/types";
 import { Dropdown } from "@/components/Dropdown";
 import { Key, Plus, Trash2, Copy, Check, ShieldCheck, AlertCircle } from "lucide-react";
 
 const SCOPE_OPTIONS = [
-  { value: "full_access", label: "Full Access (Read, Send, Manage)" },
-  { value: "send_only", label: "Send Only (Agent Outbound Submission)" },
-  { value: "read_only", label: "Read Only (Inbox Polling & WebSockets)" },
+  { value: "full_access", label: "Read and send" },
+  { value: "read_only", label: "Read only" },
 ];
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [keyName, setKeyName] = useState<string>("");
   const [scope, setScope] = useState<string>("full_access");
+  const [agentEmail, setAgentEmail] = useState<string>("");
   const [generating, setGenerating] = useState<boolean>(false);
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -27,6 +28,9 @@ export default function ApiKeysPage() {
       setLoading(true);
       const data = await api.getApiKeys();
       setKeys(data);
+      const configuredAgents = await api.getAgents();
+      setAgents(configuredAgents);
+      setAgentEmail((current) => current || configuredAgents[0]?.email || "");
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load API keys");
@@ -45,7 +49,7 @@ export default function ApiKeysPage() {
     try {
       setGenerating(true);
       setError(null);
-      const res = await api.createApiKey(keyName.trim(), scope);
+      const res = await api.createApiKey(keyName.trim(), agentEmail, scope);
       setCreatedKey(res);
       setKeyName("");
       await fetchKeys();
@@ -125,8 +129,8 @@ export default function ApiKeysPage() {
         <h2 className="text-xs font-semibold text-[#e6edf3] uppercase tracking-wider mb-3">
           Create New Secret Key
         </h2>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="md:col-span-1">
+        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
             <input
               type="text"
               placeholder="Key Name (e.g. Production Agent)"
@@ -135,17 +139,22 @@ export default function ApiKeysPage() {
               className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-[#e6edf3] placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
             />
           </div>
-          <div className="md:col-span-1">
+          <div>
+            <select value={agentEmail} onChange={(e) => setAgentEmail(e.target.value)} disabled={agents.length === 0} className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-[#e6edf3] disabled:opacity-50">
+              {agents.length === 0 ? <option value="">Create an inbox first</option> : agents.map((agent) => <option key={agent.email} value={agent.email}>{agent.email}</option>)}
+            </select>
+          </div>
+          <div>
             <Dropdown
               value={scope}
               onChange={setScope}
               options={SCOPE_OPTIONS}
             />
           </div>
-          <div className="md:col-span-1">
+          <div>
             <button
               type="submit"
-              disabled={generating || !keyName.trim()}
+              disabled={generating || !keyName.trim() || !agentEmail}
               className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold rounded-md transition disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5" />
