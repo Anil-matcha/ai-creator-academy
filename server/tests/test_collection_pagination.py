@@ -27,3 +27,13 @@ async def test_custom_cursor_families_use_standard_error_code(client):
         assert response.status_code == 400
         assert response.json()["detail"]["code"] == "invalid_cursor"
         assert response.json()["error"]["code"] == "invalid_cursor"
+
+
+async def test_nested_history_pages_expose_items_and_next_cursor(client):
+    await make_agent(client, A)
+    imports = await client.get(f"/v1/agents/{A}/contacts/imports/page", headers=ADMIN)
+    assert imports.status_code == 200
+    assert imports.json() == {"items": [], "next_cursor": None}
+    thread = await client.get(f"/v1/agents/{A}/messages/thread/missing/page", headers=ADMIN)
+    assert thread.status_code == 200
+    assert thread.json() == {"items": [], "next_cursor": None}

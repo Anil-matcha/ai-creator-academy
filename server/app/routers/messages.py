@@ -18,6 +18,7 @@ from app.services.attachment_utils import ATTACHMENT_URL_TTL_SECONDS, make_attac
 from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal, require_agent_access, require_write
 from app.services.message_purge import purge_blocker, purge_message
+from app.services.cursors import decode_cursor, encode_cursor
 from app.routers.templates import _preview
 from pydantic import BaseModel
 
@@ -590,3 +591,28 @@ async def get_thread(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/thread/{thread_id}/page")
+async def get_thread_page(
+    email: str,
+    thread_id: str,
+    limit: int = Query(100, ge=1, le=200),
+    cursor: Optional[str] = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = f"/v1/agents/{email}/messages/thread/{thread_id}"
+    query = select(Message).where(Message.agent_email == email, Message.thread_id == thread_id)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.fromisoformat(key)
+        except ValueError:
+            raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Thread cursor is invalid"}) from None
+        query = query.where(or_(Message.created_at > created_at,
+                                and_(Message.created_at == created_at, Message.id > item_id)))
+    rows = list((await db.execute(query.order_by(Message.created_at.asc(), Message.id.asc()).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [MessageResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}

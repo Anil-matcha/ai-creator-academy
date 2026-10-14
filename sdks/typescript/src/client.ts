@@ -122,6 +122,8 @@ export class AgentEmailClient {
   // ---- agents ----------------------------------------------------------
   readonly agents = {
     list: () => this.request<T.Agent[]>("GET", "/v1/agents"),
+    page: (params: { include_deleted?: boolean; limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Agent>>("GET", "/v1/agents/page", { query: { ...params } }),
+    iterate: (params: Omit<{ include_deleted?: boolean; limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Agent>((cursor) => this.agents.page({ ...params, cursor })),
     get: (email: string) => this.request<T.Agent>("GET", `/v1/agents/${seg(email)}`),
     create: (input: T.AgentInput) => this.request<T.Agent>("POST", "/v1/agents", { body: input }),
     update: (email: string, patch: Partial<Omit<T.AgentInput, "email">> & { status?: string }) =>
@@ -197,12 +199,16 @@ export class AgentEmailClient {
   readonly conversations = {
     list: (inbox: string, limit?: number) =>
       this.request<{ items: T.Conversation[] }>("GET", `/v1/agents/${seg(inbox)}/conversations`, { query: { limit } }),
+    page: (inbox: string, params: { limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Conversation>>("GET", `/v1/agents/${seg(inbox)}/conversations/page`, { query: { ...params } }),
+    iterate: (inbox: string, params: Omit<{ limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Conversation>((cursor) => this.conversations.page(inbox, { ...params, cursor })),
     get: (inbox: string, id: string) => this.request<T.ConversationDetail>("GET", `/v1/agents/${seg(inbox)}/conversations/${seg(id)}`),
   };
 
   // ---- contacts, consent, engagements, suppressions ---------------------
   readonly contacts = {
     list: (inbox: string, limit?: number) => this.request<T.Contact[]>("GET", `/v1/agents/${seg(inbox)}/contacts`, { query: { limit } }),
+    page: (inbox: string, params: { limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Contact>>("GET", `/v1/agents/${seg(inbox)}/contacts/page`, { query: { ...params } }),
+    iterate: (inbox: string, params: Omit<{ limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Contact>((cursor) => this.contacts.page(inbox, { ...params, cursor })),
     create: (inbox: string, input: T.ContactInput) => this.request<T.Contact>("POST", `/v1/agents/${seg(inbox)}/contacts`, { body: input }),
     update: (inbox: string, id: string, patch: Partial<T.ContactInput>) =>
       this.request<T.Contact>("PATCH", `/v1/agents/${seg(inbox)}/contacts/${seg(id)}`, { body: patch }),
@@ -224,6 +230,8 @@ export class AgentEmailClient {
   readonly engagements = {
     list: (inbox: string, params: { due?: boolean; limit?: number } = {}) =>
       this.request<T.Engagement[]>("GET", `/v1/agents/${seg(inbox)}/engagements`, { query: { ...params } }),
+    page: (inbox: string, params: { due?: boolean; limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Engagement>>("GET", `/v1/agents/${seg(inbox)}/engagements/page`, { query: { ...params } }),
+    iterate: (inbox: string, params: Omit<{ due?: boolean; limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Engagement>((cursor) => this.engagements.page(inbox, { ...params, cursor })),
     create: (inbox: string, input: { contact_id: string; stage?: T.EngagementStage; next_due_at?: string | Date; notes?: string }) =>
       this.request<T.Engagement>("POST", `/v1/agents/${seg(inbox)}/engagements`, { body: { ...input, next_due_at: iso(input.next_due_at) } }),
     update: (inbox: string, id: string, patch: { stage?: T.EngagementStage; next_due_at?: string | Date | null; notes?: string }) =>
@@ -235,6 +243,8 @@ export class AgentEmailClient {
 
   readonly suppressions = {
     list: (inbox: string, limit?: number) => this.request<T.Suppression[]>("GET", `/v1/agents/${seg(inbox)}/suppressions`, { query: { limit } }),
+    page: (inbox: string, params: { limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Suppression>>("GET", `/v1/agents/${seg(inbox)}/suppressions/page`, { query: { ...params } }),
+    iterate: (inbox: string, params: Omit<{ limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Suppression>((cursor) => this.suppressions.page(inbox, { ...params, cursor })),
     add: (inbox: string, email: string, reason?: string) =>
       this.request<T.Suppression>("POST", `/v1/agents/${seg(inbox)}/suppressions`, { body: { email, reason } }),
     remove: (inbox: string, id: string) => this.request<void>("DELETE", `/v1/agents/${seg(inbox)}/suppressions/${seg(id)}`),
@@ -243,6 +253,8 @@ export class AgentEmailClient {
   // ---- templates -------------------------------------------------------
   readonly templates = {
     list: (inbox: string, limit?: number) => this.request<T.EmailTemplate[]>("GET", `/v1/agents/${seg(inbox)}/templates`, { query: { limit } }),
+    page: (inbox: string, params: { limit?: number; cursor?: string } = {}) => this.request<T.Page<T.EmailTemplate>>("GET", `/v1/agents/${seg(inbox)}/templates/page`, { query: { ...params } }),
+    iterate: (inbox: string, params: Omit<{ limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.EmailTemplate>((cursor) => this.templates.page(inbox, { ...params, cursor })),
     get: (inbox: string, id: string) => this.request<T.EmailTemplate>("GET", `/v1/agents/${seg(inbox)}/templates/${seg(id)}`),
     create: (inbox: string, input: { name: string; subject: string; body_text?: string; body_html?: string }) =>
       this.request<T.EmailTemplate>("POST", `/v1/agents/${seg(inbox)}/templates`, { body: input }),
@@ -259,6 +271,8 @@ export class AgentEmailClient {
   readonly reviews = {
     list: (params: { status?: "pending" | "approved" | "rejected"; agent_email?: string; limit?: number } = {}) =>
       this.request<T.Review[]>("GET", "/v1/reviews", { query: { ...params } }),
+    page: (params: { status?: "pending" | "approved" | "rejected"; agent_email?: string; limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Review>>("GET", "/v1/reviews/page", { query: { ...params } }),
+    iterate: (params: Omit<{ status?: "pending" | "approved" | "rejected"; agent_email?: string; limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Review>((cursor) => this.reviews.page({ ...params, cursor })),
     get: (id: string) => this.request<T.Review>("GET", `/v1/reviews/${seg(id)}`),
     approve: (id: string, notes?: string) => this.request<T.Review>("POST", `/v1/reviews/${seg(id)}/approve`, { body: { action: "approve", notes } }),
     reject: (id: string, notes?: string) => this.request<T.Review>("POST", `/v1/reviews/${seg(id)}/reject`, { body: { action: "reject", notes } }),
@@ -281,6 +295,8 @@ export class AgentEmailClient {
   // ---- webhooks and events ---------------------------------------------
   readonly webhooks = {
     list: (agentEmail?: string, limit?: number) => this.request<T.Webhook[]>("GET", "/v1/webhooks", { query: { agent_email: agentEmail, limit } }),
+    page: (params: { agent_email?: string; limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Webhook>>("GET", "/v1/webhooks/page", { query: { ...params } }),
+    iterate: (params: Omit<{ agent_email?: string; limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Webhook>((cursor) => this.webhooks.page({ ...params, cursor })),
     get: (id: string) => this.request<T.Webhook>("GET", `/v1/webhooks/${seg(id)}`),
     create: (input: { agent_email: string; url: string; enabled?: boolean; events?: string[] }) =>
       this.request<T.WebhookCreated>("POST", "/v1/webhooks", { body: input }),
@@ -326,6 +342,8 @@ export class AgentEmailClient {
 
   readonly domains = {
     list: () => this.request<T.Domain[]>("GET", "/v1/domains"),
+    page: (params: { limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Domain>>("GET", "/v1/domains/page", { query: { ...params } }),
+    iterate: (params: Omit<{ limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Domain>((cursor) => this.domains.page({ ...params, cursor })),
     register: (domain: string) => this.request<T.Domain>("POST", "/v1/domains", { body: { domain } }),
     verify: (domain: string) => this.request<T.Domain>("POST", `/v1/domains/${seg(domain)}/verify`),
     delete: (domain: string) => this.request<void>("DELETE", `/v1/domains/${seg(domain)}`),

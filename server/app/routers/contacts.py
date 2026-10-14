@@ -529,6 +529,28 @@ async def list_contact_imports(email: str, db: AsyncSession = Depends(get_db)):
     return [{"batch_id": batch.id, "created_at": batch.created_at, "created": len(batch.contact_ids)} for batch in batches]
 
 
+@router.get("/imports/page")
+async def list_contact_imports_page(email: str, limit: int = Query(50, ge=1, le=200),
+                                    cursor: str | None = Query(None, max_length=2048),
+                                    db: AsyncSession = Depends(get_db)):
+    scope = f"/v1/agents/{email}/contacts/imports"
+    query = select(ContactImportBatch).where(ContactImportBatch.agent_email == email)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Contact import cursor is invalid"}) from None
+        query = query.where(or_(ContactImportBatch.created_at < created_at,
+                                and_(ContactImportBatch.created_at == created_at, ContactImportBatch.id < item_id)))
+    rows = list((await db.execute(query.order_by(ContactImportBatch.created_at.desc(), ContactImportBatch.id.desc()).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [{"batch_id": batch.id, "created_at": batch.created_at, "created": len(batch.contact_ids)} for batch in rows],
+            "next_cursor": next_cursor}
+
+
 @router.delete("/imports/{batch_id}", dependencies=[Depends(require_write)])
 async def reverse_contact_import(email: str, batch_id: str, confirm: str = Query(""), db: AsyncSession = Depends(get_db)):
     if confirm != "DELETE":

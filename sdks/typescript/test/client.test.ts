@@ -223,6 +223,19 @@ test("event iterator keeps time filters on every page", async () => {
   assert.equal(calls[0]!.url.searchParams.get("until"), "2026-01-02T00:00:00Z");
 });
 
+test("collection iterators use typed page routes and retain collection filters", async () => {
+  const { client, calls } = mock(
+    { json: { items: [{ id: "a" }], next_cursor: "next" } },
+    { json: { items: [{ id: "b" }], next_cursor: null } },
+  );
+  const seen: string[] = [];
+  for await (const row of client.engagements.iterate(INBOX, { due: true, limit: 1 })) seen.push(row.id);
+  assert.deepEqual(seen, ["a", "b"]);
+  assert.equal(calls[0]!.url.pathname, `/v1/agents/${encodeURIComponent(INBOX)}/engagements/page`);
+  assert.equal(calls[1]!.url.searchParams.get("cursor"), "next");
+  assert.equal(calls[1]!.url.searchParams.get("due"), "true");
+});
+
 test("contact CSV import sends raw text/csv and reverse requires confirm", async () => {
   const { client, calls } = mock({ json: {} });
   await client.contacts.importCsv(INBOX, "email,name\na@b.com,A\n");

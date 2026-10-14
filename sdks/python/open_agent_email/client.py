@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import datetime
 import json
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Generic, Literal, NotRequired, TypedDict, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -183,6 +183,15 @@ class AccountMetrics(TypedDict):
 
 class MessagePage(TypedDict):
     items: list[Message]
+    next_cursor: str | None
+
+
+PageItem = TypeVar("PageItem")
+
+
+class Page(TypedDict, Generic[PageItem]):
+    """A cursor page returned by the collection page endpoints."""
+    items: list[PageItem]
     next_cursor: str | None
 
 
@@ -557,6 +566,17 @@ class AgentEmailClient:
             params["cursor"] = cursor
         return self._request(
             "GET", f"/v1/agents/{self._inbox_path(inbox)}/messages/page", query=params
+        )
+
+    def iter_messages(
+        self, inbox: str, *, direction: str | None = None,
+        read_status: Literal["unread", "read", "all"] = "all",
+        status: MessageStatus | None = None, query: str | None = None, limit: int = 50,
+    ):
+        """Yield every message matching the supplied filters across all pages."""
+        return self._iterate_pages(
+            lambda **kw: self.get_message_page(inbox, **kw), direction=direction,
+            read_status=read_status, status=status, query=query, limit=limit,
         )
 
     @staticmethod
@@ -1255,6 +1275,79 @@ class AgentEmailClient:
             if value is not None:
                 query[key] = value
         return self._request("GET", "/v1/events", query=query)
+
+    # ---- cursor pagination ---------------------------------------------------------------
+
+    @staticmethod
+    def _iterate_pages(fetch_page, **params):
+        """Yield all items from a page method, preserving its filters."""
+        cursor = None
+        while True:
+            page = fetch_page(cursor=cursor, **params)
+            yield from page["items"]
+            cursor = page.get("next_cursor")
+            if not cursor:
+                break
+
+    def get_contacts_page(self, inbox: str, *, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/contacts/page", query={"limit": limit, "cursor": cursor})
+
+    def iter_contacts(self, inbox: str, *, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_contacts_page(inbox, **kw), limit=limit)
+
+    def get_engagements_page(self, inbox: str, *, due: bool = False, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/engagements/page", query={"due": due, "limit": limit, "cursor": cursor})
+
+    def iter_engagements(self, inbox: str, *, due: bool = False, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_engagements_page(inbox, **kw), due=due, limit=limit)
+
+    def get_templates_page(self, inbox: str, *, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/templates/page", query={"limit": limit, "cursor": cursor})
+
+    def iter_templates(self, inbox: str, *, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_templates_page(inbox, **kw), limit=limit)
+
+    def get_suppressions_page(self, inbox: str, *, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/suppressions/page", query={"limit": limit, "cursor": cursor})
+
+    def iter_suppressions(self, inbox: str, *, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_suppressions_page(inbox, **kw), limit=limit)
+
+    def get_agents_page(self, *, include_deleted: bool = False, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", "/v1/agents/page", query={"include_deleted": include_deleted, "limit": limit, "cursor": cursor})
+
+    def iter_agents(self, *, include_deleted: bool = False, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_agents_page(**kw), include_deleted=include_deleted, limit=limit)
+
+    def get_conversations_page(self, inbox: str, *, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/conversations/page", query={"limit": limit, "cursor": cursor})
+
+    def iter_conversations(self, inbox: str, *, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_conversations_page(inbox, **kw), limit=limit)
+
+    def get_reviews_page(self, *, status: Literal["pending", "approved", "rejected"] | None = None, agent_email: str | None = None, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", "/v1/reviews/page", query={"status": status, "agent_email": agent_email, "limit": limit, "cursor": cursor})
+
+    def iter_reviews(self, *, status: Literal["pending", "approved", "rejected"] | None = None, agent_email: str | None = None, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_reviews_page(**kw), status=status, agent_email=agent_email, limit=limit)
+
+    def get_webhooks_page(self, *, agent_email: str | None = None, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", "/v1/webhooks/page", query={"agent_email": agent_email, "limit": limit, "cursor": cursor})
+
+    def iter_webhooks(self, *, agent_email: str | None = None, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_webhooks_page(**kw), agent_email=agent_email, limit=limit)
+
+    def get_domains_page(self, *, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", "/v1/domains/page", query={"limit": limit, "cursor": cursor})
+
+    def iter_domains(self, *, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_domains_page(**kw), limit=limit)
+
+    def get_outbox_page(self, *, status: str | None = None, limit: int = 50, cursor: str | None = None) -> Page:
+        return self._request("GET", "/v1/outbox/page", query={"status": status, "limit": limit, "cursor": cursor})
+
+    def iter_outbox(self, *, status: str | None = None, limit: int = 50):
+        return self._iterate_pages(lambda **kw: self.get_outbox_page(**kw), status=status, limit=limit)
 
     def get_event(self, event_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/events/{quote(event_id, safe='')}")

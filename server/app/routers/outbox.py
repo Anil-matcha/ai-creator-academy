@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models import Message, OutboundJob, OutboundRetryEvent
 from app.schemas import OutboundJobPageResponse, OutboundJobResponse, OutboundRetryEventResponse
 from app.security import Principal, require_admin
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/v1/outbox", tags=["Outbound Queue"], dependencies=[Depends(require_admin)])
 OUTBOX_STATUSES = {"pending", "processing", "complete", "failed", "uncertain", "blocked"}
@@ -164,3 +165,29 @@ async def list_outbound_retry_events(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/{job_id}/retries/page")
+async def list_outbound_retry_events_page(
+    job_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    cursor: Optional[str] = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    if not await db.scalar(select(OutboundJob.id).where(OutboundJob.id == job_id)):
+        raise HTTPException(status_code=404, detail="Outbound job not found")
+    scope = f"/v1/outbox/{job_id}/retries"
+    query = select(OutboundRetryEvent).where(OutboundRetryEvent.job_id == job_id)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            requested_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Retry history cursor is invalid"}) from None
+        query = query.where(or_(OutboundRetryEvent.requested_at < requested_at,
+                                and_(OutboundRetryEvent.requested_at == requested_at, OutboundRetryEvent.id < item_id)))
+    rows = list((await db.execute(query.order_by(OutboundRetryEvent.requested_at.desc(), OutboundRetryEvent.id.desc()).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].requested_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [OutboundRetryEventResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
