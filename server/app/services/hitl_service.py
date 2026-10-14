@@ -6,6 +6,10 @@ from fastapi import HTTPException
 
 from app.models import ReviewItem, Message, OutboundJob
 from app.services.ws_manager import ws_manager
+from app.services.webhook_events import (
+    enqueue_email_received_webhook_event,
+    enqueue_email_webhook_event,
+)
 
 class HitlService:
 
@@ -44,6 +48,27 @@ class HitlService:
         message = await db.get(Message, review.message_id)
         if message:
             message.status = ("sending" if message.direction == "outbound" else "delivered") if action == "approve" else "rejected"
+            await enqueue_email_webhook_event(
+                db,
+                agent_email=message.agent_email,
+                event_type="email.review_approved" if action == "approve" else "email.review_rejected",
+                message_id=message.id,
+                direction=message.direction,
+                review_id=review.id,
+                status=message.status,
+                created_at=message.created_at,
+            )
+            if action == "approve" and message.direction == "inbound":
+                await enqueue_email_received_webhook_event(
+                    db,
+                    agent_email=message.agent_email,
+                    sender=message.sender,
+                    recipient=message.recipient,
+                    thread_id=message.thread_id,
+                    status=message.status,
+                    message_id=message.id,
+                    created_at=message.created_at,
+                )
             if action == "approve" and message.direction == "outbound":
                 db.add(OutboundJob(
                     id=f"out_{uuid.uuid4().hex[:24]}",

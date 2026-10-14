@@ -23,6 +23,7 @@ from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
+from app.services.webhook_events import enqueue_email_webhook_event
 
 logger = logging.getLogger("email_service")
 
@@ -369,6 +370,17 @@ class EmailService:
                     available_at=message.created_at,
                     created_at=message.created_at,
                 ))
+        elif status == "pending_review" and review_item:
+            await enqueue_email_webhook_event(
+                db,
+                agent_email=agent.email,
+                event_type="email.review_requested",
+                message_id=message.id,
+                direction=message.direction,
+                review_id=review_item.id,
+                status=message.status,
+                created_at=message.created_at,
+            )
         try:
             await db.commit()
         except IntegrityError:
@@ -530,6 +542,16 @@ class EmailService:
                 created_at=datetime.datetime.utcnow()
             )
             db.add(review_item)
+            await enqueue_email_webhook_event(
+                db,
+                agent_email=agent.email,
+                event_type="email.review_requested",
+                message_id=message.id,
+                direction=message.direction,
+                review_id=review_item.id,
+                status=message.status,
+                created_at=message.created_at,
+            )
         else:
             db.add(OutboundJob(
                 id=f"out_{uuid.uuid4().hex[:24]}",
