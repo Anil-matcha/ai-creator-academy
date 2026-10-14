@@ -27,6 +27,7 @@ WEBHOOK_EVENT_TYPES = {
     "email.received", "email.review_requested", "email.review_approved",
     "email.review_rejected", "email.flagged", "email.blocked",
     "email.accepted_by_relay", "email.failed", "email.delivery_unknown",
+    "email.delivered", "email.bounced", "email.complained", "email.delivery_delayed",
     "contact.due",
 }
 

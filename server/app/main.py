@@ -41,6 +41,10 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text(f"ALTER TABLE api_keys ADD COLUMN expires_at {timestamp_type}"))
             if "delivery_error" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN delivery_error TEXT"))
+            if "provider_delivery_status" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN provider_delivery_status VARCHAR(32)"))
+            if "provider_delivery_error" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN provider_delivery_error TEXT"))
             review_columns = {column["name"] for column in inspector.get_columns("review_items")}
             if "reviewed_by" not in review_columns:
                 sync_conn.execute(text("ALTER TABLE review_items ADD COLUMN reviewed_by VARCHAR(128)"))

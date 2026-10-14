@@ -147,6 +147,8 @@ class Message(Base):
     auth_evidence = Column(JSON, nullable=True)
     verified_domain = Column(String(255), nullable=True)
     delivery_error = Column(Text, nullable=True)
+    provider_delivery_status = Column(String(32), nullable=True, index=True)
+    provider_delivery_error = Column(Text, nullable=True)
     idempotency_key = Column(String(128), nullable=True)
     request_hash = Column(String(64), nullable=True)
     inbound_dedup_hash = Column(String(64), nullable=True)

@@ -695,6 +695,12 @@ export default function InboxPage() {
                           Delivery failed: {message.delivery_error}
                         </div>
                       )}
+                      {message.provider_delivery_status && (
+                        <div className={`mt-3 rounded border p-2 text-xs ${["bounced", "complained"].includes(message.provider_delivery_status) ? "border-[#f85149]/30 bg-[#f85149]/10 text-[#f85149]" : "border-[#30363d] bg-[#0d1117] text-[#8b949e]"}`}>
+                          Provider delivery: {message.provider_delivery_status}
+                          {message.provider_delivery_error ? ` · ${message.provider_delivery_error}` : ""}
+                        </div>
+                      )}
                       {messageAttachments.length > 0 && (
                         <div className="mt-3 border-t border-[#30363d] pt-2">
                           <div className="mb-1.5 text-[10px] font-semibold text-[#8b949e]">Attachments ({messageAttachments.length})</div>

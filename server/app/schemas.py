@@ -350,6 +350,8 @@ class MessageResponse(BaseModel):
     auth_evidence: Optional[Dict[str, Any]] = None
     verified_domain: Optional[str]
     delivery_error: Optional[str] = None
+    provider_delivery_status: Optional[str] = None
+    provider_delivery_error: Optional[str] = None
     status: str
     threat_score: float
     threat_details: str

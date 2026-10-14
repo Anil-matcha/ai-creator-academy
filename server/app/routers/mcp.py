@@ -282,6 +282,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "recipient": m.recipient,
             "subject": m.subject,
             "status": m.status,
+            "provider_delivery_status": m.provider_delivery_status,
             "threat_score": m.threat_score,
             "created_at": m.created_at.isoformat()
         } for m in msgs], indent=2)
@@ -300,6 +301,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "subject": msg.subject,
             "body_text": msg.body_text,
             "status": msg.status,
+            "provider_delivery_status": msg.provider_delivery_status,
+            "provider_delivery_error": msg.provider_delivery_error,
             "raw_message_id": msg.raw_message_id,
             "in_reply_to": msg.in_reply_to,
             "references": msg.references,

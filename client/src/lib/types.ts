@@ -109,6 +109,8 @@ export interface Message {
   dmarc_status: "pass" | "fail" | "none" | "temperror" | "unverified";
   verified_domain?: string;
   delivery_error?: string | null;
+  provider_delivery_status?: "delivered" | "bounced" | "complained" | "delayed" | null;
+  provider_delivery_error?: string | null;
   status: "delivered" | "accepted_by_relay" | "sending" | "delivery_unknown" | "pending_review" | "rejected" | "blocked" | "failed";
   threat_score: number;
   threat_details: string; // JSON string
@@ -240,6 +242,10 @@ export type WebhookEventType =
   | "email.accepted_by_relay"
   | "email.failed"
   | "email.delivery_unknown"
+  | "email.delivered"
+  | "email.bounced"
+  | "email.complained"
+  | "email.delivery_delayed"
   | "contact.due";
 
 export interface WebhookEndpoint {

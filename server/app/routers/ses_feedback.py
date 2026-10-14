@@ -22,6 +22,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import Message, ProviderFeedbackReceipt, RecipientSuppression
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
+from app.services.webhook_events import enqueue_outbound_status_webhook_event
 
 router = APIRouter(tags=["Provider feedback"])
 MAX_BODY_BYTES = 256 * 1024
@@ -128,16 +129,38 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
     event_type = event.get("eventType") or event.get("notificationType")
     if event_type == "Bounce":
         bounce = event.get("bounce") or {}
-        if str(bounce.get("bounceType", "")).lower() != "permanent":
-            return
         recipients = [r.get("emailAddress") for r in bounce.get("bouncedRecipients", []) if isinstance(r, dict)]
-        reason = "SES permanent bounce"
+        bounce_type = str(bounce.get("bounceType", "")).lower()
+        status = "bounced"
+        reason = "SES permanent bounce" if bounce_type == "permanent" else "SES transient bounce"
+        webhook_type = "email.bounced"
     elif event_type == "Complaint":
         complaint = event.get("complaint") or {}
         recipients = [r.get("emailAddress") for r in complaint.get("complainedRecipients", []) if isinstance(r, dict)]
         reason = "SES complaint"
+        status = "complained"
+        webhook_type = "email.complained"
+    elif event_type == "Delivery":
+        delivery = event.get("delivery") or {}
+        recipients = delivery.get("recipients", [])
+        reason = ""
+        status = "delivered"
+        webhook_type = "email.delivered"
+    elif event_type == "DeliveryDelay":
+        delay = event.get("deliveryDelay") or {}
+        recipients = delay.get("delayedRecipients", [])
+        reason = "SES delivery delayed"
+        status = "delayed"
+        webhook_type = "email.delivery_delayed"
     else:
         return
+
+    if not isinstance(recipients, list):
+        return
+    recipients = [
+        item.get("emailAddress") if isinstance(item, dict) else item
+        for item in recipients
+    ]
 
     mail = event.get("mail")
     headers = mail.get("headers") or [] if isinstance(mail, dict) else []
@@ -164,7 +187,20 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
         # Only apply an address that exactly matches the correlated outbound message.
         if recipient != expected_recipient:
             continue
-        if await get_recipient_suppression(db, message.agent_email, recipient):
+        message.provider_delivery_status = status
+        message.provider_delivery_error = reason or None
+        await enqueue_outbound_status_webhook_event(
+            db,
+            event_type=webhook_type,
+            message_id=message.id,
+            agent_email=message.agent_email,
+            recipient=recipient,
+            status=status,
+            created_at=datetime.datetime.utcnow(),
+        )
+        # Only permanent bounces and complaints are terminal opt-outs.
+        should_suppress = event_type == "Complaint" or (event_type == "Bounce" and bounce_type == "permanent")
+        if not should_suppress or await get_recipient_suppression(db, message.agent_email, recipient):
             continue
         db.add(RecipientSuppression(
             id=f"sup_{uuid.uuid4().hex[:24]}", agent_email=message.agent_email,
