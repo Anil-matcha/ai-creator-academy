@@ -43,7 +43,7 @@ export interface Message {
   rfc_message_id: string;
   spf_status: "pass" | "fail" | "softfail" | "neutral" | "none" | "permerror" | "temperror" | "unverified";
   dkim_status: "pass" | "fail" | "none" | "temperror" | "unverified";
-  dmarc_status: "pass" | "fail" | "none" | "unverified";
+  dmarc_status: "pass" | "fail" | "none" | "temperror" | "unverified";
   verified_domain?: string;
   delivery_error?: string | null;
   status: "delivered" | "accepted_by_relay" | "sending" | "pending_review" | "rejected" | "blocked" | "failed";
