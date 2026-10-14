@@ -350,13 +350,17 @@ async def test_api_key_tools_show_key_once_and_revocation_works(client):
     await fails(client, ADMIN, "create_api_key", name="x", agent_email=A, scope="superuser")
 
 
-async def test_domain_tools(client):
+async def test_domain_tools(client, monkeypatch):
+    from app.services import domain_dns
+    monkeypatch.setattr(domain_dns, "_resolve_txt", lambda name: [])
+    monkeypatch.setattr(domain_dns, "_resolve_mx", lambda name: [])
     created = await ok(client, ADMIN, "register_domain", domain="Mail.Example.com")
     assert created["domain"] == "mail.example.com"
     assert [d["domain"] for d in await ok(client, ADMIN, "list_domains")] == ["mail.example.com"]
     await fails(client, ADMIN, "register_domain", domain="mail.example.com")
     await fails(client, ADMIN, "register_domain", domain="nodots")
-    await fails(client, ADMIN, "verify_domain", domain="mail.example.com", contains="not implemented")
+    verified = await ok(client, ADMIN, "verify_domain", domain="mail.example.com")
+    assert verified["mx_status"] in {"pending", "verified", "mismatch", "error"}
     await ok(client, ADMIN, "delete_domain", domain="mail.example.com")
     await fails(client, ADMIN, "delete_domain", domain="mail.example.com")
 

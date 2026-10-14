@@ -877,6 +877,18 @@
             "title": "Id",
             "type": "string"
           },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
           "mx_record": {
             "title": "Mx Record",
             "type": "string"

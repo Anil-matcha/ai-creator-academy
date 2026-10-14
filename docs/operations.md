@@ -49,3 +49,14 @@ Rehearse a restore into a scratch environment on a schedule; an untested backup 
 ## Scheduled sending
 
 `send_at` (UTC, at most 90 days ahead) on send/reply defers submission. A scheduled message has status `scheduled`; trashing it before submission (`DELETE /v1/agents/{email}/messages/{id}`) cancels it. With the approval gate on, the message is held for review first and the deferral is honored on approval. Delivery time is best-effort within the worker poll interval, and a message whose time passes while the service is down is sent on recovery.
+
+## Custom domains and DKIM
+
+1. Register a domain: `POST /v1/domains {"domain": "agents.example.com"}`. This generates a 2048-bit DKIM key (the private key is stored encrypted with `SMTP_CONFIG_ENCRYPTION_KEY`; registration is refused with 503 when no key is configured) and returns the exact records to publish.
+2. Publish the MX, SPF, DKIM (`oae1._domainkey.<domain>`) and DMARC records.
+   - MX points at `MAIL_HOSTNAME` (default `mx.<SHARED_DOMAIN>`), which must be the host running the SMTP listener.
+   - If your outbound relay requires an SPF include (for example `amazonses.com`), set `SPF_INCLUDE` before registering.
+3. `POST /v1/domains/{domain}/verify` looks the records up (3 s per query). Each record is `verified`, `pending` (not found), `mismatch` (found but wrong, including duplicate SPF records), or `error` (DNS failure). The domain is `verified` when MX, SPF and DKIM all match; DMARC is recommended but not required.
+4. Mail sent from a verified domain through the configured relay is DKIM-signed. A signing failure never blocks delivery; the message is sent unsigned and the failure is logged.
+
+Domains registered before this feature carry placeholder DKIM data and cannot be verified; delete and register them again.

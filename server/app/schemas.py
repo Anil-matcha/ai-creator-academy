@@ -547,6 +547,7 @@ class DomainResponse(BaseModel):
     dkim_status: str
     dmarc_record: str
     dmarc_status: str
+    last_checked_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:

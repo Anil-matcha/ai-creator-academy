@@ -54,6 +54,7 @@ def _send_smtp_sync(
     attachments: Optional[List[Dict[str, Any]]] = None,
     unsubscribe_url: Optional[str] = None,
     feedback_correlation_id: Optional[str] = None,
+    dkim_signing: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, str]:
     submission_started = False
     try:
@@ -118,6 +119,20 @@ def _send_smtp_sync(
             server.login(username, password)
 
         message_data = msg.as_string()
+        if dkim_signing:
+            try:
+                import dkim as dkimpy
+                signature = dkimpy.sign(
+                    msg.as_bytes(), dkim_signing["selector"].encode(), dkim_signing["domain"].encode(),
+                    dkim_signing["private_key"].encode(),
+                    include_headers=[b"from", b"to", b"subject", b"date", b"message-id", b"reply-to",
+                                     b"in-reply-to", b"references", b"mime-version", b"content-type",
+                                     b"list-unsubscribe", b"list-unsubscribe-post"],
+                )
+                message_data = signature.decode("ascii") + message_data
+            except Exception:
+                # A signing failure must not block delivery; the message goes out unsigned.
+                logger.exception("DKIM signing failed; sending unsigned")
         submission_started = True
         refused = server.sendmail(from_addr, [to_addr], message_data)
         try:
@@ -162,6 +177,25 @@ class EmailService:
                 break
             selected = candidate
         return parent_id, " ".join(selected) or None
+
+    @staticmethod
+    async def _dkim_signing_for(db: AsyncSession, from_addr: str) -> Optional[Dict[str, str]]:
+        """DKIM parameters when the From domain is a registered, fully verified domain with a managed key."""
+        from app.models import Domain
+        from app.services.smtp_secrets import decrypt_secret
+        domain_name = from_addr.rpartition("@")[2].strip().lower().rstrip(">")
+        if not domain_name:
+            return None
+        domain = await db.scalar(select(Domain).where(
+            Domain.domain == domain_name, Domain.status == "verified", Domain.dkim_private_key.is_not(None)))
+        if domain is None:
+            return None
+        try:
+            key = decrypt_secret(domain.dkim_private_key, "domain DKIM private key")
+        except RuntimeError as exc:
+            logger.error("DKIM key for %s unavailable: %s", domain_name, exc)
+            return None
+        return {"domain": domain.domain, "selector": domain.dkim_selector, "private_key": key}
 
     @classmethod
     async def dispatch_to_upstream(
@@ -219,6 +253,7 @@ class EmailService:
             # Persist before SMTP can accept mail containing this capability.
             await db.commit()
             unsubscribe_url = f"{base_url}/unsubscribe/{raw_token}"
+        dkim_signing = await cls._dkim_signing_for(db, from_addr)
         port_num = int(config.port) if str(config.port).isdigit() else 587
         try:
             smtp_password = decrypt_password(config.password)
@@ -244,6 +279,7 @@ class EmailService:
             custom_msg_id=message.rfc_message_id,
             unsubscribe_url=unsubscribe_url,
             feedback_correlation_id=message.id if settings.SES_FEEDBACK_TOPIC_ARN.strip() else None,
+            dkim_signing=dkim_signing,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )

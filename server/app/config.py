@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     SHARED_DOMAIN: str = "agents.local"
+    # Hostname custom domains publish as their MX target (the host that runs the SMTP listener).
+    # Empty means mx.<SHARED_DOMAIN>.
+    MAIL_HOSTNAME: str = ""
+    # Optional SPF include for the outbound relay, e.g. amazonses.com. Empty publishes `v=spf1 mx ~all`.
+    SPF_INCLUDE: str = ""
     # Public HTTPS origin used for outbound unsubscribe links. Invalid/empty values disable links.
     PUBLIC_BASE_URL: str = ""
     # Optional AWS SES feedback delivered through one trusted SNS topic.

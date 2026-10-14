@@ -334,6 +334,8 @@ class Domain(Base):
     dkim_status = Column(String(32), default="pending")  # verified, pending
     dmarc_record = Column(String(255), nullable=False)
     dmarc_status = Column(String(32), default="pending")  # verified, pending
+    dkim_private_key = Column(Text, nullable=True)  # Fernet-encrypted PEM; NULL for legacy placeholder rows
+    last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
