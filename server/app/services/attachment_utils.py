@@ -2,13 +2,48 @@
 
 import base64
 import binascii
+import hashlib
+import hmac
 import os
 import re
+import time
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.config import settings
+
+
+ATTACHMENT_URL_TTL_SECONDS = 300
+
+
+def _url_signing_key() -> bytes:
+    value = (settings.ATTACHMENT_URL_SIGNING_KEY or settings.SMTP_CONFIG_ENCRYPTION_KEY
+             or settings.ADMIN_API_KEY).strip()
+    if not value:
+        raise RuntimeError("An attachment URL signing key is required")
+    return value.encode("utf-8")
+
+
+def attachment_download_signature(agent_email: str, message_id: str, attachment_id: str, expires: int) -> str:
+    payload = f"{agent_email}\n{message_id}\n{attachment_id}\n{expires}".encode("utf-8")
+    return hmac.new(_url_signing_key(), payload, hashlib.sha256).hexdigest()
+
+
+def make_attachment_download_url(agent_email: str, message_id: str, attachment_id: str,
+                                 *, now: int | None = None) -> str:
+    expires = (int(time.time()) if now is None else now) + ATTACHMENT_URL_TTL_SECONDS
+    signature = attachment_download_signature(agent_email, message_id, attachment_id, expires)
+    return f"/v1/attachments/{message_id}/{attachment_id}/download?expires={expires}&signature={signature}"
+
+
+def verify_attachment_download_signature(agent_email: str, message_id: str, attachment_id: str,
+                                         expires: int, signature: str, *, now: int | None = None) -> bool:
+    current = int(time.time()) if now is None else now
+    if expires < current or expires > current + ATTACHMENT_URL_TTL_SECONDS:
+        return False
+    expected = attachment_download_signature(agent_email, message_id, attachment_id, expires)
+    return hmac.compare_digest(expected, signature)
 
 
 def decode_attachment_inputs(items: Any) -> list[dict[str, Any]]:
@@ -46,3 +81,16 @@ def decode_attachment_inputs(items: Any) -> list[dict[str, Any]]:
         safe_name = "".join(char if char >= " " and char not in "\x7f" else "_" for char in safe_name)[:255]
         decoded.append({"filename": safe_name or "attachment", "content_type": content_type, "content": content})
     return decoded
+
+
+def validate_composed_message_size(subject: str, body_text: str, body_html: str | None,
+                                  attachments: list[dict[str, Any]] | None) -> None:
+    actual = len(subject.encode("utf-8")) + len(body_text.encode("utf-8"))
+    if body_html:
+        actual += len(body_html.encode("utf-8"))
+    actual += sum(len(item["content"]) for item in attachments or [])
+    maximum = settings.OUTBOUND_MAX_COMPOSED_BYTES
+    if actual > maximum:
+        raise HTTPException(status_code=413, detail={
+            "scope": "composed_message", "actual_bytes": actual, "max_bytes": maximum,
+        })

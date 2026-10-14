@@ -473,6 +473,7 @@ class MessageAttachmentResponse(BaseModel):
     content_type: str
     size_bytes: int
     created_at: datetime
+    download_url: Optional[str] = None
 
     class Config:
         from_attributes = True

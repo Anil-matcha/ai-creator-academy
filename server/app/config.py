@@ -49,10 +49,15 @@ class Settings(BaseSettings):
     # Uvicorn returns 503 when the number of concurrent connections/tasks reaches this cap.
     HTTP_MAX_CONCURRENCY: int = 200
     HTTP_KEEPALIVE_TIMEOUT_SECONDS: int = 5
-    HTTP_MAX_REQUEST_BYTES: int = 15 * 1024 * 1024
+    # Base64 JSON expands a 25 MiB decoded attachment set to ~34 MiB on the wire.
+    HTTP_MAX_REQUEST_BYTES: int = 40 * 1024 * 1024
     OUTBOUND_MAX_ATTACHMENTS: int = 10
     OUTBOUND_MAX_ATTACHMENT_BYTES: int = 10 * 1024 * 1024
-    OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES: int = 20 * 1024 * 1024
+    OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES: int = 25 * 1024 * 1024
+    OUTBOUND_MAX_COMPOSED_BYTES: int = 10 * 1024 * 1024
+    # Dedicated key is preferred. Existing required server secrets are fallback keys
+    # so upgrades do not require an extra setting.
+    ATTACHMENT_URL_SIGNING_KEY: str = ""
     WEBHOOK_DELIVERY_RETENTION_DAYS: int = 30
     # Trashed messages are permanently purged after this many days; 0 keeps them until deleted by hand.
     TRASH_RETENTION_DAYS: int = 30
@@ -67,6 +72,7 @@ class Settings(BaseSettings):
     @field_validator(
         "HTTP_MAX_CONCURRENCY", "HTTP_KEEPALIVE_TIMEOUT_SECONDS", "HTTP_MAX_REQUEST_BYTES",
         "OUTBOUND_MAX_ATTACHMENTS", "OUTBOUND_MAX_ATTACHMENT_BYTES", "OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES",
+        "OUTBOUND_MAX_COMPOSED_BYTES",
         "WEBHOOK_DELIVERY_RETENTION_DAYS",
     )
     @classmethod

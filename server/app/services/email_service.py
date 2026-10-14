@@ -30,6 +30,7 @@ from app.services.webhook_events import (
     enqueue_email_webhook_event,
     enqueue_inbound_security_webhook_event,
 )
+from app.services.attachment_utils import validate_composed_message_size
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
 from app.services.unsubscribe import issue_token, public_base_url
 
@@ -611,6 +612,7 @@ class EmailService:
             recipient = canonicalize_recipient(recipient)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        validate_composed_message_size(subject, body_text or "", body_html, attachments)
         request_hash = None
         if idempotency_key is not None:
             idempotency_key = idempotency_key.strip()

@@ -11,6 +11,7 @@ from app.services.ws_manager import ws_manager
 from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback, engagements, conversations, meta, events
 from app.routers import account as account_router, starter_templates as starter_templates_router
 from app.routers import public_review
+from app.routers import attachment_downloads
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -287,6 +288,7 @@ app.include_router(public_review.router)
 app.include_router(ses_feedback.router)
 app.include_router(templates.router)
 app.include_router(messages.router)
+app.include_router(attachment_downloads.router)
 app.include_router(conversations.router)
 app.include_router(meta.router)
 app.include_router(reviews.router)

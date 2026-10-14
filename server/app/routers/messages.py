@@ -13,6 +13,7 @@ from app.models import Agent, EmailTemplate, Message, MessageAttachment, Outboun
 from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageLabelsUpdate, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
+from app.services.attachment_utils import make_attachment_download_url
 from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal, require_agent_access, require_write
 from app.services.message_purge import purge_blocker, purge_message
@@ -374,7 +375,11 @@ async def list_message_attachments(email: str, message_id: str, db: AsyncSession
     result = await db.execute(
         select(MessageAttachment).where(MessageAttachment.message_id == message_id).order_by(MessageAttachment.created_at)
     )
-    return result.scalars().all()
+    return [
+        {**MessageAttachmentResponse.model_validate(item).model_dump(),
+         "download_url": make_attachment_download_url(email, message_id, item.id)}
+        for item in result.scalars().all()
+    ]
 
 @router.get("/{message_id}/attachments/{attachment_id}")
 async def download_message_attachment(email: str, message_id: str, attachment_id: str, db: AsyncSession = Depends(get_db)):
