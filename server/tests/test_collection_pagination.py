@@ -19,3 +19,11 @@ async def test_engagement_pages_follow_stable_order_and_bind_due_filter(client):
     second = await client.get(f"/v1/agents/{A}/engagements/page?limit=1&cursor=" + first.json()["next_cursor"], headers=ADMIN)
     assert len(second.json()["items"]) == 1 and second.json()["next_cursor"] is None
     assert (await client.get(f"/v1/agents/{A}/engagements/page?due=true&cursor=" + first.json()["next_cursor"], headers=ADMIN)).status_code == 400
+
+
+async def test_custom_cursor_families_use_standard_error_code(client):
+    for path in ("/v1/outbox/page?cursor=bad", "/v1/webhooks/deliveries/page?cursor=bad"):
+        response = await client.get(path, headers=ADMIN)
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "invalid_cursor"
+        assert response.json()["error"]["code"] == "invalid_cursor"

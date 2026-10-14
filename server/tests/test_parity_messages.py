@@ -39,6 +39,14 @@ async def test_labels_require_write_scope(client):
     assert (await client.delete(f"{BASE}/messages/{mid}", headers=ro)).status_code == 403
 
 
+async def test_message_page_cursor_uses_standard_error_code(client):
+    await _agent(client)
+    response = await client.get(f"{BASE}/messages/page?cursor=bad", headers=ADMIN)
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_cursor"
+    assert response.json()["error"]["code"] == "invalid_cursor"
+
+
 async def test_trash_and_restore(client):
     await _agent(client)
     mid = (await client.post(f"{BASE}/messages", headers=ADMIN, json=PAYLOAD)).json()["id"]

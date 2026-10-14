@@ -115,7 +115,7 @@ def _decode_delivery_cursor(
             raise ValueError
         return created_at, payload["id"]
     except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, KeyError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="Invalid or incompatible delivery cursor") from exc
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Delivery cursor is invalid or does not match the active filters"}) from exc
 
 
 class WebhookCreate(BaseModel):

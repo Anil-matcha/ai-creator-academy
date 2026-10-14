@@ -151,9 +151,16 @@ def _validation_details(errors: list[dict]) -> list[dict]:
 
 
 async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-    message = exc.detail if isinstance(exc.detail, str) else "Request failed"
-    details = None if isinstance(exc.detail, str) else jsonable_encoder(exc.detail)
-    body = error_body(exc.status_code, message, details=details, detail=exc.detail)
+    explicit_code = None
+    if isinstance(exc.detail, dict) and isinstance(exc.detail.get("code"), str):
+        message = exc.detail.get("message") if isinstance(exc.detail.get("message"), str) else "Request failed"
+        explicit_code = exc.detail["code"]
+        details = {key: value for key, value in exc.detail.items() if key not in {"code", "message"}}
+        details = jsonable_encoder(details) or None
+    else:
+        message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+        details = None if isinstance(exc.detail, str) else jsonable_encoder(exc.detail)
+    body = error_body(exc.status_code, message, code=explicit_code, details=details, detail=exc.detail)
     headers = dict(exc.headers) if exc.headers else None
     if exc.status_code == 429 and headers:
         retry = next((v for k, v in headers.items() if k.lower() == "retry-after"), None)

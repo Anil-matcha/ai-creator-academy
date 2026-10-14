@@ -128,7 +128,7 @@ def _decode_message_cursor(
     status: str | None,
 ) -> tuple[datetime, str]:
     if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
-        raise HTTPException(status_code=400, detail="Invalid message cursor")
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Message cursor is invalid or does not match the active filters"})
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
@@ -147,7 +147,7 @@ def _decode_message_cursor(
             raise ValueError("cursor timestamp must be naive")
         return created_at, message_id
     except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid message cursor") from None
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Message cursor is invalid or does not match the active filters"}) from None
 
 @router.get("", response_model=List[MessageResponse])
 async def list_messages(

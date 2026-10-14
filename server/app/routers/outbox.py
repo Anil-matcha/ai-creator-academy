@@ -29,7 +29,7 @@ def _encode_outbox_cursor(job: OutboundJob, status: Optional[str]) -> str:
 
 def _decode_outbox_cursor(cursor: str, status: Optional[str]) -> tuple[datetime.datetime, str]:
     if len(cursor) > 512 or not re.fullmatch(r"[A-Za-z0-9_-]+", cursor):
-        raise HTTPException(status_code=400, detail="Invalid outbox cursor")
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Outbox cursor is invalid or does not match the active filters"})
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
@@ -41,7 +41,7 @@ def _decode_outbox_cursor(cursor: str, status: Optional[str]) -> tuple[datetime.
             raise ValueError("cursor filters changed")
         return created_at, job_id
     except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid or incompatible outbox cursor") from None
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "Outbox cursor is invalid or does not match the active filters"}) from None
 
 
 @router.get("", response_model=List[OutboundJobResponse])
