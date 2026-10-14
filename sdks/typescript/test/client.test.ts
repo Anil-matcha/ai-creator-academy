@@ -81,6 +81,26 @@ test("account metrics rejects timezone-naive window bounds", () => {
   assert.throws(() => client.account.metrics({ start: "2026-01-01T00:00:00" }), /timezone offset/);
 });
 
+test("canonical account key lifecycle and attachment index metadata are exposed", async () => {
+  const { client, calls } = mock(
+    { json: { items: [], next_cursor: null } },
+    { status: 201, json: { id: "k1", scope: "account", key: "one-time" } },
+    { json: { deleted: true, id: "k1" } },
+    { json: { index: 0, filename: "a.txt", content_type: "text/plain", size_bytes: 2, download_url: "/v1/attachments/m1/a1/download?token=x", expires_at: "2030-01-01T00:00:00Z" } },
+  );
+  await client.apiKeys.accountList({ limit: 20 });
+  const created = await client.apiKeys.accountCreate({ name: "ci", scope: "account" }, { idempotencyKey: "key-create-1" });
+  assert.equal(created.key, "one-time");
+  await client.apiKeys.accountRevoke("k1");
+  const attachment = await client.messages.attachmentByIndex(INBOX, "m1", 0);
+  assert.equal(attachment.download_url.startsWith("/v1/attachments/"), true);
+  assert.equal(calls[0]!.url.pathname, "/v1/account/api-keys");
+  assert.equal(calls[1]!.headers["Idempotency-Key"], "key-create-1");
+  assert.equal(calls[2]!.url.searchParams.get("confirm"), "DELETE");
+  assert.equal(calls[3]!.url.pathname, `${base}/messages/m1/attachments/0`);
+  assert.throws(() => client.messages.attachmentByIndex(INBOX, "m1", -1), /non-negative integer/);
+});
+
 test("send passes Idempotency-Key and serialises Date schedule as scheduled_at", async () => {
   const { client, calls } = mock({ status: 201, json: { id: "m1", status: "scheduled" } });
   const when = new Date("2030-01-01T00:00:00Z");

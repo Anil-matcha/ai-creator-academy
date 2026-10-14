@@ -1,7 +1,9 @@
 import datetime
 import csv
 import io
+import json
 import uuid
+from email.utils import parseaddr
 from typing import Any, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -14,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal, get_db
 from app.models import Agent, Contact, ContactConsentEvent, ContactEngagement, ContactImportBatch, RecipientSuppression
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate, ContactConsentWrite, ContactConsentHistoryResponse
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
 from app.security import require_agent_access, require_write
 from app.services.cursors import decode_cursor, encode_cursor
 from app.security import Principal
@@ -35,7 +37,7 @@ import_router = APIRouter(tags=["Contacts"], dependencies=[Depends(require_write
 class ContactImportRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: EmailStr
+    email: EmailStr = Field(validation_alias=AliasChoices("address", "email"))
     display_name: str | None = Field(None, max_length=255)
     company: str | None = Field(None, max_length=255)
     notes: str | None = Field(None, max_length=4000)
@@ -46,7 +48,17 @@ class ContactImportRow(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_import_email(cls, value):
-        return value.strip().lower() if isinstance(value, str) else value
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        if len(value) > 320:
+            raise ValueError("address must be at most 320 characters")
+        if "<" in value or ">" in value:
+            display_name, mailbox = parseaddr(value)
+            if not mailbox or "<" not in value or ">" not in value:
+                raise ValueError("address must be a valid email address or mailbox")
+            value = mailbox
+        return value.strip().lower()
 
     @field_validator("display_name", "company", "notes")
     @classmethod
@@ -63,8 +75,22 @@ class ContactImportRow(BaseModel):
     @field_validator("metadata")
     @classmethod
     def validate_import_metadata(cls, value):
-        from app.schemas import ContactCreate
-        return ContactCreate(email="metadata@example.com", name="metadata", metadata=value).metadata
+        if not isinstance(value, dict) or len(value) > 50:
+            raise ValueError("Metadata must be a flat object with at most 50 keys")
+        for key, item in value.items():
+            if not isinstance(key, str) or not key or len(key.encode("utf-8")) > 128:
+                raise ValueError("Metadata keys must be nonempty strings of at most 128 UTF-8 bytes")
+            if item is not None and not isinstance(item, (str, int, float, bool)):
+                raise ValueError("Metadata values must be flat scalar values")
+            if isinstance(item, str) and len(item.encode("utf-8")) > 4096:
+                raise ValueError("Metadata string values must be at most 4,096 UTF-8 bytes")
+        try:
+            serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Metadata values must be valid JSON scalars") from exc
+        if len(serialized.encode("utf-8")) > 16 * 1024:
+            raise ValueError("Metadata must be at most 16 KiB")
+        return value
 
 
 class ContactImportRequest(BaseModel):
@@ -73,6 +99,7 @@ class ContactImportRequest(BaseModel):
     agent_email: str = Field(..., min_length=3, max_length=255)
     contacts: list[Any] = Field(..., min_length=1, max_length=1000)
     on_conflict: str = Field("merge", pattern="^(merge|skip)$")
+    stage: Literal["new", "contacted", "waiting", "closed"] | None = None
 
     @field_validator("agent_email", mode="before")
     @classmethod
@@ -91,8 +118,8 @@ async def import_contacts_json(request: Request,
         raise HTTPException(status_code=403, detail="Token is not authorized for this agent inbox")
     await _ensure_agent_exists(email, db)
     raw_body = await request.body()
-    if len(raw_body) > 1_000_000:
-        raise HTTPException(status_code=413, detail="JSON import must be at most 1 MB")
+    if len(raw_body) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="JSON import must be at most 20 MB")
 
     key = request.headers.get("Idempotency-Key")
     decision = None
@@ -111,19 +138,21 @@ async def import_contacts_json(request: Request,
             detail = "Idempotency-Key was already used with a different request" if decision.outcome == "conflict" else "Idempotency-Key request is still in progress; retry unchanged"
             raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409, detail=detail)
 
-    batch_id = f"ci_{uuid.uuid4().hex[:16]}"
+    batch_id = f"cij_{uuid.uuid4().hex[:16]}"
     now = datetime.datetime.utcnow()
     result_rows = []
     created_ids = []
     counts = {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
     for index, raw_row in enumerate(payload.contacts, start=1):
-        address = raw_row.get("email") if isinstance(raw_row, dict) else None
+        address = (raw_row.get("address", raw_row.get("email"))
+                   if isinstance(raw_row, dict) else None)
         try:
             row = ContactImportRow.model_validate(raw_row)
             address = str(row.email)
         except ValidationError as exc:
             counts["failed"] += 1
-            result_rows.append({"row": index, "email": address, "status": "failed", "reason": "invalid_row"})
+            result_rows.append({"index": index - 1, "row": index, "address": address,
+                                "email": address, "status": "failed", "reason": "invalid_row"})
             continue
 
         try:
@@ -133,7 +162,8 @@ async def import_contacts_json(request: Request,
                 ))).scalar_one_or_none()
                 if contact is not None and payload.on_conflict == "skip":
                     counts["skipped"] += 1
-                    result_rows.append({"row": index, "email": address, "status": "skipped", "reason": "already_exists"})
+                    result_rows.append({"index": index - 1, "row": index, "address": address,
+                                        "email": address, "status": "skipped", "reason": "already_exists"})
                     continue
 
                 created = contact is None
@@ -165,7 +195,9 @@ async def import_contacts_json(request: Request,
                             id=f"sp_{uuid.uuid4().hex[:12]}", agent_email=email,
                             email=address, reason="contact_import", created_at=now))
                 suppression_active = row.suppressed or suppression is not None
-                if row.stage is not None:
+                stage = row.stage if row.stage is not None else payload.stage
+                effective_stage = None
+                if stage is not None:
                     engagement = (await db.execute(select(ContactEngagement).where(
                         ContactEngagement.agent_email == email,
                         ContactEngagement.contact_id == contact.id
@@ -173,20 +205,20 @@ async def import_contacts_json(request: Request,
                     if engagement is None:
                         engagement = ContactEngagement(
                             id=f"eng_{uuid.uuid4().hex[:20]}", agent_email=email,
-                            contact_id=contact.id, stage=row.stage, created_at=now, updated_at=now)
+                            contact_id=contact.id, stage=stage, created_at=now, updated_at=now)
                         db.add(engagement)
-                    else:
-                        engagement.stage = row.stage
-                        engagement.updated_at = now
+                    effective_stage = engagement.stage
                 await db.flush()
             status = "created" if created else "updated"
             counts[status] += 1
-            result_rows.append({"row": index, "email": address, "status": status,
+            result_rows.append({"index": index - 1, "row": index, "address": address,
+                                "email": address, "status": status,
                                 "contact_id": contact.id, "suppressed": suppression_active,
-                                **({"stage": row.stage} if row.stage is not None else {})})
+                                **({"stage": effective_stage} if effective_stage is not None else {})})
         except Exception:
             counts["failed"] += 1
-            result_rows.append({"row": index, "email": address, "status": "failed", "reason": "write_failed"})
+            result_rows.append({"index": index - 1, "row": index, "address": address,
+                                "email": address, "status": "failed", "reason": "write_failed"})
 
     batch = ContactImportBatch(id=batch_id, agent_email=email, contact_ids=created_ids, created_at=now)
     db.add(batch)
@@ -207,8 +239,13 @@ async def _ensure_agent_exists(agent_email: str, db: AsyncSession) -> None:
 
 
 async def _get_contact(agent_email: str, contact_id: str, db: AsyncSession) -> Contact:
+    # Preserve the original opaque-ID path while accepting the address-keyed
+    # contract used by clients that address a contact by its canonical email.
     result = await db.execute(
-        select(Contact).where(Contact.agent_email == agent_email, Contact.id == contact_id)
+        select(Contact).where(
+            Contact.agent_email == agent_email,
+            or_(Contact.id == contact_id, Contact.email == contact_id.strip().lower()),
+        )
     )
     contact = result.scalar_one_or_none()
     if contact is None:
@@ -349,11 +386,11 @@ async def delete_contact(email: str, contact_id: str, db: AsyncSession = Depends
 
 @router.get("/{contact_id}/consent", response_model=ContactConsentHistoryResponse)
 async def get_contact_consent(email: str, contact_id: str, db: AsyncSession = Depends(get_db)):
-    await _get_contact(email, contact_id, db)
+    contact = await _get_contact(email, contact_id, db)
     result = await db.execute(
         select(ContactConsentEvent).where(
             ContactConsentEvent.agent_email == email,
-            ContactConsentEvent.contact_id == contact_id,
+            ContactConsentEvent.contact_id == contact.id,
         ).order_by(ContactConsentEvent.id.desc()).limit(100)
     )
     events = result.scalars().all()
@@ -362,10 +399,10 @@ async def get_contact_consent(email: str, contact_id: str, db: AsyncSession = De
 
 @router.post("/{contact_id}/consent", response_model=ContactConsentHistoryResponse, status_code=201, dependencies=[Depends(require_write)])
 async def record_contact_consent(email: str, contact_id: str, payload: ContactConsentWrite, db: AsyncSession = Depends(get_db)):
-    await _get_contact(email, contact_id, db)
+    contact = await _get_contact(email, contact_id, db)
     event = ContactConsentEvent(
         agent_email=email,
-        contact_id=contact_id,
+        contact_id=contact.id,
         action=payload.action,
         source=payload.source,
         evidence=payload.evidence,
@@ -500,13 +537,27 @@ async def reverse_contact_import(email: str, batch_id: str, confirm: str = Query
     batch = result.scalar_one_or_none()
     if batch is None:
         raise HTTPException(status_code=404, detail="Contact import batch not found")
-    deleted_result = await db.execute(
-        delete(Contact).where(
-            Contact.agent_email == email,
-            Contact.import_batch_id == batch.id,
-            Contact.updated_at == Contact.created_at,
-        )
+    delete_query = delete(Contact).where(
+        Contact.agent_email == email,
+        Contact.import_batch_id == batch.id,
+        Contact.updated_at == Contact.created_at,
     )
+    # Structured imports can create an engagement in the same transaction as
+    # the contact. Keep the contact if that engagement was subsequently edited;
+    # deleting it would cascade away operator work. The distinct structured
+    # batch prefix leaves the historical CSV reversal behavior unchanged.
+    if batch.id.startswith("cij_"):
+        edited_engagements = select(ContactEngagement.contact_id).where(
+            ContactEngagement.agent_email == email,
+            ContactEngagement.contact_id.in_(select(Contact.id).where(
+                Contact.agent_email == email,
+                Contact.import_batch_id == batch.id,
+            )),
+            or_(ContactEngagement.created_at > batch.created_at,
+                ContactEngagement.updated_at > batch.created_at),
+        )
+        delete_query = delete_query.where(~Contact.id.in_(edited_engagements))
+    deleted_result = await db.execute(delete_query)
     deleted = deleted_result.rowcount or 0
     retained = await db.scalar(
         select(func.count()).select_from(Contact).where(Contact.agent_email == email, Contact.import_batch_id == batch.id)

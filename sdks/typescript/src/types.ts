@@ -2,6 +2,7 @@ export type MessageStatus =
   | "delivered" | "accepted_by_relay" | "sending" | "scheduled" | "canceled" | "delivery_unknown"
   | "pending_review" | "rejected" | "blocked" | "failed";
 export type Scope = "read_only" | "full_access" | "reviewer";
+export type AccountKeyScope = "account" | "agent";
 
 export interface Attachment { filename: string; content_type: string; content_base64: string }
 
@@ -68,6 +69,10 @@ export interface AgentTestSendResult { status: "accepted" | "pending_review"; me
 export interface AgentInput { email: string; display_name: string; description?: string; threat_sensitivity?: string; hitl_enabled?: boolean; auto_reply_enabled?: boolean; auto_reply_prompt?: string }
 export interface ApiKey { id: string; name: string; prefix: string; scope: Scope; agent_email: string; created_at: string; expires_at: string | null }
 export interface ApiKeyCreated extends ApiKey { key: string }
+export interface AccountApiKey { id: string; name: string; key_prefix: string; scope: AccountKeyScope; agent_email: string | null; created_at: string; expires_at: string | null }
+export interface AccountApiKeyCreated extends AccountApiKey { key: string }
+export interface AccountApiKeyPage { items: AccountApiKey[]; next_cursor: string | null }
+export interface AttachmentByIndex { index: number; filename: string; content_type: string; size_bytes: number; download_url: string; expires_at: string; data?: string }
 export interface Domain { id: string; domain: string; status: string; [extra: string]: unknown }
 export interface Protection { threat_sensitivity: "off" | "low" | "medium" | "high"; hitl_enabled: boolean }
 export interface AgentMetrics { agent_email: string; messages: { inbound: number; outbound: number }; by_status: Record<string, Record<string, number>>; unread: number; pending_reviews: number }

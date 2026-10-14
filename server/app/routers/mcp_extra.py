@@ -16,10 +16,11 @@ from app.models import (
 )
 from app.routers import (
     account, agents, api_keys, contacts, conversations, domains, engagements, events, messages, meta,
-    outbox, starter_templates, stats, suppressions, templates, webhooks,
+    outbox, starter_templates, suppressions, templates, webhooks,
 )
 from app.schemas import (
-    AgentCreate, AgentResponse, AgentUpdate, ApiKeyCreate, ApiKeyResponse, ContactConsentWrite,
+    AccountApiKeyCreate,
+    AgentCreate, AgentResponse, AgentUpdate, ContactConsentWrite,
     ContactCreate, ContactResponse, ContactUpdate, ContactEngagementUpdate, ContactEngagementWrite,
     DomainCreate, DomainResponse, EmailTemplateCreate, EmailTemplatePreviewRequest,
     EmailTemplateRenderData, EmailTemplateResponse, EmailTemplateUpdate, MessageLabelsUpdate,
@@ -216,14 +217,32 @@ def _json_request_body(args, *keys):
 
 async def _h_get_attachment(db, args, principal):
     _require(args, "agent_email", "message_id")
+    inline = args.get("inline", False)
+    if not isinstance(inline, bool):
+        raise ValueError("inline must be a boolean")
     if not await db.scalar(select(Message.id).where(
             Message.id == args["message_id"], Message.agent_email == args["agent_email"])):
         raise ValueError(f"Message {args['message_id']} not found")
     rows = (await db.execute(
         select(MessageAttachment).where(MessageAttachment.message_id == args["message_id"])
-        .order_by(MessageAttachment.created_at)
+        .order_by(MessageAttachment.created_at, MessageAttachment.id)
     )).scalars().all()
+    if "index" in args:
+        index = args["index"]
+        if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+            raise ValueError("index must be a non-negative integer")
+        if "attachment_id" in args:
+            raise ValueError("provide index or attachment_id, not both")
+        if index >= len(rows):
+            raise ValueError("Attachment not found")
+        return await messages.get_message_attachment_by_index(
+            args["agent_email"], args["message_id"], index, inline, db
+        )
+    if inline:
+        raise ValueError("inline requires index")
     if "attachment_id" in args:
+        if args.get("inline"):
+            raise ValueError("inline is available only with index")
         rows = [r for r in rows if r.id == args["attachment_id"]]
         if not rows:
             raise ValueError("Attachment not found")
@@ -310,6 +329,23 @@ async def _h_import_contacts(db, args, principal):
         raise ValueError(f"csv must be a string of at most {MAX_IMPORT_CSV_CHARS} characters")
     request = _mcp_request(args, csv_text.encode("utf-8"))
     return await contacts.import_contacts(args["agent_email"], request, principal, db)
+
+
+async def _h_import_contacts_json(db, args, principal):
+    _require(args, "agent_email", "contacts")
+    if not isinstance(args["contacts"], list):
+        raise ValueError("contacts must be an array")
+    body = {"agent_email": args["agent_email"], "contacts": args["contacts"],
+            "on_conflict": args.get("on_conflict", "merge")}
+    raw_body = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    payload = contacts.ContactImportRequest.model_validate(body)
+    request = _mcp_request(args, raw_body)
+    return await contacts.import_contacts_json(request, payload, principal, db)
+
+
+async def _h_test_agent(db, args, principal):
+    _require(args, "agent_email")
+    return _dump(await messages.test_agent_send(args["agent_email"], _mcp_request(args), db))
 
 
 async def _h_delete_contact_import(db, args, principal):
@@ -448,20 +484,23 @@ async def _h_redeliver_event(db, args, principal):
 
 
 async def _h_list_api_keys(db, args, principal):
-    return [_m(ApiKeyResponse, k) for k in await api_keys.list_api_keys(db)]
+    page = await api_keys.list_account_api_keys(
+        _int(args, "limit", 100, 1, 100), args.get("cursor"), db)
+    return _dump(page)
 
 
 async def _h_create_api_key(db, args, principal):
-    payload = ApiKeyCreate(**_fields(args, "name", "agent_email", "scope", "expires_in_days"))
-    request = _mcp_request(args, _json_request_body(args, "name", "agent_email", "scope", "expires_in_days"))
-    result = await api_keys.create_api_key(payload, request, principal, db)
+    payload = AccountApiKeyCreate(**_fields(args, "name", "scope", "agent_email", "expires_in_days"))
+    request = _mcp_request(args, _json_request_body(args, "name", "scope", "agent_email", "expires_in_days"))
+    result = await api_keys.create_account_api_key(payload, request, principal, db)
     return _dump(result)  # key shown only now
 
 
 async def _h_delete_api_key(db, args, principal):
     _require(args, "key_id")
-    await api_keys.revoke_api_key(args["key_id"], db)
-    return {"revoked": True, "key_id": args["key_id"]}
+    if args.get("confirm") != "DELETE":
+        raise ValueError("confirm must be DELETE")
+    return await api_keys.revoke_account_api_key(args["key_id"], "DELETE", db)
 
 
 async def _h_list_domains(db, args, principal):
@@ -513,7 +552,27 @@ async def _h_delete_agent(db, args, principal):
 
 
 async def _h_get_account_metrics(db, args, principal):
-    return (await stats.get_overview_stats(db)).model_dump(mode="json")
+    def parse_datetime(key):
+        raw = args.get(key)
+        if raw is None:
+            return None
+        if not isinstance(raw, str):
+            raise ValueError(f"{key} must be an RFC 3339 datetime string")
+        try:
+            return datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{key} must be an RFC 3339 datetime string") from exc
+
+    bucket = args.get("bucket")
+    group_by = args.get("group_by")
+    if bucket not in {None, "day"}:
+        raise ValueError("bucket must be 'day'")
+    if group_by not in {None, "agent"}:
+        raise ValueError("group_by must be 'agent'")
+    return _dump(await account.get_account_metrics(
+        start=parse_datetime("start"), end=parse_datetime("end"),
+        bucket=bucket, group_by=group_by, db=db,
+    ))
 
 
 async def _h_list_outbox(db, args, principal):
@@ -543,8 +602,11 @@ _AGENT_FIELDS = {
 
 # (name, description, properties, required, kind, handler)
 _NEW_SPECS = [
-    ("get_attachment", "List attachment metadata (id, filename, type, size) for a message, or one attachment if attachment_id is given. Does not return content.",
-     {**_AE, "message_id": _ID, "attachment_id": _ID}, ["agent_email", "message_id"], "read", _h_get_attachment),
+    ("get_attachment", "List attachment metadata, fetch one attachment by ID, or use a zero-based index to get metadata and a short-lived download URL. inline=true includes base64 only for indexed attachments up to 256 KiB.",
+     {**_AE, "message_id": _ID, "attachment_id": _ID,
+      "index": {"type": "integer", "minimum": 0, "description": "Zero-based attachment position; mutually exclusive with attachment_id."},
+      "inline": {"type": "boolean", "default": False, "description": "With index, include base64 data only up to 256 KiB."}},
+     ["agent_email", "message_id"], "read", _h_get_attachment),
     ("get_attachment_data", "Return one attachment's content as base64. Limited to 5 MB inline; larger files must be fetched over REST.",
      {**_AE, "message_id": _ID, "attachment_id": _ID}, ["agent_email", "message_id", "attachment_id"], "read", _h_get_attachment_data),
     ("get_template", "Fetch one saved email template.",
@@ -566,6 +628,12 @@ _NEW_SPECS = [
      {**_AE, "contact_id": _ID}, ["agent_email", "contact_id"], "write", _h_delete_contact),
     ("import_contacts", "Import contacts from CSV text (header: email,name,company,notes; at most 1000 rows and 1 MB). Reports every row and skips duplicates and suppressed recipients.",
      {**_AE, "csv": _ID, "idempotency_key": _ID}, ["agent_email", "csv"], "write", _h_import_contacts),
+    ("import_contacts_json", "Import up to 1,000 structured contacts into the explicitly selected inbox. Rows are inert and never imply consent.",
+     {**_AE, "contacts": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"type": "object"}},
+      "on_conflict": {"type": "string", "enum": ["merge", "skip"], "default": "merge"}, "idempotency_key": _ID},
+     ["agent_email", "contacts"], "write", _h_import_contacts_json),
+    ("test_agent", "Queue a platform-originated test message to this inbox. Requires full access or an administrator credential.",
+     {**_AE, "idempotency_key": _ID}, ["agent_email"], "write", _h_test_agent),
     ("delete_contact_import", "Reverse an import batch, deleting only contacts not edited since import. Requires confirm=DELETE.",
      {**_AE, "batch_id": _ID, "confirm": {"type": "string", "enum": ["DELETE"]}},
      ["agent_email", "batch_id", "confirm"], "write", _h_delete_contact_import),
@@ -614,14 +682,14 @@ _NEW_SPECS = [
      {"event_id": _ID}, ["event_id"], "admin", _h_get_event),
     ("redeliver_event", "Administrator only: re-queue a failed or delivered event for another delivery.",
      {"event_id": _ID}, ["event_id"], "admin", _h_redeliver_event),
-    ("list_api_keys", "Administrator only: list API keys (prefix, scope, inbox, expiry; never the key itself).",
-     {}, [], "admin", _h_list_api_keys),
-    ("create_api_key", "Administrator only: mint an inbox-scoped key (read_only, full_access or reviewer; 90-day expiry by default). The key is returned once, in this response only.",
-     {"name": _ID, "agent_email": _ID, "scope": {"type": "string", "enum": ["read_only", "full_access", "reviewer"]},
+    ("list_api_keys", "Administrator only: list canonical account and inbox API keys (prefix, scope, inbox and expiry; never the key itself).",
+     {"limit": _limit(100, 100), "cursor": _ID}, [], "admin", _h_list_api_keys),
+    ("create_api_key", "Administrator only: create a canonical account-scoped or inbox-scoped key. The key is returned once, in this response only.",
+     {"name": _ID, "agent_email": _ID, "scope": {"type": "string", "enum": ["account", "agent"]},
       "expires_in_days": {"type": "integer", "minimum": 1, "maximum": 3650}, "idempotency_key": _ID},
-     ["name", "agent_email"], "admin", _h_create_api_key),
-    ("delete_api_key", "Administrator only: revoke an API key immediately.",
-     {"key_id": _ID}, ["key_id"], "admin", _h_delete_api_key),
+     ["name", "scope"], "admin", _h_create_api_key),
+    ("delete_api_key", "Administrator only: revoke a canonical account or inbox API key immediately. Requires confirm=DELETE.",
+     {"key_id": _ID, "confirm": {"type": "string", "enum": ["DELETE"]}}, ["key_id", "confirm"], "admin", _h_delete_api_key),
     ("list_domains", "Administrator only: list registered domains and their DNS record status.",
      {}, [], "admin", _h_list_domains),
     ("get_domain", "Administrator only: fetch one registered domain and its DNS record status.",
@@ -640,8 +708,10 @@ _NEW_SPECS = [
      {**_AE, "status": _ID, **_AGENT_FIELDS}, ["agent_email"], "admin", _h_update_agent),
     ("delete_agent", "Administrator only: delete an inbox. By default it is soft-deleted (stops receiving mail, hidden, restorable); purge=true permanently removes it with its messages, contacts and keys.",
      {**_AE, "purge": {"type": "boolean", "default": False}}, ["agent_email"], "admin", _h_delete_agent),
-    ("get_account_metrics", "Administrator only: totals across all inboxes (agents, messages, unread, pending reviews, threats, live connections).",
-     {}, [], "admin", _h_get_account_metrics),
+    ("get_account_metrics", "Administrator only: account-wide lifecycle metrics over a half-open cohort window, with optional daily buckets and per-inbox groups.",
+     {"start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"},
+      "bucket": {"type": "string", "enum": ["day"]}, "group_by": {"type": "string", "enum": ["agent"]}},
+     [], "admin", _h_get_account_metrics),
     ("list_outbox", "Administrator only: durable outbound queue jobs, optionally by status.",
      {"status": {"type": "string", "enum": ["pending", "processing", "complete", "failed", "uncertain", "blocked"]},
       "limit": _limit(50, 200)}, [], "admin", _h_list_outbox),

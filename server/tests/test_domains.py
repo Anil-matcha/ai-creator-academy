@@ -174,7 +174,7 @@ async def test_signed_message_verifies_against_published_key(client, dns, monkey
     assert tampered != raw and not dkim.verify(tampered, dnsfunc=published)
 
 
-async def test_unsigned_when_signing_unavailable(monkeypatch):
+async def test_configured_signing_failure_refuses_smtp_submission(monkeypatch):
     import smtplib
     sent = {}
 
@@ -187,6 +187,7 @@ async def test_unsigned_when_signing_unavailable(monkeypatch):
         def quit(self): pass
 
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
-    ok, _ = _send_smtp_sync("relay", 587, "", "", False, False, "bot@x.com", "t@y.net", "s", "b",
+    ok, info = _send_smtp_sync("relay", 587, "", "", False, False, "bot@x.com", "t@y.net", "s", "b",
                             dkim_signing={"domain": "x.com", "selector": "s", "private_key": "not a key"})
-    assert ok and "DKIM-Signature" not in sent["data"]  # signing failure never blocks delivery
+    assert not ok and "Configured DKIM signing failed" in info
+    assert "data" not in sent

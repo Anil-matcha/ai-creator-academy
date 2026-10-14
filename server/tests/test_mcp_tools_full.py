@@ -23,7 +23,7 @@ get_webhook import_contacts list_agents list_api_keys list_contacts list_convers
 list_events list_messages list_outbox list_outreach_contacts list_reviews list_suppressions list_templates
 list_webhook_deliveries list_webhooks preview_template record_contact_consent redeliver_event
 register_domain reject_review reply_to_message restore_message retry_outbox_job rotate_webhook_secret
-send_message set_outreach_contact test_webhook update_agent update_contact update_message_labels
+send_message set_outreach_contact test_agent import_contacts_json test_webhook update_agent update_contact update_message_labels
 update_protection update_template update_webhook verify_domain whoami
 list_account_suppressions delete_account_suppression export_account list_account_contacts restore_agent
 get_review_settings get_review get_pending_message get_contact get_domain get_outreach_contact list_pending_messages
@@ -49,7 +49,7 @@ INBOX_WRITE_TOOLS = {
     "restore_message", "create_agent_suppression", "delete_agent_suppression", "delete_suppression", "create_template",
     "update_template", "delete_template", "create_contact", "update_contact", "delete_contact",
     "import_contacts", "delete_contact_import", "record_contact_consent", "set_outreach_contact",
-    "delete_outreach_contact", "copy_starter_template",
+    "delete_outreach_contact", "copy_starter_template", "test_agent", "import_contacts_json",
 }
 INBOX_READ_TOOLS = {
     "list_messages", "get_message", "get_recent_otp", "list_conversations", "get_conversation",
@@ -247,6 +247,25 @@ async def test_contacts_import_consent_and_outreach(client):
     await fails(client, ADMIN, "delete_contact", agent_email=A, contact_id=cid)
 
 
+async def test_structured_import_and_platform_test_send_tools(client):
+    await make_agent(client, A)
+    imported = await ok(client, ADMIN, "import_contacts_json", agent_email=A,
+                        contacts=[{"address": "new@example.com", "display_name": "New", "metadata": {"tier": "gold"}}],
+                        on_conflict="merge", idempotency_key="mcp-json-contact-1")
+    assert imported["created"] == 1 and imported["results"][0]["status"] == "created"
+    assert imported["results"][0]["email"] == "new@example.com"
+    assert (await ok(client, ADMIN, "import_contacts_json", agent_email=A,
+                     contacts=[{"email": "new@example.com", "display_name": "Updated"}],
+                     on_conflict="merge"))["updated"] == 1
+    key, _ = await make_key(client, A, "read_only")
+    await fails(client, key, "test_agent", agent_email=A, contains="does not permit")
+    await fails(client, ADMIN, "import_contacts_json", agent_email=B, contacts=[{"email": "x@example.com"}])
+    test_inbox = "test-inbox@example.com"
+    await make_agent(client, test_inbox)
+    test_result = await ok(client, ADMIN, "test_agent", agent_email=test_inbox, idempotency_key="mcp-test-1")
+    assert test_result["status"] in {"accepted", "pending_review"} and test_result["message_id"]
+
+
 async def test_contact_ids_do_not_cross_inboxes(client):
     await make_agent(client, A)
     await make_agent(client, B)
@@ -302,6 +321,15 @@ async def test_attachment_metadata_and_data(client):
     assert "content_base64" not in json.dumps(meta)
     data = await ok(client, ADMIN, "get_attachment_data", agent_email=A, message_id="m1", attachment_id="att1")
     assert base64.b64decode(data["content_base64"]) == b"hello"
+    indexed = await ok(client, ADMIN, "get_attachment", agent_email=A, message_id="m1", index=0, inline=False)
+    assert indexed["index"] == 0 and indexed["filename"] == "a.txt"
+    assert indexed["download_url"].startswith("/v1/attachments/")
+    assert "data" not in indexed
+    indexed_inline = await ok(client, ADMIN, "get_attachment", agent_email=A, message_id="m1", index=0, inline=True)
+    assert base64.b64decode(indexed_inline["data"]) == b"hello"
+    await fails(client, ADMIN, "get_attachment", agent_email=A, message_id="m1", index=4)
+    await fails(client, ADMIN, "get_attachment", agent_email=A, message_id="m1", index=-1)
+    await fails(client, ADMIN, "get_attachment", agent_email=A, message_id="m1", index=0, attachment_id="att1")
     await fails(client, ADMIN, "get_attachment_data", agent_email=A, message_id="m1", attachment_id="nope")
     await fails(client, ADMIN, "get_attachment", agent_email=A, message_id="missing")
 
@@ -314,6 +342,7 @@ async def test_attachment_size_cap_and_inbox_scope(client):
                 attachment_id="att1", contains="limited to")
     key_b, _ = await make_key(client, B, "read_only")
     await fails(client, key_b, "get_attachment", agent_email=B, message_id="m1")                       # message is A's
+    await fails(client, key_b, "get_attachment", agent_email=B, message_id="m1", index=0)
     await fails(client, key_b, "get_attachment_data", agent_email=B, message_id="m1", attachment_id="att1")
 
 
@@ -360,18 +389,21 @@ async def test_event_tools(client):
 
 async def test_api_key_tools_show_key_once_and_revocation_works(client):
     await make_agent(client, A)
-    created = await ok(client, ADMIN, "create_api_key", name="ci", agent_email=A, scope="read_only", expires_in_days=30)
+    created = await ok(client, ADMIN, "create_api_key", name="ci", scope="agent", agent_email=A, expires_in_days=30)
     token = created["key"]
     listed = await ok(client, ADMIN, "list_api_keys")
-    assert [k["id"] for k in listed] == [created["id"]]
+    assert [k["id"] for k in listed["items"]] == [created["id"]]
     assert token not in json.dumps(listed) and "key_hash" not in json.dumps(listed)
     bearer = {"Authorization": f"Bearer {token}"}
-    assert (await ok(client, bearer, "whoami"))["scope"] == "read_only"
-    await ok(client, ADMIN, "delete_api_key", key_id=created["id"])
+    assert (await ok(client, bearer, "whoami"))["scope"] == "full_access"
+    await ok(client, ADMIN, "delete_api_key", key_id=created["id"], confirm="DELETE")
     status, _ = await rpc(client, bearer, "whoami")
     assert status == 401
-    await fails(client, ADMIN, "create_api_key", name="x", agent_email="ghost@agents.local")
-    await fails(client, ADMIN, "create_api_key", name="x", agent_email=A, scope="superuser")
+    account_key = await ok(client, ADMIN, "create_api_key", name="account-ci", scope="account")
+    assert account_key["agent_email"] is None
+    await fails(client, ADMIN, "create_api_key", name="x", scope="agent", agent_email="ghost@agents.local")
+    await fails(client, ADMIN, "create_api_key", name="x", scope="account", agent_email=A)
+    await fails(client, ADMIN, "delete_api_key", key_id=account_key["id"])
 
 
 async def test_domain_tools(client, monkeypatch):
@@ -409,7 +441,14 @@ async def test_agent_admin_tools(client):
 
 async def test_account_metrics_and_outbox_tools(client):
     await make_agent(client, A)
-    assert (await ok(client, ADMIN, "get_account_metrics"))["total_agents"] == 1
+    end = datetime.datetime.now(datetime.timezone.utc)
+    start = end - datetime.timedelta(days=1)
+    metrics = await ok(client, ADMIN, "get_account_metrics", start=start.isoformat(), end=end.isoformat(),
+                       bucket="day", group_by="agent")
+    assert metrics["messages_in_window"] == 0 and metrics["summary"]["accepted"] == 0
+    assert metrics["agents"] == [] and metrics["buckets"]
+    assert all(bucket["summary"]["accepted"] == 0 for bucket in metrics["buckets"])
+    await fails(client, ADMIN, "get_account_metrics", bucket="week")
     sent = await ok(client, ADMIN, "send_message", agent_email=A, recipient="to@example.com", subject="s", body_text="b")
     await ok(client, ADMIN, "approve_review", review_id=(await ok(client, ADMIN, "list_reviews"))[0]["review_id"])
     jobs = await ok(client, ADMIN, "list_outbox")
@@ -487,7 +526,7 @@ async def test_mcp_forwards_idempotency_for_parity_write_operations(client):
     assert await ok(client, ADMIN, "create_webhook", **webhook_args) == webhook
     await fails(client, ADMIN, "create_webhook", contains="different request", **{**webhook_args, "enabled": False})
 
-    key_args = {"name": "mcp-idem", "agent_email": A, "scope": "read_only", "idempotency_key": "mcp-api-key-1"}
+    key_args = {"name": "mcp-idem", "scope": "account", "idempotency_key": "mcp-api-key-1"}
     api_key = await ok(client, ADMIN, "create_api_key", **key_args)
     assert await ok(client, ADMIN, "create_api_key", **key_args) == api_key
     await fails(client, ADMIN, "create_api_key", contains="different request", **{**key_args, "name": "changed"})

@@ -25,6 +25,126 @@ async def test_json_import_creates_merges_duplicate_rows_and_suppresses_without_
     assert (await client.get("/v1/account/suppressions", headers=ADMIN)).json()["items"][0]["email"] == "one@example.com"
 
 
+async def test_json_import_accepts_address_and_initializes_top_level_stage(client):
+    inbox = "address-import@example.com"
+    await make_agent(client, inbox)
+    response = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox,
+        "stage": "contacted",
+        "contacts": [{"address": "person@example.com", "display_name": "Person"}],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["results"][0]["email"] == "person@example.com"
+    assert response.json()["results"][0]["address"] == "person@example.com"
+    assert response.json()["results"][0]["index"] == 0
+    engagement = (await client.get(f"/v1/agents/{inbox}/engagements", headers=ADMIN)).json()
+    assert len(engagement) == 1 and engagement[0]["stage"] == "contacted"
+
+
+async def test_json_import_keeps_existing_stage_when_merging_with_new_stage(client):
+    inbox = "stage-import@example.com"
+    await make_agent(client, inbox)
+    first = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox, "stage": "waiting",
+        "contacts": [{"address": "person@example.com"}],
+    })
+    assert first.status_code == 200, first.text
+    merged = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox, "stage": "closed",
+        "contacts": [{"address": "person@example.com", "stage": "contacted"}],
+    })
+    assert merged.status_code == 200, merged.text
+    assert merged.json()["results"][0]["stage"] == "waiting"
+    engagement = (await client.get(f"/v1/agents/{inbox}/engagements", headers=ADMIN)).json()
+    assert len(engagement) == 1 and engagement[0]["stage"] == "waiting"
+
+
+async def test_json_import_metadata_utf8_boundaries_are_row_isolated(client):
+    inbox = "metadata-boundaries@example.com"
+    await make_agent(client, inbox)
+    valid_metadata = {"é" * 64: "é" * 2048}  # 128-byte key and 4,096-byte value
+    too_many_keys = {f"key-{index}": index for index in range(51)}
+    too_long_key = {"é" * 65: "value"}
+    too_large_object = {f"key-{index}": "v" * 4096 for index in range(5)}
+    response = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox,
+        "contacts": [
+            {"address": "valid@example.com", "metadata": valid_metadata},
+            {"address": "many@example.com", "metadata": too_many_keys},
+            {"address": "key@example.com", "metadata": too_long_key},
+            {"address": "object@example.com", "metadata": too_large_object},
+            {"address": "value@example.com", "metadata": {"value": "é" * 2049}},
+        ],
+    })
+    assert response.status_code == 200, response.text
+    assert (response.json()["created"], response.json()["failed"]) == (1, 4)
+    contact = (await client.get(f"/v1/agents/{inbox}/contacts", headers=ADMIN)).json()[0]
+    assert contact["metadata"] == valid_metadata
+
+
+async def test_json_import_accepts_mailbox_address_and_isolates_overlong_address(client):
+    inbox = "mailbox-import@example.com"
+    await make_agent(client, inbox)
+    response = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox,
+        "contacts": [
+            {"address": "Friendly Person <person@example.com>"},
+            {"address": f"{'a' * 321}@example.com"},
+        ],
+    })
+    assert response.status_code == 200, response.text
+    results = response.json()["results"]
+    assert results[0]["status"] == "created"
+    assert results[0]["address"] == "person@example.com"
+    assert results[1]["status"] == "failed"
+    contacts = (await client.get(f"/v1/agents/{inbox}/contacts", headers=ADMIN)).json()
+    assert [contact["email"] for contact in contacts] == ["person@example.com"]
+
+
+async def test_json_import_reversal_retains_contact_with_later_edited_engagement(client):
+    inbox = "reversal-stage@example.com"
+    await make_agent(client, inbox)
+    imported = await client.post("/v1/contacts/import", headers=ADMIN, json={
+        "agent_email": inbox,
+        "stage": "new",
+        "contacts": [{"address": "person@example.com"}],
+    })
+    assert imported.status_code == 200, imported.text
+    contact = (await client.get(f"/v1/agents/{inbox}/contacts", headers=ADMIN)).json()[0]
+    engagement = (await client.get(f"/v1/agents/{inbox}/engagements", headers=ADMIN)).json()[0]
+    edited = await client.patch(
+        f"/v1/agents/{inbox}/engagements/{engagement['id']}",
+        headers=ADMIN, json={"stage": "waiting"})
+    assert edited.status_code == 200, edited.text
+
+    reversed_batch = await client.delete(
+        f"/v1/agents/{inbox}/contacts/imports/{imported.json()['batch_id']}?confirm=DELETE",
+        headers=ADMIN)
+    assert reversed_batch.status_code == 200, reversed_batch.text
+    assert reversed_batch.json()["deleted"] == 0
+    assert reversed_batch.json()["retained_after_edits"] == 1
+    remaining_contacts = (await client.get(f"/v1/agents/{inbox}/contacts", headers=ADMIN)).json()
+    remaining_engagements = (await client.get(f"/v1/agents/{inbox}/engagements", headers=ADMIN)).json()
+    assert [row["id"] for row in remaining_contacts] == [contact["id"]]
+    assert len(remaining_engagements) == 1
+    assert remaining_engagements[0]["stage"] == "waiting"
+
+
+async def test_inbox_contact_get_patch_delete_accept_address_identifier(client):
+    inbox = "contact-address-path@example.com"
+    await make_agent(client, inbox)
+    created = await client.post(
+        f"/v1/agents/{inbox}/contacts", headers=ADMIN,
+        json={"email": "person@example.com", "name": "Person"},
+    )
+    assert created.status_code == 201, created.text
+    address_path = f"/v1/agents/{inbox}/contacts/person@example.com"
+    assert (await client.get(address_path, headers=ADMIN)).json()["id"] == created.json()["id"]
+    updated = await client.patch(address_path, headers=ADMIN, json={"name": "Updated"})
+    assert updated.status_code == 200 and updated.json()["name"] == "Updated"
+    assert (await client.delete(address_path, headers=ADMIN)).status_code == 204
+
+
 async def test_json_import_skip_mode_and_invalid_row_keep_valid_rows(client):
     inbox = "contacts@example.com"
     await make_agent(client, inbox)

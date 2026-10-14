@@ -176,6 +176,10 @@ export class AgentEmailClient {
     attachments: (inbox: string, id: string) =>
       this.request<Array<{ id: string; filename: string; content_type: string; size_bytes: number }>>(
         "GET", `/v1/agents/${seg(inbox)}/messages/${seg(id)}/attachments`),
+    attachmentByIndex: (inbox: string, id: string, index: number, inline = false) => {
+      if (!Number.isInteger(index) || index < 0) throw new TypeError("attachment index must be a non-negative integer");
+      return this.request<T.AttachmentByIndex>("GET", `/v1/agents/${seg(inbox)}/messages/${seg(id)}/attachments/${index}`, { query: { inline: inline || undefined } });
+    },
     /** Download attachment bytes. */
     downloadAttachment: async (inbox: string, id: string, attachmentId: string): Promise<Uint8Array> => {
       const url = `${this.baseUrl}/v1/agents/${seg(inbox)}/messages/${seg(id)}/attachments/${seg(attachmentId)}`;
@@ -313,6 +317,11 @@ export class AgentEmailClient {
     create: (input: { name: string; agent_email: string; scope?: T.Scope; expires_in_days?: number | null }) =>
       this.request<T.ApiKeyCreated>("POST", "/v1/api-keys", { body: input }),
     revoke: (id: string) => this.request<void>("DELETE", `/v1/api-keys/${seg(id)}`),
+    accountList: (params: { limit?: number; cursor?: string } = {}) =>
+      this.request<T.AccountApiKeyPage>("GET", "/v1/account/api-keys", { query: { limit: params.limit, cursor: params.cursor } }),
+    accountCreate: (input: { name: string; scope: T.AccountKeyScope; agent_email?: string | null; expires_in_days?: number | null }, ro?: T.RequestOptions) =>
+      this.request<T.AccountApiKeyCreated>("POST", "/v1/account/api-keys", { ...this.#idem(ro), body: input }),
+    accountRevoke: (id: string) => this.request<{ deleted: boolean; id: string }>("DELETE", `/v1/account/api-keys/${seg(id)}`, { query: { confirm: "DELETE" } }),
   };
 
   readonly domains = {

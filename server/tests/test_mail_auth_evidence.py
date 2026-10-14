@@ -27,8 +27,41 @@ def test_dkim_evidence_keeps_each_signature_result(monkeypatch):
     assert status == "pass"
     assert passing_domains == ["second.example"]
     assert signatures == [
-        {"status": "fail", "domain": "first.example"},
-        {"status": "pass", "domain": "second.example"},
+        {"status": "fail", "aligned": None, "detail": "Signature did not verify", "domain": "first.example", "selector": "a"},
+        {"status": "pass", "aligned": None, "detail": "Signature verified", "domain": "second.example", "selector": "b"},
+    ]
+
+
+def test_dmarc_exposes_flattened_policy_and_per_signature_alignment(monkeypatch):
+    monkeypatch.setattr(
+        mail_auth,
+        "_dmarc_tree",
+        lambda domain, _deadline: [("example.com", "v=DMARC1; p=reject; adkim=s", {"p": "reject", "adkim": "s"})]
+        if domain in {"example.com", "mail.example.com"}
+        else [(domain, "v=DMARC1; p=none", {"p": "none"})],
+    )
+    details = {}
+    signatures = [
+        {"status": "pass", "domain": "example.com", "selector": "s1"},
+        {"status": "pass", "domain": "example.com", "selector": "s2"},
+    ]
+    result = mail_auth._check_dmarc(
+        b"From: sender@example.com\r\n\r\nbody", "bounce@other.net", "mx.other.net",
+        "fail", "pass", ["example.com", "example.com"], details,
+        signatures,
+    )
+    assert result == "pass"
+    assert details["policy_domain"] == "example.com"
+    assert details["domain"] == "example.com"
+    assert details["effective_policy"] == details["p"] == "reject"
+    assert details["policy_value"] == "reject"
+    assert details["adkim"] == "s" and details["aligned"] is True
+    assert details["aligned_by"] == ["dkim"]
+    assert details["policy"]["effective"] == "reject"
+    assert all(signature["aligned"] is True and "Aligned" in signature["detail"] for signature in signatures)
+    assert details["alignment"]["dkim"] == [
+        {"domain": "example.com", "selector": "s1", "aligned": True, "mode": "s", "policy_domain": "example.com"},
+        {"domain": "example.com", "selector": "s2", "aligned": True, "mode": "s", "policy_domain": "example.com"},
     ]
 
 

@@ -133,9 +133,15 @@ def _send_smtp_sync(
                                      b"list-unsubscribe", b"list-unsubscribe-post"],
                 )
                 message_data = signature.decode("ascii") + message_data
-            except Exception:
-                # A signing failure must not block delivery; the message goes out unsigned.
-                logger.exception("DKIM signing failed; sending unsigned")
+            except Exception as exc:
+                # A managed signing configuration is an explicit promise; never
+                # downgrade it to an unsigned message on a transient/key error.
+                logger.exception("Configured DKIM signing failed; refusing SMTP submission")
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+                return False, f"Configured DKIM signing failed: {type(exc).__name__}"
         submission_started = True
         refused = server.sendmail(from_addr, [to_addr], message_data)
         try:
@@ -197,7 +203,7 @@ class EmailService:
             key = decrypt_secret(domain.dkim_private_key, "domain DKIM private key")
         except RuntimeError as exc:
             logger.error("DKIM key for %s unavailable: %s", domain_name, exc)
-            return None
+            raise RuntimeError("Configured DKIM signing key is unavailable") from exc
         return {"domain": domain.domain, "selector": domain.dkim_selector, "private_key": key}
 
     @classmethod
@@ -258,7 +264,10 @@ class EmailService:
             # Persist before SMTP can accept mail containing this capability.
             await db.commit()
             unsubscribe_url = f"{base_url}/unsubscribe/{raw_token}"
-        dkim_signing = await cls._dkim_signing_for(db, from_addr)
+        try:
+            dkim_signing = await cls._dkim_signing_for(db, from_addr)
+        except RuntimeError as exc:
+            return "failed", str(exc)
         port_num = int(config.port) if str(config.port).isdigit() else 587
         try:
             smtp_password = decrypt_password(config.password)
@@ -408,7 +417,10 @@ class EmailService:
             dmarc_status=dmarc_status,
             auth_evidence=auth_evidence,
             inbound_dedup_hash=inbound_dedup_hash,
-            verified_domain=verified_domain or (sender.split("@")[-1] if "@" in sender else None),
+            # This legacy field is presented as an authenticated domain. Keep it
+            # empty unless DMARC proves the visible From domain aligns.
+            verified_domain=(sender.rsplit("@", 1)[-1].strip().lower() if "@" in sender else None)
+            if dmarc_status == "pass" else None,
             status=status,
             threat_score=scan_result.threat_score,
             threat_details=threat_details_json,

@@ -316,3 +316,69 @@ export interface Stats {
   threats_neutralized: number;
   active_websockets: number;
 }
+
+export interface AccountMetricsSummary {
+  accepted: number;
+  submitted: number;
+  delivered: number;
+  bounced_hard: number;
+  bounced_soft: number;
+  bounced_undetermined: number;
+  complained: number;
+  suppressed: number;
+  loopback: number;
+  send_failed: number;
+  received: number;
+  dmarc_pass: number;
+  dmarc_fail: number;
+  dmarc_none: number;
+  dmarc_error: number;
+  review_held: number;
+  review_approved: number;
+  review_rejected: number;
+  review_expired_approved: number;
+  review_expired_rejected: number;
+}
+
+export interface AccountMetricsRates {
+  delivered_rate: number | null;
+  bounce_rate: number | null;
+  complaint_rate: number | null;
+  suppression_block_rate: number | null;
+}
+
+export interface AccountMetricsAgent {
+  agent_email: string;
+  messages_in_window: number;
+  messages_with_lifecycle: number;
+  reconstructed_observations: number;
+  summary: AccountMetricsSummary;
+  rates: AccountMetricsRates;
+}
+
+export interface AccountMetricsBucket {
+  day: string;
+  summary: AccountMetricsSummary;
+  rates: AccountMetricsRates;
+}
+
+export interface AccountMetrics {
+  start: string;
+  end: string;
+  messages_in_window: number;
+  messages_with_lifecycle: number;
+  reconstructed_observations: number;
+  summary: AccountMetricsSummary;
+  rates: AccountMetricsRates;
+  agents: AccountMetricsAgent[];
+  agents_truncated: boolean;
+  buckets: AccountMetricsBucket[];
+  webhooks: {
+    deliveries: number;
+    delivered: number;
+    pending: number;
+    endpoint_rejected: number;
+    no_response: number;
+    success_rate: number | null;
+  };
+}

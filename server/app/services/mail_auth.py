@@ -52,13 +52,19 @@ def _check_dkim(raw_message: bytes) -> tuple[str, list[str], list[dict[str, str]
 
     evidence: list[dict[str, str]] = []
     for signature in signatures[:MAX_DKIM_SIGNATURES]:
-        match = re.search(r"(?:^|;)\s*d\s*=\s*([^;\s]+)", str(signature), re.IGNORECASE)
-        evidence.append({"status": "unverified", **({"domain": match.group(1).strip().rstrip(".").lower()} if match else {})})
+        fields = {}
+        for name in ("d", "s", "a", "c"):
+            value = re.search(rf"(?:^|;)\s*{name}\s*=\s*([^;\s]+)", str(signature), re.IGNORECASE)
+            if value:
+                key = {"d": "domain", "s": "selector", "a": "algorithm", "c": "canonicalization"}[name]
+                normalized = value.group(1).strip().rstrip(".").lower() if name in {"d", "s"} else value.group(1).strip().lower()
+                fields[key] = normalized
+        evidence.append({"status": "unverified", "aligned": None, "detail": None, **fields})
 
     try:
         verifier = dkim.DKIM(raw_message, timeout=DKIM_QUERY_TIMEOUT_SECONDS)
     except dkim.DKIMException:
-        return "fail", [], [{**item, "status": "fail"} for item in evidence]
+        return "fail", [], [{**item, "status": "fail", "detail": "Malformed DKIM signature"} for item in evidence]
     except Exception:
         logger.exception("Could not initialize DKIM verification")
         return "unverified", [], evidence
@@ -68,24 +74,30 @@ def _check_dkim(raw_message: bytes) -> tuple[str, list[str], list[dict[str, str]
         try:
             if verifier.verify(idx=index):
                 evidence[index]["status"] = "pass"
+                evidence[index]["detail"] = "Signature verified"
                 signing_domain = evidence[index].get("domain")
                 if signing_domain:
                     passing_domains.append(signing_domain)
             else:
                 evidence[index]["status"] = "fail"
+                evidence[index]["detail"] = "Signature did not verify"
         except dns.exception.Timeout:
             evidence[index]["status"] = "temperror"
+            evidence[index]["detail"] = "DNS lookup timed out while checking the signing key"
             return "temperror", passing_domains, evidence
         except dns.resolver.NoNameservers:
             evidence[index]["status"] = "temperror"
+            evidence[index]["detail"] = "No DNS nameserver could answer the signing key lookup"
             return "temperror", passing_domains, evidence
         except dkim.DKIMException:
             # A malformed signature or invalid key fails this signature.
             logger.info("DKIM signature %d did not verify", index)
             evidence[index]["status"] = "fail"
+            evidence[index]["detail"] = "Signature did not verify"
         except Exception:
             logger.exception("Unexpected error during DKIM verification")
             evidence[index]["status"] = "unverified"
+            evidence[index]["detail"] = "Verification could not be completed"
             return "unverified", passing_domains, evidence
 
     # If signatures remain unchecked, a valid signature may be among them.
@@ -175,9 +187,24 @@ def _organizational_domain(domain: str, records: list[tuple[str, str, dict[str, 
     return min((location for location, _record, _tags in records), key=lambda name: len(name.split(".")))
 
 
-def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_status: str, dkim_status: str, dkim_domains: list[str], details: dict | None = None) -> str:
+def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_status: str, dkim_status: str, dkim_domains: list[str], details: dict | None = None, dkim_signatures: list[dict] | None = None) -> str:
     if details is not None:
-        details.update({"policy": None, "alignment": {"spf": None, "dkim": []}})
+        details.update({
+            "policy": None,
+            "policy_domain": None,
+            "domain": None,
+            "policy_value": None,
+            "effective_policy": None,
+            "aligned": None,
+            "spf_aligned": None,
+            "dkim_aligned": [],
+            "aligned_by": [],
+            "p": None,
+            "sp": None,
+            "adkim": None,
+            "aspf": None,
+            "alignment": {"spf": None, "dkim": []},
+        })
     message = email.message_from_bytes(raw_message, policy=policy.default)
     from_headers = message.get_all("From", [])
     addresses = getaddresses([str(value) for value in from_headers])
@@ -214,6 +241,13 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
                 **{tag: policy_tags[tag] for tag in ("p", "sp", "np", "adkim", "aspf", "psd") if tag in policy_tags},
                 "effective": effective_policy,
             }
+            details.update({
+                "policy_domain": policy_domain,
+                "domain": policy_domain,
+                "effective_policy": effective_policy,
+                "policy_value": effective_policy,
+                **{tag: policy_tags.get(tag) for tag in ("p", "sp", "adkim", "aspf")},
+            })
 
         try:
             spf_domain = _normalize_domain(mail_from.rsplit("@", 1)[-1] if mail_from else helo_domain)
@@ -230,11 +264,35 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
         if not candidate_domains:
             if spf_status in {"unverified", "temperror"} or dkim_status in {"unverified", "temperror"}:
                 return "unverified"
+            if details is not None:
+                details["aligned"] = False
+                details["spf_aligned"] = None
+                details["dkim_aligned"] = []
             return "fail"
 
         trees: dict[str, list[tuple[str, str, dict[str, str]]]] = {author_domain: author_tree}
         author_org = _organizational_domain(author_domain, author_tree)
         uncertain_alignment = False
+        aligned_any = False
+        used_dkim_signatures: dict[str, int] = {}
+        aligned_by: list[str] = []
+
+        def record_signature_alignment(identity_domain: str, aligned: bool) -> None:
+            candidates = [item for item in (dkim_signatures or []) if item.get("domain") == identity_domain and item.get("status") == "pass"]
+            sig_index = used_dkim_signatures.get(identity_domain, 0)
+            sig = candidates[sig_index] if sig_index < len(candidates) else None
+            used_dkim_signatures[identity_domain] = sig_index + 1
+            if sig is not None:
+                sig["aligned"] = aligned
+                sig["detail"] = "Aligned with the visible From domain" if aligned else "Not aligned with the visible From domain"
+            if details is not None:
+                details["alignment"]["dkim"].append({
+                    "domain": identity_domain,
+                    "selector": sig.get("selector") if sig else None,
+                    "aligned": aligned,
+                    "mode": dkim_align_mode,
+                    "policy_domain": policy_domain,
+                })
         for mechanism, identity_domain in candidate_domains:
             try:
                 identity_domain = _normalize_domain(identity_domain)
@@ -242,12 +300,15 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
                 uncertain_alignment = True
                 continue
             if identity_domain == author_domain:
+                aligned_any = True
                 if details is not None:
                     if mechanism == "spf":
                         details["alignment"]["spf"] = True
                     else:
-                        details["alignment"]["dkim"].append({"domain": identity_domain, "aligned": True})
-                return "pass"
+                        record_signature_alignment(identity_domain, True)
+                if mechanism not in aligned_by:
+                    aligned_by.append(mechanism)
+                continue
             alignment_mode = spf_align_mode if mechanism == "spf" else dkim_align_mode
             if alignment_mode == "s":
                 aligned = False
@@ -260,16 +321,35 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
                 if mechanism == "spf":
                     details["alignment"]["spf"] = aligned
                 else:
-                    details["alignment"]["dkim"].append({"domain": identity_domain, "aligned": aligned})
+                    record_signature_alignment(identity_domain, aligned)
             if aligned:
-                return "pass"
+                aligned_any = True
+                if mechanism not in aligned_by:
+                    aligned_by.append(mechanism)
             if alignment_mode != "s" and (not trees[identity_domain] or not author_tree):
                 uncertain_alignment = True
 
+        if aligned_any:
+            if details is not None:
+                details["aligned"] = True
+                details["spf_aligned"] = details["alignment"]["spf"]
+                details["dkim_aligned"] = [item["aligned"] for item in details["alignment"]["dkim"]]
+                details["aligned_by"] = aligned_by
+            return "pass"
         if uncertain_alignment:
+            if details is not None:
+                details["aligned"] = None
+                details["spf_aligned"] = details["alignment"]["spf"]
+                details["dkim_aligned"] = [item["aligned"] for item in details["alignment"]["dkim"]]
+                details["aligned_by"] = aligned_by
             return "unverified"
         if spf_status in {"unverified", "temperror"} or dkim_status in {"unverified", "temperror"}:
             return "unverified"
+        if details is not None:
+            details["aligned"] = False
+            details["spf_aligned"] = details["alignment"]["spf"]
+            details["dkim_aligned"] = [item["aligned"] for item in details["alignment"]["dkim"]]
+            details["aligned_by"] = []
         return "fail"
     except (dns.exception.DNSException, DMARCDNSBudgetExceeded):
         logger.info("DMARC DNS lookup was inconclusive for %s", author_domain)
@@ -304,7 +384,8 @@ async def evaluate_inbound_authentication(
     dkim_status, dkim_domains, dkim_signatures = dkim_result
     dmarc_details: dict = {}
     dmarc_result = await asyncio.to_thread(
-        _check_dmarc, raw_message, mail_from, helo_domain, spf_result, dkim_status, dkim_domains, dmarc_details
+        _check_dmarc, raw_message, mail_from, helo_domain, spf_result, dkim_status, dkim_domains,
+        dmarc_details, dkim_signatures,
     )
     message = email.message_from_bytes(raw_message, policy=policy.default)
     from_values = [str(value) for value in message.get_all("From", [])]

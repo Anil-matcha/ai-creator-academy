@@ -14,6 +14,7 @@ import {
   OutboundAttachmentInput,
   ReviewItem,
   Stats,
+  AccountMetrics,
   Domain,
   SmtpConfig,
   ApiKeyItem,
@@ -53,6 +54,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Stats
   getStats: () => request<Stats>("/v1/stats"),
+  getAccountMetrics: () =>
+    request<AccountMetrics>("/v1/metrics?bucket=day&group_by=agent"),
 
   // Agents
   getAgents: () => request<Agent[]>("/v1/agents"),

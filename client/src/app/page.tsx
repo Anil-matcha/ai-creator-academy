@@ -11,12 +11,14 @@ import {
   Plus
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Stats, Message, Agent } from "@/lib/types";
+import { Stats, Message, Agent, AccountMetrics } from "@/lib/types";
 
 export default function OverviewPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [recentMessages, setRecentMessages] = useState<Message[]>([]);
+  const [metrics, setMetrics] = useState<AccountMetrics | null>(null);
+  const [metricsUnavailable, setMetricsUnavailable] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchData = async () => {
@@ -40,11 +42,34 @@ export default function OverviewPage() {
     }
   };
 
+  const fetchMetrics = async () => {
+    try {
+      setMetrics(await api.getAccountMetrics());
+      setMetricsUnavailable(false);
+    } catch {
+      // Account metrics require an administrator credential. Keep the rest of
+      // the overview usable when the endpoint is unavailable or unauthorized.
+      setMetricsUnavailable(true);
+    }
+  };
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 4000);
-    return () => clearInterval(interval);
+    fetchMetrics();
+    const metricsInterval = setInterval(fetchMetrics, 60000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(metricsInterval);
+    };
   }, []);
+
+  const pct = (value: number | null | undefined) =>
+    value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+  const maxDailyMessages = Math.max(
+    1,
+    ...(metrics?.buckets ?? []).map((bucket) => bucket.summary.received + bucket.summary.accepted),
+  );
 
   return (
     <div className="space-y-6">
@@ -84,6 +109,108 @@ export default function OverviewPage() {
           <div className="text-[11px] text-[#8b949e]">Prompt injections blocked</div>
         </div>
       </div>
+
+      {/* Account metrics are optional so a missing admin key never blocks the overview. */}
+      <section className="card-simple p-4 space-y-4" aria-label="Account email metrics">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-semibold text-[#e6edf3] uppercase tracking-wider">
+              Account Metrics <span className="normal-case tracking-normal text-[#8b949e]">· last 30 days</span>
+            </h2>
+            <p className="mt-1 text-[11px] text-[#8b949e]">
+              Lifecycle observations are reconstructed from current message state; they are not a persisted event history.
+            </p>
+          </div>
+          {metrics && (
+            <span className="text-[10px] font-mono rounded border border-[#9e6a03]/40 bg-[#9e6a03]/10 px-2 py-1 text-[#d29922]">
+              {metrics.reconstructed_observations.toLocaleString()} reconstructed observations
+            </span>
+          )}
+        </div>
+
+        {metricsUnavailable ? (
+          <p className="rounded border border-[#30363d] bg-[#0d1117] p-3 text-xs text-[#8b949e]">
+            Account metrics are unavailable. The overview remains active; configure an administrator API credential to load account-wide data.
+          </p>
+        ) : metrics ? (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded border border-[#30363d] bg-[#0d1117] p-3">
+                <div className="text-[10px] text-[#8b949e]">Messages</div>
+                <div className="mt-1 font-mono text-lg text-[#e6edf3]">{metrics.messages_in_window.toLocaleString()}</div>
+                <div className="text-[10px] text-[#8b949e]">{metrics.summary.received} inbound · {metrics.summary.accepted} outbound</div>
+              </div>
+              <div className="rounded border border-[#30363d] bg-[#0d1117] p-3">
+                <div className="text-[10px] text-[#8b949e]">Delivered rate</div>
+                <div className="mt-1 font-mono text-lg text-[#2ea043]">{pct(metrics.rates.delivered_rate)}</div>
+                <div className="text-[10px] text-[#8b949e]">{metrics.summary.delivered} provider-confirmed</div>
+              </div>
+              <div className="rounded border border-[#30363d] bg-[#0d1117] p-3">
+                <div className="text-[10px] text-[#8b949e]">Bounce rate</div>
+                <div className="mt-1 font-mono text-lg text-[#d29922]">{pct(metrics.rates.bounce_rate)}</div>
+                <div className="text-[10px] text-[#8b949e]">{metrics.summary.bounced_hard + metrics.summary.bounced_soft + metrics.summary.bounced_undetermined} observed bounces</div>
+              </div>
+              <div className="rounded border border-[#30363d] bg-[#0d1117] p-3">
+                <div className="text-[10px] text-[#8b949e]">Complaints</div>
+                <div className="mt-1 font-mono text-lg text-[#f85149]">{metrics.summary.complained}</div>
+                <div className="text-[10px] text-[#8b949e]">Rate {pct(metrics.rates.complaint_rate)}</div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)]">
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-[11px] font-medium text-[#c9d1d9]">Daily message volume</h3>
+                  <div className="flex gap-3 text-[10px] text-[#8b949e]">
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-cyan-400" />Inbound</span>
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-blue-400" />Outbound</span>
+                  </div>
+                </div>
+                <div className="flex h-28 items-end gap-1 border-b border-[#30363d] px-1" role="img" aria-label="Daily inbound and outbound message volume for the last 30 days">
+                  {metrics.buckets.map((bucket) => {
+                    const inbound = bucket.summary.received;
+                    const outbound = bucket.summary.accepted;
+                    const total = inbound + outbound;
+                    const height = Math.max(total ? 4 : 1, (total / maxDailyMessages) * 100);
+                    const inboundShare = total ? (inbound / total) * 100 : 0;
+                    const outboundShare = total ? (outbound / total) * 100 : 0;
+                    const label = new Date(bucket.day).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" });
+                    return (
+                      <div key={bucket.day} className="group relative flex h-full flex-1 items-end" title={`${label}: ${inbound} inbound, ${outbound} outbound`}>
+                        <div className="flex w-full flex-col justify-end overflow-hidden rounded-t-sm" style={{ height: `${height}%` }}>
+                          <div className="bg-blue-400" style={{ height: `${outboundShare}%` }} />
+                          <div className="bg-cyan-400" style={{ height: `${inboundShare}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-1 flex justify-between text-[9px] text-[#8b949e]">
+                  <span>{metrics.buckets[0] ? new Date(metrics.buckets[0].day).toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" }) : ""}</span>
+                  <span>Today</span>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-[11px] font-medium text-[#c9d1d9]">By agent</h3>
+                <div className="max-h-36 space-y-2 overflow-y-auto">
+                  {metrics.agents.length === 0 ? (
+                    <p className="text-[11px] text-[#8b949e]">No message activity in this window.</p>
+                  ) : metrics.agents.slice(0, 6).map((agent) => (
+                    <div key={agent.agent_email} className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="min-w-0 truncate font-mono text-[#8b949e]">{agent.agent_email}</span>
+                      <span className="shrink-0 font-mono text-[#e6edf3]">{agent.messages_in_window.toLocaleString()}</span>
+                    </div>
+                  ))}
+                  {metrics.agents_truncated && <p className="text-[10px] text-[#8b949e]">Showing busiest agents.</p>}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-[#8b949e]">Loading account metrics…</p>
+        )}
+      </section>
 
       {/* Main Grid: Messages + Inboxes */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

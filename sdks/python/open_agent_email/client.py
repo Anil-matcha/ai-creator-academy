@@ -39,6 +39,13 @@ class AgentTestSendResult(TypedDict):
     message_id: str
 
 
+class AccountApiKeyInput(TypedDict, total=False):
+    name: str
+    scope: Literal["account", "agent"]
+    agent_email: str | None
+    expires_in_days: int | None
+
+
 class OtpResult(TypedDict, total=False):
     found: bool
     code: str
@@ -54,6 +61,26 @@ class AccountMetricsParams(TypedDict, total=False):
     end: str | datetime.datetime
     bucket: Literal["day"]
     group_by: Literal["agent"]
+
+
+class AccountApiKey(TypedDict, total=False):
+    id: str
+    name: str
+    key_prefix: str
+    scope: Literal["account", "agent"]
+    agent_email: str | None
+    created_at: str
+    expires_at: str | None
+
+
+class AttachmentByIndex(TypedDict, total=False):
+    index: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    download_url: str
+    expires_at: str
+    data: str
 
 
 class MetricsCounter(TypedDict):
@@ -469,6 +496,15 @@ class AgentEmailClient:
         if trashed:
             query["trashed"] = "true"
         return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/messages", query=query)
+
+    def get_attachment_by_index(self, inbox: str, message_id: str, index: int, *, inline: bool = False) -> AttachmentByIndex:
+        """Get attachment metadata and a short-lived signed download URL by zero-based index."""
+        if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+            raise ValueError("index must be a non-negative integer")
+        return self._request(
+            "GET", f"/v1/agents/{self._inbox_path(inbox)}/messages/{quote(message_id, safe='')}/attachments/{index}",
+            query={"inline": "true"} if inline else None,
+        )
 
     def get_message(self, inbox: str, message_id: str) -> Message:
         """Fetch one message by ID."""
@@ -1141,6 +1177,35 @@ class AgentEmailClient:
         )
 
     # ---- webhooks and events (administrator key) -----------------------------------------
+
+    def list_account_api_keys(self, *, limit: int = 100, cursor: str | None = None) -> dict[str, Any]:
+        """List canonical account and agent keys; secret values are never returned."""
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        query: dict[str, str | int | float] = {"limit": limit}
+        if cursor is not None:
+            query["cursor"] = cursor
+        return self._request("GET", "/v1/account/api-keys", query=query)
+
+    def create_account_api_key(
+        self, name: str, *, scope: Literal["account", "agent"], agent_email: str | None = None,
+        expires_in_days: int | None = None, idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a canonical account or inbox key; the secret is returned once."""
+        if scope not in {"account", "agent"}:
+            raise ValueError("scope must be 'account' or 'agent'")
+        if scope == "agent" and not agent_email:
+            raise ValueError("agent_email is required for agent scope")
+        payload: dict[str, Any] = {"name": name, "scope": scope}
+        if agent_email is not None:
+            payload["agent_email"] = agent_email
+        if expires_in_days is not None:
+            payload["expires_in_days"] = expires_in_days
+        return self._request("POST", "/v1/account/api-keys", payload=payload, idempotency_key=idempotency_key)
+
+    def revoke_account_api_key(self, key_id: str) -> dict[str, Any]:
+        """Revoke a canonical account or inbox key."""
+        return self._request("DELETE", f"/v1/account/api-keys/{quote(key_id, safe='')}", query={"confirm": "DELETE"})
 
     def list_webhooks(self, *, agent_email: str | None = None) -> list[dict[str, Any]]:
         query = {"agent_email": agent_email} if agent_email else None
