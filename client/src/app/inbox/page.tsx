@@ -21,7 +21,8 @@ export default function InboxPage() {
   const [selectedAgentEmail, setSelectedAgentEmail] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
-  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [threadMessages, setThreadMessages] = useState<Message[]>([]);
+  const [threadAttachments, setThreadAttachments] = useState<Record<string, MessageAttachment[]>>({});
   const [filterDirection, setFilterDirection] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -83,11 +84,20 @@ export default function InboxPage() {
 
   useEffect(() => {
     let active = true;
-    setAttachments([]);
+    setThreadMessages([]);
+    setThreadAttachments({});
     if (selectedMessage && selectedAgentEmail) {
-      api.getMessageAttachments(selectedAgentEmail, selectedMessage.id)
-        .then((items) => { if (active) setAttachments(items); })
-        .catch((err) => console.error("Failed to load attachments:", err));
+      api.getThread(selectedAgentEmail, selectedMessage.thread_id)
+        .then(async (items) => {
+          if (!active) return;
+          setThreadMessages(items);
+          const entries = await Promise.all(items.map(async (item) => [
+            item.id,
+            await api.getMessageAttachments(selectedAgentEmail, item.id),
+          ] as const));
+          if (active) setThreadAttachments(Object.fromEntries(entries));
+        })
+        .catch((err) => console.error("Failed to load conversation:", err));
     }
     return () => { active = false; };
   }, [selectedAgentEmail, selectedMessage?.id]);
@@ -97,7 +107,8 @@ export default function InboxPage() {
     if (!selectedMessage || !replyText.trim()) return;
     try {
       setSendingReply(true);
-      const reply = await api.replyMessage(selectedAgentEmail, selectedMessage.id, {
+      const latestMessage = threadMessages[threadMessages.length - 1] || selectedMessage;
+      const reply = await api.replyMessage(selectedAgentEmail, latestMessage.id, {
         body_text: replyText,
       });
       setReplyText("");
@@ -364,31 +375,45 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* Message Body */}
-              <div className="p-4 flex-1 overflow-y-auto text-xs text-[#e6edf3] whitespace-pre-wrap leading-relaxed font-sans">
-                {selectedMessage.body_text}
-                {attachments.length > 0 && (
-                  <div className="mt-5 border-t border-[#30363d] pt-3">
-                    <div className="mb-2 text-[11px] font-semibold text-[#8b949e]">Attachments ({attachments.length})</div>
-                    <div className="space-y-1.5">
-                      {attachments.map((attachment) => (
-                        <a
-                          key={attachment.id}
-                          href={`/api/backend/v1/agents/${encodeURIComponent(selectedAgentEmail)}/messages/${selectedMessage.id}/attachments/${attachment.id}`}
-                          className="flex items-center justify-between gap-3 rounded border border-[#30363d] px-3 py-2 text-xs text-[#58a6ff] hover:bg-[#161b22]"
-                        >
-                          <span className="truncate">{attachment.filename}</span>
-                          <span className="shrink-0 text-[#8b949e]">{(attachment.size_bytes / 1024).toFixed(1)} KB</span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedMessage.delivery_error && (
-                  <div className="mt-4 rounded border border-[#f85149]/30 bg-[#f85149]/10 p-3 text-[#f85149]">
-                    Delivery failed: {selectedMessage.delivery_error}
-                  </div>
-                )}
+              {/* Conversation */}
+              <div className="p-4 flex-1 overflow-y-auto space-y-3">
+                {(threadMessages.length ? threadMessages : [selectedMessage]).map((message) => {
+                  const messageAttachments = threadAttachments[message.id] || [];
+                  return (
+                    <article key={message.id} className={`rounded border p-3 ${message.id === selectedMessage.id ? "border-blue-500/50 bg-[#161b22]" : "border-[#30363d] bg-[#0d1117]"}`}>
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[#8b949e]">
+                        <span className="font-mono">
+                          {message.direction === "inbound" ? message.sender : `Agent → ${message.recipient}`}
+                        </span>
+                        <span>{new Date(message.created_at).toLocaleString()} · {message.status.replace("_", " ")}</span>
+                      </div>
+                      <div className="mb-2 text-xs font-semibold text-[#e6edf3]">{message.subject || "(No Subject)"}</div>
+                      <div className="text-xs text-[#c9d1d9] whitespace-pre-wrap leading-relaxed font-sans">{message.body_text}</div>
+                      {message.delivery_error && (
+                        <div className="mt-3 rounded border border-[#f85149]/30 bg-[#f85149]/10 p-2 text-xs text-[#f85149]">
+                          Delivery failed: {message.delivery_error}
+                        </div>
+                      )}
+                      {messageAttachments.length > 0 && (
+                        <div className="mt-3 border-t border-[#30363d] pt-2">
+                          <div className="mb-1.5 text-[10px] font-semibold text-[#8b949e]">Attachments ({messageAttachments.length})</div>
+                          <div className="space-y-1">
+                            {messageAttachments.map((attachment) => (
+                              <a
+                                key={attachment.id}
+                                href={`/api/backend/v1/agents/${encodeURIComponent(selectedAgentEmail)}/messages/${message.id}/attachments/${attachment.id}`}
+                                className="flex items-center justify-between gap-3 rounded border border-[#30363d] px-2.5 py-1.5 text-[11px] text-[#58a6ff] hover:bg-[#161b22]"
+                              >
+                                <span className="truncate">{attachment.filename}</span>
+                                <span className="shrink-0 text-[#8b949e]">{(attachment.size_bytes / 1024).toFixed(1)} KB</span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
 
               <form onSubmit={handleHandoff} className="p-3 border-t border-[#30363d] bg-[#0d1117] space-y-2">

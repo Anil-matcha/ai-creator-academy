@@ -95,7 +95,7 @@ export const api = {
     }),
 
   getThread: (agentEmail: string, threadId: string) =>
-    request<Message[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/thread/${threadId}`),
+    request<Message[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/thread/${encodeURIComponent(threadId)}`),
 
   // Reviews (HITL)
   getReviews: (status?: string) => {
