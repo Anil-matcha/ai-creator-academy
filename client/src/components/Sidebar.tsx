@@ -11,7 +11,8 @@ import {
   Sliders,
   Key,
   Bot,
-  Cpu
+  Cpu,
+  Archive
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -42,6 +43,7 @@ export function Sidebar() {
       icon: ShieldAlert,
       badge: pendingReviews > 0 ? pendingReviews : undefined,
     },
+    { name: "Outbox", href: "/outbox", icon: Archive },
     { name: "Domains & DNS", href: "/domains", icon: Globe },
     { name: "Upstream SMTP", href: "/settings", icon: Sliders },
     { name: "API Keys", href: "/api-keys", icon: Key },

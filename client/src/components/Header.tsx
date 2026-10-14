@@ -54,6 +54,8 @@ export function Header() {
         return { title: "Inboxes", subtitle: "Two-way email threads" };
       case "/reviews":
         return { title: "Review Queue", subtitle: "Held messages awaiting human review" };
+      case "/outbox":
+        return { title: "Outbound Queue", subtitle: "Delivery jobs and retry history" };
       case "/simulator":
         return { title: "Simulator", subtitle: "Test inbound email threat scanner" };
       case "/agents":

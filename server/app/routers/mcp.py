@@ -10,6 +10,7 @@ from app.models import Agent, Message, ReviewItem
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
 from app.services.hitl_service import HitlService
+from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal
 
 router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
@@ -47,6 +48,19 @@ MCP_TOOLS = [
                 "message_id": {"type": "string"}
             },
             "required": ["agent_email", "message_id"]
+        }
+    },
+    {
+        "name": "get_recent_otp",
+        "description": "Find a recent verification code in delivered inbound mail for one agent inbox; returns only the code and minimal message metadata.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_email": {"type": "string"},
+                "since_seconds": {"type": "integer", "minimum": 1, "maximum": 86400, "default": 600},
+                "wait_seconds": {"type": "number", "minimum": 0, "maximum": 10, "default": 0}
+            },
+            "required": ["agent_email"]
         }
     },
     {
@@ -242,7 +256,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         raise PermissionError("Reviewer credential required")
     if name in write_tools and not principal.is_admin and principal.scope != "full_access":
         raise PermissionError("Token does not permit sending messages")
-    if name in {"list_messages", "get_message", *write_tools} and not principal.is_admin:
+    if name in {"list_messages", "get_message", "get_recent_otp", *write_tools} and not principal.is_admin:
         if args.get("agent_email") != principal.agent_email:
             raise PermissionError("Token is not authorized for this agent inbox")
     if name == "list_agents":
@@ -295,6 +309,21 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "auth_evidence": msg.auth_evidence,
             "threat_score": msg.threat_score
         }, indent=2)
+
+    elif name == "get_recent_otp":
+        since_seconds = args.get("since_seconds", 600)
+        wait_seconds = args.get("wait_seconds", 0)
+        if isinstance(since_seconds, bool) or not isinstance(since_seconds, int) or not 1 <= since_seconds <= 86400:
+            raise ValueError("since_seconds must be an integer between 1 and 86400")
+        if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float)) or not 0 <= wait_seconds <= 10:
+            raise ValueError("wait_seconds must be a number between 0 and 10")
+        match = await find_recent_otp(
+            db,
+            args["agent_email"],
+            since_seconds=since_seconds,
+            wait_seconds=float(wait_seconds),
+        )
+        return json.dumps(match or {"found": False})
 
     elif name == "send_message":
         res = await db.execute(select(Agent).where(Agent.email == args["agent_email"]))

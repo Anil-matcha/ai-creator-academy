@@ -5,9 +5,10 @@ from sqlalchemy import select, and_
 
 from app.database import get_db
 from app.models import Agent, Message, MessageAttachment
-from app.schemas import MessageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest
+from app.schemas import MessageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
+from app.services.otp_finder import find_recent_otp
 from app.security import require_agent_access, require_write
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
@@ -32,6 +33,22 @@ async def list_messages(
     query = query.order_by(Message.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/otp", response_model=RecentOtpResponse, summary="Find a recent inbox verification code")
+async def get_recent_otp(
+    email: str,
+    since_seconds: int = Query(600, ge=1, le=86400, description="Search delivered inbound mail from this many seconds ago"),
+    wait_seconds: float = Query(0, ge=0, le=10, description="Wait up to 10 seconds for a matching message"),
+    db: AsyncSession = Depends(get_db),
+):
+    match = await find_recent_otp(
+        db,
+        email,
+        since_seconds=since_seconds,
+        wait_seconds=wait_seconds,
+    )
+    return match or {"found": False}
 
 @router.get("/{message_id}", response_model=MessageResponse)
 async def get_message(email: str, message_id: str, db: AsyncSession = Depends(get_db)):

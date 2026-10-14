@@ -30,7 +30,10 @@ def decrypt_password(stored: str | None) -> str:
         # Existing installations may have plaintext credentials; startup upgrades
         # these when an encryption key is configured.
         return stored
-    token = stored[len(PREFIX):].encode("ascii")
+    try:
+        token = stored[len(PREFIX):].encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise RuntimeError("Stored SMTP credential ciphertext is malformed") from exc
     keys = [settings.SMTP_CONFIG_ENCRYPTION_KEY, settings.SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS]
     if not any(keys):
         raise RuntimeError("SMTP_CONFIG_ENCRYPTION_KEY is required to access encrypted SMTP credentials")
@@ -41,7 +44,7 @@ def decrypt_password(stored: str | None) -> str:
             return _fernet(key).decrypt(token).decode("utf-8")
         except InvalidToken:
             continue
-        except UnicodeEncodeError as exc:
+        except UnicodeDecodeError as exc:
             raise RuntimeError("Stored SMTP credential is not valid UTF-8") from exc
     raise RuntimeError("Stored SMTP credential cannot be decrypted; verify the encryption key and its backup")
 
@@ -54,5 +57,5 @@ def decrypt_with_current_key(stored: str) -> str | None:
         return _fernet(settings.SMTP_CONFIG_ENCRYPTION_KEY).decrypt(stored[len(PREFIX):].encode("ascii")).decode("utf-8")
     except InvalidToken:
         return None
-    except (UnicodeEncodeError, RuntimeError) as exc:
+    except (UnicodeEncodeError, UnicodeDecodeError, RuntimeError) as exc:
         raise RuntimeError("Stored SMTP credential cannot be decrypted; verify the encryption key and its backup") from exc

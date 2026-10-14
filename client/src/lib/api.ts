@@ -8,7 +8,10 @@ import {
   Domain,
   SmtpConfig,
   ApiKeyItem,
-  ApiKeyCreated
+  ApiKeyCreated,
+  OutboundJob,
+  OutboundJobStatus,
+  OutboundRetryEvent
 } from "./types";
 
 const API_BASE = "/api/backend";
@@ -159,6 +162,19 @@ export const api = {
     request<void>(`/v1/api-keys/${id}`, {
       method: "DELETE",
     }),
+
+  // Outbound delivery queue
+  getOutboundJobs: (status?: OutboundJobStatus, limit = 100) => {
+    const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 200)) });
+    if (status) params.set("status", status);
+    return request<OutboundJob[]>(`/v1/outbox?${params.toString()}`);
+  },
+  retryOutboundJob: (jobId: string) =>
+    request<OutboundJob>(`/v1/outbox/${encodeURIComponent(jobId)}/retry`, { method: "POST" }),
+  getOutboundRetryEvents: (jobId: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 200)) });
+    return request<OutboundRetryEvent[]>(`/v1/outbox/${encodeURIComponent(jobId)}/retries?${params.toString()}`);
+  },
 
   // MCP Info
   getMcpInfo: () => request<Record<string, unknown>>("/mcp/info"),

@@ -130,6 +130,30 @@ export interface ApiKeyCreated {
   expires_at?: string | null;
 }
 
+export type OutboundJobStatus = "pending" | "processing" | "complete" | "failed";
+
+export interface OutboundJob {
+  id: string;
+  message_id: string;
+  status: OutboundJobStatus;
+  attempts: number;
+  available_at: string;
+  locked_at?: string | null;
+  last_error?: string | null;
+  retried_by?: string | null;
+  retried_at?: string | null;
+  created_at: string;
+}
+
+export interface OutboundRetryEvent {
+  id: string;
+  job_id: string;
+  actor: string;
+  requested_at: string;
+  previous_attempts: number;
+  previous_error?: string | null;
+}
+
 export interface Stats {
   total_agents: number;
   total_messages: number;

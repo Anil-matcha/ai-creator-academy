@@ -106,6 +106,15 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class RecentOtpResponse(BaseModel):
+    found: bool
+    code: Optional[str] = None
+    message_id: Optional[str] = None
+    received_at: Optional[datetime] = None
+    sender: Optional[str] = None
+    subject: Optional[str] = None
+
+
 class MessageAttachmentResponse(BaseModel):
     id: str
     message_id: str
