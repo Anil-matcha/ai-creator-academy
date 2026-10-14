@@ -193,7 +193,7 @@ async def test_operator_suppression_emits_event(client):
 @pytest.mark.parametrize("kind,source", [("Bounce", "bounce"), ("Complaint", "complaint")])
 async def test_automatic_suppression_emits_event(client, kind, source):
     await make_agent(client, AGENT)
-    await _endpoint(client, events=["agent.suppression_added"])
+    await _endpoint(client, events=["agent.suppression_added", "domain.suppression_added"])
     async with AsyncSessionLocal() as db:
         db.add(Message(id="msg1", agent_email=AGENT, direction="outbound", sender=AGENT, recipient="to@example.com",
                        body_text="b", thread_id="t", rfc_message_id="<1@x>", status="accepted_by_relay",
@@ -210,11 +210,18 @@ async def test_automatic_suppression_emits_event(client, kind, source):
         await db.commit()
     events = await _events("agent.suppression_added")
     assert [e.payload["data"]["source"] for e in events] == [source]
+    domain_events = await _events("domain.suppression_added")
+    assert len(domain_events) == 1
+    assert domain_events[0].payload["data"] == {
+        "address": "to@example.com", "source": source,
+        "reason": "SES complaint" if source == "complaint" else "SES permanent bounce",
+        "message_id": "msg1",
+    }
 
 
 async def test_transient_bounce_does_not_emit_suppression(client):
     await make_agent(client, AGENT)
-    await _endpoint(client, events=["agent.suppression_added"])
+    await _endpoint(client, events=["agent.suppression_added", "domain.suppression_added"])
     async with AsyncSessionLocal() as db:
         db.add(Message(id="msg1", agent_email=AGENT, direction="outbound", sender=AGENT, recipient="to@example.com",
                        body_text="b", thread_id="t", rfc_message_id="<1@x>", status="accepted_by_relay",
@@ -226,6 +233,7 @@ async def test_transient_bounce_does_not_emit_suppression(client):
             "bounceType": "Transient", "bouncedRecipients": [{"emailAddress": "to@example.com"}]}})
         await db.commit()
     assert await _events("agent.suppression_added") == []
+    assert await _events("domain.suppression_added") == []
 
 
 # ---------------------------------------------------------------- domain events
@@ -281,7 +289,8 @@ async def test_domain_events_on_transitions_only(client, dns):
 
 async def test_new_event_types_are_subscribable(client):
     await make_agent(client, AGENT)
-    for name in ("email.sent", "domain.sending_verified", "domain.sending_failed", "agent.suppression_added"):
+    for name in ("email.sent", "domain.sending_verified", "domain.sending_failed",
+                 "domain.suppression_added", "agent.suppression_added"):
         await _endpoint(client, events=[name])
     r = await client.post("/v1/webhooks", headers=ADMIN, json={
         "agent_email": AGENT, "url": "https://example.com/h", "events": ["domain.unknown"]})

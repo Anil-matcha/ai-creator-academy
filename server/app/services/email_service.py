@@ -213,6 +213,7 @@ class EmailService:
         - Local loopback is delivered directly to the recipient inbox.
         - External SMTP success means accepted by the relay, not delivered to the recipient.
         """
+        platform_originated = message.sender != agent.email
         # A suppression may have been added after queuing or while awaiting review.
         # Recheck immediately before either local loopback or external SMTP dispatch.
         if await get_recipient_suppression(db, agent.email, message.recipient):
@@ -220,7 +221,7 @@ class EmailService:
 
         # 1. Local loopback check
         recip_agent_res = await db.execute(select(Agent).where(Agent.email == message.recipient))
-        recip_agent = recip_agent_res.scalar_one_or_none()
+        recip_agent = None if platform_originated else recip_agent_res.scalar_one_or_none()
         if recip_agent:
             logger.info(f"Local loopback delivery to agent {recip_agent.email}")
             await ws_manager.send_agent_message(recip_agent.email, "email.received", {
@@ -244,10 +245,10 @@ class EmailService:
             logger.info(f"Upstream SMTP relay not configured. Could not deliver to {message.recipient}")
             return "failed", "Upstream SMTP relay is not configured or enabled"
 
-        from_addr = config.from_email or agent.email
+        from_addr = message.sender if platform_originated else (config.from_email or agent.email)
         unsubscribe_url = None
         base_url = public_base_url()
-        if base_url:
+        if base_url and not platform_originated:
             raw_token, token_hash = issue_token()
             db.add(UnsubscribeToken(
                 token_hash=token_hash,
@@ -279,7 +280,7 @@ class EmailService:
             body_html=message.body_html,
             in_reply_to=message.in_reply_to,
             references=message.references,
-            reply_to=agent.email,
+            reply_to=None if platform_originated else agent.email,
             custom_msg_id=message.rfc_message_id,
             unsubscribe_url=unsubscribe_url,
             feedback_correlation_id=message.id if settings.SES_FEEDBACK_TOPIC_ARN.strip() else None,
@@ -610,6 +611,7 @@ class EmailService:
         attachments: Optional[List[Dict[str, Any]]] = None,
         idempotency_key: Optional[str] = None,
         send_at: Optional[datetime.datetime] = None,
+        sender: Optional[str] = None,
     ) -> Message:
         """
         Sends an outbound email as the agent.
@@ -632,6 +634,7 @@ class EmailService:
                 raise HTTPException(status_code=400, detail="Idempotency-Key must contain 1 to 128 characters")
             request_fields = {
                 "recipient": recipient,
+                "sender": sender or agent.email,
                 "subject": subject,
                 "body_text": body_text,
                 "body_html": body_html,
@@ -698,7 +701,7 @@ class EmailService:
             agent_email=agent.email,
             direction="outbound",
             is_read=True,
-            sender=agent.email,
+            sender=sender or agent.email,
             recipient=recipient,
             subject=subject,
             body_text=body_text,

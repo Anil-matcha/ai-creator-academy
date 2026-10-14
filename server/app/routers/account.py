@@ -6,7 +6,8 @@ read/write views over those rows, not separate records.
 
 import datetime
 import uuid
-from typing import Optional
+from typing import Optional, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field, field_validator
@@ -14,8 +15,10 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
-from app.models import Agent, Contact, EmailTemplate, RecipientSuppression, WebhookEndpoint
+from app.models import (Agent, Contact, EmailTemplate, Message, RecipientSuppression,
+                        ReviewItem, WebhookDelivery, WebhookEndpoint)
 from app.routers.contacts import _ensure_unique_email
 from app.routers.webhooks import _endpoint_response
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate
@@ -26,6 +29,318 @@ router = APIRouter(tags=["Account"], dependencies=[Depends(require_admin)])
 
 EXPORT_DEFAULT_LIMIT = 5000
 EXPORT_MAX_LIMIT = 20000
+METRICS_DEFAULT_WINDOW = datetime.timedelta(days=30)
+METRICS_MAX_WINDOW = datetime.timedelta(days=92)
+METRICS_MAX_AGENTS = 200
+METRICS_MAX_ENDPOINTS = 50
+
+_SUMMARY_FIELDS = (
+    "accepted", "submitted", "delivered", "bounced_hard", "bounced_soft",
+    "bounced_undetermined", "complained", "suppressed", "loopback", "send_failed",
+    "received", "dmarc_pass", "dmarc_fail", "dmarc_none", "dmarc_error",
+    "review_held", "review_approved", "review_rejected", "review_expired_approved",
+    "review_expired_rejected",
+)
+
+_REASON_META = {
+    "acceptance.outbound_api": ("accepted", "accepted", False),
+    "acceptance.inbound_smtp": ("accepted", "accepted", False),
+    "authentication.dmarc_pass": ("authentication", "passed", False),
+    "authentication.dmarc_fail": ("authentication", "failed", False),
+    "authentication.dmarc_none": ("authentication", "indeterminate", False),
+    "authentication.dmarc_temporary_error": ("authentication", "indeterminate", True),
+    "authentication.dmarc_permanent_error": ("authentication", "indeterminate", False),
+    "review.hold_created": ("review", "pending", False),
+    "review.approved": ("review", "approved", False),
+    "review.rejected": ("review", "rejected", False),
+    "suppression.recipient_blocked": ("suppression", "blocked", False),
+    "submission.upstream_accepted": ("submission", "accepted", False),
+    "submission.local_loopback_accepted": ("submission", "accepted", False),
+    "submission.provider_rejected": ("submission", "failed", False),
+    "delivery.recipient_server_accepted": ("delivery", "delivered", False),
+    "delivery.permanent_bounce": ("delivery", "bounced", False),
+    "delivery.transient_bounce": ("delivery", "bounced", True),
+    "delivery.undetermined_bounce": ("delivery", "bounced", False),
+    "complaint.recipient_reported": ("complaint", "reported", False),
+}
+
+
+def _zero_summary() -> dict:
+    return {name: 0 for name in _SUMMARY_FIELDS}
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    return numerator / denominator if denominator else None
+
+
+def _metrics_rates(summary: dict) -> dict:
+    external_accepted = summary["accepted"] - summary["loopback"]
+    external_submitted = summary["submitted"] - summary["loopback"]
+    bounced = summary["bounced_hard"] + summary["bounced_soft"] + summary["bounced_undetermined"]
+    return {
+        "delivered_rate": _ratio(summary["delivered"], external_accepted),
+        "bounce_rate": _ratio(bounced, external_submitted),
+        "complaint_rate": _ratio(summary["complained"], summary["delivered"]),
+        "suppression_block_rate": _ratio(summary["suppressed"], external_accepted),
+    }
+
+
+def _blank_metrics() -> dict:
+    return {
+        "messages_in_window": 0,
+        "messages_with_lifecycle": 0,
+        "reconstructed_observations": 0,
+        "summary": _zero_summary(),
+        "_counter_rows": {},
+        "_counter_messages": {},
+    }
+
+
+def _observe(metrics: dict, message_id: str, code: str, *, count=1) -> None:
+    stage, outcome, retryable = _REASON_META[code]
+    row = metrics["_counter_rows"].setdefault(code, {
+        "reason_code": code, "stage": stage, "outcome": outcome, "retryable": retryable,
+        "observations": 0, "messages": 0,
+    })
+    row["observations"] += count
+    metrics["_counter_messages"].setdefault(code, set()).add(message_id)
+
+
+def _finalize_metrics(metrics: dict) -> dict:
+    counters = metrics.pop("_counter_rows")
+    message_sets = metrics.pop("_counter_messages")
+    for code, row in counters.items():
+        row["messages"] = len(message_sets[code])
+    return {**metrics, "rates": _metrics_rates(metrics["summary"]),
+            "counters": [counters[key] for key in sorted(counters)]}
+
+
+def _utc(value: datetime.datetime) -> datetime.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
+
+
+def _inferred_observations(message: Message, review: ReviewItem | None) -> list[str]:
+    """Reconstruct the lifecycle facts available from this deployment's durable message rows."""
+    codes = ["acceptance.outbound_api" if message.direction == "outbound" else "acceptance.inbound_smtp"]
+    if message.direction == "inbound":
+        dmarc = str(message.dmarc_status or "").lower()
+        if dmarc in {"pass", "fail", "none"}:
+            codes.append(f"authentication.dmarc_{dmarc}")
+        elif dmarc in {"temperror", "temporary_error"}:
+            codes.append("authentication.dmarc_temporary_error")
+        elif dmarc in {"permerror", "permanent_error"}:
+            codes.append("authentication.dmarc_permanent_error")
+    if review:
+        codes.append("review.hold_created")
+        if review.status == "approved":
+            codes.append("review.approved")
+        elif review.status == "rejected":
+            codes.append("review.rejected")
+    if message.direction == "outbound":
+        if message.status == "accepted_by_relay":
+            codes.append("submission.upstream_accepted")
+        elif message.status == "delivered":
+            codes.append("submission.local_loopback_accepted")
+        elif message.status == "failed":
+            codes.append("submission.provider_rejected")
+        elif message.status == "blocked":
+            codes.append("suppression.recipient_blocked")
+        provider = str(message.provider_delivery_status or "").lower()
+        provider_code = {
+            "delivered": "delivery.recipient_server_accepted",
+            "bounced": "delivery.undetermined_bounce",
+            "complained": "complaint.recipient_reported",
+        }.get(provider)
+        if provider_code:
+            codes.append(provider_code)
+    return codes
+
+
+@router.get("/v1/metrics")
+async def get_account_metrics(
+    start: datetime.datetime | None = Query(None, description="Inclusive RFC 3339 cohort-window start; defaults to 30 days before end."),
+    end: datetime.datetime | None = Query(None, description="Exclusive RFC 3339 cohort-window end; defaults to now."),
+    bucket: Literal["day"] | None = Query(None),
+    group_by: Literal["agent"] | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregate account-owned message lifecycle facts over a half-open cohort window."""
+    window_end = _utc(end or datetime.datetime.now(datetime.timezone.utc))
+    window_start = _utc(start) if start else window_end - METRICS_DEFAULT_WINDOW
+    if window_end <= window_start:
+        raise HTTPException(status_code=400, detail="end must be after start")
+    if window_end - window_start > METRICS_MAX_WINDOW:
+        raise HTTPException(status_code=400, detail="window must not exceed 92 days; request a narrower range")
+
+    # SQLite stores UTC timestamps without an offset; normalize the query bounds
+    # to the same representation while preserving UTC in the response.
+    db_start = window_start.replace(tzinfo=None)
+    db_end = window_end.replace(tzinfo=None)
+    owned_emails = list((await db.execute(
+        select(Agent.email).where(Agent.deleted_at.is_(None)).order_by(Agent.email)
+    )).scalars().all())
+    messages = list((await db.execute(
+        select(Message).join(Agent, Agent.email == Message.agent_email).where(
+            Agent.deleted_at.is_(None), Message.created_at >= db_start, Message.created_at < db_end,
+        ).order_by(Message.created_at, Message.id)
+    )).scalars().all())
+    message_ids = [item.id for item in messages]
+    reviews_by_message = {}
+    if message_ids:
+        reviews = (await db.execute(select(ReviewItem).where(ReviewItem.message_id.in_(message_ids)))).scalars().all()
+        reviews_by_message = {item.message_id: item for item in reviews}
+
+    totals = _blank_metrics()
+    per_agent: dict[str, dict] = {}
+    by_day: dict[datetime.date, dict] = {}
+    for item in messages:
+        agent_email = item.agent_email
+        agent_metrics = per_agent.setdefault(agent_email, _blank_metrics())
+        created_day = _utc(item.created_at).date()
+        daily = by_day.setdefault(created_day, _blank_metrics())
+        review = reviews_by_message.get(item.id)
+        observations = _inferred_observations(item, review)
+        for aggregate in (totals, agent_metrics, daily):
+            aggregate["messages_in_window"] += 1
+            # This deployment has no persisted transition ledger. Keep coverage
+            # honest and mark state-derived facts as reconstructed.
+            for reason_code in observations:
+                aggregate["reconstructed_observations"] += 1
+                _observe(aggregate, item.id, reason_code)
+        summary_sets = (totals["summary"], agent_metrics["summary"], daily["summary"])
+        for summary in summary_sets:
+            if item.direction == "outbound":
+                summary["accepted"] += 1
+            else:
+                summary["received"] += 1
+            dmarc_status = str(item.dmarc_status or "").lower()
+            if item.direction == "inbound":
+                if dmarc_status == "pass":
+                    summary["dmarc_pass"] += 1
+                elif dmarc_status == "fail":
+                    summary["dmarc_fail"] += 1
+                elif dmarc_status == "none":
+                    summary["dmarc_none"] += 1
+                elif dmarc_status in {"temperror", "temporary_error", "permerror", "permanent_error"}:
+                    summary["dmarc_error"] += 1
+            if review:
+                summary["review_held"] += 1
+                if review.status == "approved":
+                    summary["review_approved"] += 1
+                elif review.status == "rejected":
+                    summary["review_rejected"] += 1
+            if item.direction != "outbound":
+                continue
+            status = str(item.status or "").lower()
+            if status == "accepted_by_relay":
+                summary["submitted"] += 1
+            elif status == "delivered":
+                summary["submitted"] += 1
+                summary["loopback"] += 1
+            elif status == "failed":
+                summary["send_failed"] += 1
+            elif status == "blocked":
+                summary["suppressed"] += 1
+            provider_status = str(item.provider_delivery_status or "").lower()
+            if provider_status == "delivered":
+                summary["delivered"] += 1
+            elif provider_status == "complained":
+                summary["complained"] += 1
+            elif provider_status == "bounced":
+                summary["bounced_undetermined"] += 1
+
+    totals = _finalize_metrics(totals)
+    agents = []
+    if group_by == "agent":
+        ordered_agents = sorted(per_agent.items(), key=lambda pair: (-pair[1]["messages_in_window"], pair[0]))
+        agents = [{"agent_email": email, **_finalize_metrics(metrics)}
+                  for email, metrics in ordered_agents[:METRICS_MAX_AGENTS]]
+
+    buckets = []
+    if bucket == "day":
+        day = window_start.date()
+        while day < window_end.date() or (day == window_end.date() and window_end.time() != datetime.time.min):
+            daily = _finalize_metrics(by_day.get(day, _blank_metrics()))
+            buckets.append({
+                "day": datetime.datetime.combine(day, datetime.time.min, tzinfo=datetime.timezone.utc),
+                "summary": daily["summary"], "rates": daily["rates"],
+            })
+            day += datetime.timedelta(days=1)
+
+    # The persisted webhook table uses a smaller outcome vocabulary than the
+    # metrics contract. Failed terminal deliveries are reported separately
+    # from pending rows; endpoint detail only exposes a sanitized host.
+    endpoint_rows = list((await db.execute(
+        select(WebhookEndpoint).where(WebhookEndpoint.agent_email.in_(owned_emails))
+    )).scalars().all()) if owned_emails else []
+    deliveries = list((await db.execute(
+        select(WebhookDelivery).where(
+            WebhookDelivery.agent_email.in_(owned_emails),
+            WebhookDelivery.status != "expired",
+            WebhookDelivery.created_at >= db_start, WebhookDelivery.created_at < db_end,
+        ).order_by(WebhookDelivery.created_at, WebhookDelivery.id)
+    )).scalars().all()) if owned_emails else []
+    endpoint_by_id = {item.id: item for item in endpoint_rows}
+    delivery_counts: dict[str, dict] = {}
+    for delivery in deliveries:
+        counts = delivery_counts.setdefault(delivery.endpoint_id, {
+            "deliveries": 0, "delivered": 0, "pending": 0,
+            "endpoint_rejected": 0, "no_response": 0, "last_status_code": None,
+        })
+        counts["deliveries"] += 1
+        if delivery.status == "delivered":
+            counts["delivered"] += 1
+        elif delivery.status in {"pending", "processing"}:
+            counts["pending"] += 1
+        elif delivery.status == "failed":
+            error = str(delivery.last_error or "")
+            if error.startswith("http_status_") and error[12:].isdigit():
+                counts["endpoint_rejected"] += 1
+                counts["last_status_code"] = int(error[12:])
+            else:
+                counts["no_response"] += 1
+    endpoint_metrics = []
+    for endpoint_id, counts in sorted(delivery_counts.items(), key=lambda pair: (-pair[1]["deliveries"], pair[0])):
+        endpoint = endpoint_by_id.get(endpoint_id)
+        if endpoint is None:
+            continue
+        endpoint_metrics.append({
+            "webhook_id": endpoint.id,
+            "url_host": urlsplit(endpoint.url).hostname or "",
+            "deliveries": counts["deliveries"],
+            "delivered": counts["delivered"],
+            "pending": counts["pending"],
+            "endpoint_rejected": counts["endpoint_rejected"],
+            "no_response": counts["no_response"],
+            "success_rate": _ratio(counts["delivered"], counts["delivered"] + counts["endpoint_rejected"] + counts["no_response"]),
+            "last_status_code": counts["last_status_code"],
+            "enabled": endpoint.enabled,
+            "auto_disabled_at": None,
+            "auto_disable_reason": "",
+        })
+    webhook_delivered = sum(row["delivered"] for row in delivery_counts.values())
+    webhook_pending = sum(row["pending"] for row in delivery_counts.values())
+    webhook_rejected = sum(row["endpoint_rejected"] for row in delivery_counts.values())
+    webhook_no_response = sum(row["no_response"] for row in delivery_counts.values())
+    endpoints_truncated = len(endpoint_metrics) > METRICS_MAX_ENDPOINTS
+    endpoint_metrics = endpoint_metrics[:METRICS_MAX_ENDPOINTS]
+    webhooks = {
+        "deliveries": len(deliveries), "delivered": webhook_delivered, "pending": webhook_pending,
+        "endpoint_rejected": webhook_rejected, "no_response": webhook_no_response,
+        "success_rate": _ratio(webhook_delivered, webhook_delivered + webhook_rejected + webhook_no_response),
+        "window_exceeds_retention": window_start < window_end - datetime.timedelta(
+            days=settings.WEBHOOK_DELIVERY_RETENTION_DAYS),
+        "endpoints_auto_disabled": 0, "endpoints": endpoint_metrics,
+        "endpoints_truncated": endpoints_truncated,
+    }
+    return {
+        "start": window_start, "end": window_end,
+        **totals,
+        "agents": agents, "agents_truncated": group_by == "agent" and len(per_agent) > METRICS_MAX_AGENTS,
+        "buckets": buckets, "webhooks": webhooks,
+    }
 
 
 def _normalize_address(address: str) -> str:

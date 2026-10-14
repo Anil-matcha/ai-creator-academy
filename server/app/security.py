@@ -55,19 +55,24 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
     if (
         not api_key
         or (api_key.expires_at is not None and api_key.expires_at <= datetime.datetime.utcnow())
-        or not api_key.agent_email
-        or api_key.scope not in {"read_only", "full_access", "reviewer"}
+        or (api_key.scope == "account" and api_key.agent_email is not None)
+        or (api_key.scope == "agent" and not api_key.agent_email)
+        or (api_key.scope not in {"account", "agent", "read_only", "full_access", "reviewer"})
     ):
         raise _unauthorized()
 
     # Keys of a soft-deleted inbox stop working until it is restored.
-    owner_deleted = await db.scalar(select(Agent.deleted_at).where(Agent.email == api_key.agent_email))
-    if owner_deleted is not None:
-        raise _unauthorized()
+    if api_key.scope == "account":
+        return Principal(is_admin=True, scope="account", principal_id=f"api_key:{api_key.id}")
+
+    if api_key.agent_email:
+        owner_deleted = await db.scalar(select(Agent.deleted_at).where(Agent.email == api_key.agent_email))
+        if owner_deleted is not None:
+            raise _unauthorized()
 
     return Principal(
         is_admin=False,
-        scope=api_key.scope,
+        scope="full_access" if api_key.scope == "agent" else api_key.scope,
         agent_email=api_key.agent_email,
         principal_id=f"api_key:{api_key.id}",
     )

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AgentEmailClient, AgentEmailError, attachmentFromBytes, paginate, type FetchLike } from "../src/index.js";
+import { AgentEmailClient, AgentEmailError, attachmentFromBytes, paginate, type AccountMetrics, type FetchLike } from "../src/index.js";
 
 interface Call { url: URL; method: string; headers: Record<string, string>; body: string | undefined }
 
@@ -37,6 +37,48 @@ test("undefined query params are omitted", async () => {
   await client.messages.otp(INBOX, { sinceSeconds: 60 });
   assert.equal(calls[0]!.url.searchParams.get("since_seconds"), "60");
   assert.equal(calls[0]!.url.searchParams.has("wait_seconds"), false);
+});
+
+test("account metrics sends cohort filters with bearer auth and returns the typed view", async () => {
+  const payload: AccountMetrics = {
+    start: "2026-01-01T00:00:00Z", end: "2026-01-02T00:00:00Z",
+    messages_in_window: 1, messages_with_lifecycle: 1, reconstructed_observations: 0,
+    summary: {
+      accepted: 1, submitted: 1, delivered: 0, bounced_hard: 0, bounced_soft: 0,
+      bounced_undetermined: 0, complained: 0, suppressed: 0, loopback: 0, send_failed: 0,
+      received: 0, dmarc_pass: 0, dmarc_fail: 0, dmarc_none: 0, dmarc_error: 0,
+      review_held: 0, review_approved: 0, review_rejected: 0, review_expired_approved: 0,
+      review_expired_rejected: 0,
+    },
+    rates: { delivered_rate: 0, bounce_rate: 0, complaint_rate: null, suppression_block_rate: 0 },
+    counters: [], agents: [], agents_truncated: false, buckets: [],
+    webhooks: {
+      deliveries: 0, delivered: 0, pending: 0, endpoint_rejected: 0, no_response: 0,
+      success_rate: null, window_exceeds_retention: false, endpoints_auto_disabled: 0,
+      endpoints: [], endpoints_truncated: false,
+    },
+  };
+  const { client, calls } = mock({ json: payload });
+  const result = await client.account.metrics({
+    start: new Date("2026-01-01T00:00:00Z"), end: "2026-01-02T00:00:00+00:00",
+    bucket: "day", group_by: "agent",
+  });
+  const call = calls[0]!;
+  assert.equal(call.method, "GET");
+  assert.equal(call.url.pathname, "/v1/metrics");
+  assert.equal(call.headers.Authorization, "Bearer secret-key");
+  assert.equal(call.url.searchParams.get("start"), "2026-01-01T00:00:00.000Z");
+  assert.equal(call.url.searchParams.get("end"), "2026-01-02T00:00:00+00:00");
+  assert.equal(call.url.searchParams.get("bucket"), "day");
+  assert.equal(call.url.searchParams.get("group_by"), "agent");
+  const typedResult: AccountMetrics = result;
+  assert.equal(typedResult.summary.accepted, 1);
+  assert.equal(typedResult.rates.complaint_rate, null);
+});
+
+test("account metrics rejects timezone-naive window bounds", () => {
+  const { client } = mock();
+  assert.throws(() => client.account.metrics({ start: "2026-01-01T00:00:00" }), /timezone offset/);
 });
 
 test("send passes Idempotency-Key and serialises Date schedule as scheduled_at", async () => {
@@ -170,6 +212,20 @@ test("contact CSV import sends raw text/csv and reverse requires confirm", async
   assert.equal(calls[1]!.method, "DELETE");
   assert.equal(calls[1]!.url.searchParams.get("confirm"), "DELETE");
   assert.ok(calls[1]!.url.pathname.endsWith("/imports/batch%201"));
+});
+
+test("structured contact import selects an inbox and supports idempotent merge requests", async () => {
+  const { client, calls } = mock({ json: {} });
+  await client.contacts.importStructured(INBOX, [{ email: "a@example.com", display_name: "A", metadata: { plan: "pro" }, stage: "new" }], {
+    onConflict: "merge", idempotencyKey: "contacts-import-1",
+  });
+  assert.equal(calls[0]!.url.pathname, "/v1/contacts/import");
+  assert.equal(calls[0]!.headers["Idempotency-Key"], "contacts-import-1");
+  assert.deepEqual(JSON.parse(calls[0]!.body!), {
+    agent_email: INBOX,
+    contacts: [{ email: "a@example.com", display_name: "A", metadata: { plan: "pro" }, stage: "new" }],
+    on_conflict: "merge",
+  });
 });
 
 test("review decisions include the action the server requires", async () => {

@@ -62,6 +62,28 @@ class ContactCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     company: str = Field("", max_length=255)
     notes: str = Field("", max_length=4000)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_contact_metadata(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        import json
+        if not isinstance(value, dict) or len(value) > 50:
+            raise ValueError("Metadata must be a flat object with at most 50 keys")
+        for key, item in value.items():
+            if not isinstance(key, str) or not key or len(key) > 64:
+                raise ValueError("Metadata keys must be nonempty strings of at most 64 characters")
+            if item is not None and not isinstance(item, (str, int, float, bool)):
+                raise ValueError("Metadata values must be flat scalar values")
+            if isinstance(item, str) and len(item) > 1000:
+                raise ValueError("Metadata string values must be at most 1,000 characters")
+        try:
+            serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Metadata values must be valid JSON scalars") from exc
+        if len(serialized.encode("utf-8")) > 8192:
+            raise ValueError("Metadata must be at most 8 KB")
+        return value
 
     @field_validator("email", mode="before")
     @classmethod
@@ -92,6 +114,14 @@ class ContactUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     company: Optional[str] = Field(None, max_length=255)
     notes: Optional[str] = Field(None, max_length=4000)
+    metadata_json: Optional[Dict[str, Any]] = Field(None, validation_alias="metadata", serialization_alias="metadata")
+
+    @field_validator("metadata_json")
+    @classmethod
+    def validate_contact_metadata(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if value is None:
+            return None
+        return ContactCreate(email="metadata@example.com", name="metadata", metadata=value).metadata
 
     @field_validator("email", mode="before")
     @classmethod
@@ -126,6 +156,7 @@ class ContactResponse(BaseModel):
     name: str
     company: str
     notes: str
+    metadata: Dict[str, Any] = Field(default_factory=dict, validation_alias="metadata_json")
     created_at: datetime
     updated_at: datetime
 
@@ -634,6 +665,14 @@ class ApiKeyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ApiKeyPageResponse(BaseModel):
+    items: List[ApiKeyResponse]
+    next_cursor: Optional[str] = None
+
+class ApiKeyDeleteResponse(BaseModel):
+    deleted: bool
+    id: str
+
 class ApiKeyCreatedResponse(BaseModel):
     id: str
     name: str
@@ -641,6 +680,52 @@ class ApiKeyCreatedResponse(BaseModel):
     prefix: str
     scope: str
     agent_email: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+
+
+class AccountApiKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    scope: str = Field(..., pattern="^(account|agent)$")
+    agent_email: Optional[str] = None
+    expires_in_days: Optional[int] = Field(90, ge=1, le=3650)
+
+    @model_validator(mode="after")
+    def validate_scope_owner(self):
+        if self.scope == "account" and self.agent_email is not None:
+            raise ValueError("account-scoped keys cannot include agent_email")
+        if self.scope == "agent" and not self.agent_email:
+            raise ValueError("agent-scoped keys require agent_email")
+        return self
+
+
+class AccountApiKeyResponse(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    scope: str
+    agent_email: Optional[str] = None
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+
+    @classmethod
+    def from_key(cls, key):
+        return cls(id=key.id, name=key.name, key_prefix=key.prefix, scope=key.scope,
+                   agent_email=key.agent_email, created_at=key.created_at, expires_at=key.expires_at)
+
+
+class AccountApiKeyPageResponse(BaseModel):
+    items: List[AccountApiKeyResponse]
+    next_cursor: Optional[str] = None
+
+
+class AccountApiKeyCreatedResponse(BaseModel):
+    id: str
+    name: str
+    key: str
+    key_prefix: str
+    scope: str
+    agent_email: Optional[str] = None
     created_at: datetime
     expires_at: Optional[datetime] = None
 

@@ -2,18 +2,19 @@ import base64
 import binascii
 import json
 import re
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update
 
 from app.database import get_db
-from app.models import Agent, EmailTemplate, Message, MessageAttachment, OutboundJob, OutboundRetryEvent, ReviewItem
+from app.models import Agent, EmailTemplate, Message, MessageAttachment, OutboundJob, OutboundRetryEvent, ReviewItem, SmtpConfig
 from app.schemas import MessageResponse, MessagePageResponse, MessageAttachmentResponse, MessageLabelsUpdate, MessageSendRequest, MessageReplyRequest, MessageForwardRequest, RecentOtpResponse
 from app.services.email_service import EmailService
 from app.services.attachment_utils import decode_attachment_inputs
-from app.services.attachment_utils import make_attachment_download_url
+from app.services.attachment_utils import ATTACHMENT_URL_TTL_SECONDS, make_attachment_download_url
 from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal, require_agent_access, require_write
 from app.services.message_purge import purge_blocker, purge_message
@@ -25,6 +26,40 @@ def _trash_filter(trashed: bool):
 
 
 router = APIRouter(prefix="/v1/agents/{email}/messages", tags=["Messages"], dependencies=[Depends(require_agent_access)])
+test_router = APIRouter(tags=["Agents"], dependencies=[Depends(require_agent_access)])
+
+
+class AgentTestSendResult(BaseModel):
+    status: str
+    message_id: str
+
+
+@test_router.post("/v1/agents/{email}/test", response_model=AgentTestSendResult, status_code=202,
+                 dependencies=[Depends(require_write)], operation_id="test_agent")
+async def test_agent_send(email: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Queue a platform-originated message to the agent's own external inbox."""
+    agent = await db.scalar(select(Agent).where(Agent.email == email, Agent.deleted_at.is_(None)))
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    smtp_config = await db.get(SmtpConfig, "default")
+    platform_sender = (smtp_config.from_email if smtp_config else "").strip() or "noreply@open-agent-email.dev"
+    if platform_sender.casefold() == agent.email.casefold():
+        platform_sender = "noreply@open-agent-email.dev"
+    if platform_sender.casefold() == agent.email.casefold():
+        platform_sender = "inbox-test@open-agent-email.dev"
+    message = await EmailService.send_outbound(
+        db=db,
+        agent=agent,
+        recipient=agent.email,
+        subject="Your inbox test message",
+        body_text="This test message was sent by the email platform to verify delivery to your inbox.",
+        idempotency_key=request.headers.get("Idempotency-Key"),
+        sender=platform_sender,
+    )
+    return AgentTestSendResult(
+        status="pending_review" if message.status == "pending_review" else "accepted",
+        message_id=message.id,
+    )
 
 
 async def _outbound_content(email: str, payload, db: AsyncSession, *, reply_subject: str | None = None):
@@ -376,13 +411,61 @@ async def list_message_attachments(email: str, message_id: str, db: AsyncSession
     if not message_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Message not found")
     result = await db.execute(
-        select(MessageAttachment).where(MessageAttachment.message_id == message_id).order_by(MessageAttachment.created_at)
+        select(MessageAttachment).where(MessageAttachment.message_id == message_id)
+        .order_by(MessageAttachment.created_at, MessageAttachment.id)
     )
     return [
         {**MessageAttachmentResponse.model_validate(item).model_dump(),
          "download_url": make_attachment_download_url(email, message_id, item.id)}
         for item in result.scalars().all()
     ]
+
+ATTACHMENT_INLINE_MAX_BYTES = 256 * 1024
+
+
+@router.get("/{message_id}/attachments/{index:int}", operation_id="getAttachment")
+async def get_message_attachment_by_index(
+    email: str,
+    message_id: str,
+    index: int,
+    inline: bool = Query(False, description="Include base64 data for attachments up to 256 KB."),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return metadata and a short-lived URL for an attachment's zero-based index."""
+    if index < 0:
+        raise HTTPException(status_code=422, detail="Attachment index must be non-negative")
+    result = await db.execute(
+        select(MessageAttachment)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(Message.id == message_id, Message.agent_email == email)
+        .order_by(MessageAttachment.created_at, MessageAttachment.id)
+        .offset(index)
+        .limit(1)
+    )
+    attachment = result.scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    size_bytes = len(attachment.content)
+    if inline and size_bytes > ATTACHMENT_INLINE_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Inline attachment exceeds {ATTACHMENT_INLINE_MAX_BYTES} byte limit; use download_url",
+        )
+
+    now = int(time.time())
+    expires = now + ATTACHMENT_URL_TTL_SECONDS
+    response = {
+        "index": index,
+        "filename": attachment.filename,
+        "content_type": attachment.content_type,
+        "size_bytes": size_bytes,
+        "download_url": make_attachment_download_url(email, message_id, attachment.id, now=now),
+        "expires_at": datetime.fromtimestamp(expires, tz=timezone.utc).isoformat(),
+    }
+    if inline:
+        response["data"] = base64.b64encode(attachment.content).decode("ascii")
+    return response
+
 
 @router.get("/{message_id}/attachments/{attachment_id}")
 async def download_message_attachment(email: str, message_id: str, attachment_id: str, db: AsyncSession = Depends(get_db)):

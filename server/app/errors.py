@@ -69,6 +69,7 @@ CATALOG: dict[str, ErrorCode] = {
     # size and rate limits
     "payload_too_large": ErrorCode(413, "The request body or upload exceeds the size limit.", "Send less data."),
     "attachment_limit_exceeded": ErrorCode(413, "Too many or too large attachments.", "Reduce attachments."),
+    "attachment_too_large": ErrorCode(413, "Inline attachment exceeds the size limit.", "Use the signed download URL instead."),
     "rate_limited": ErrorCode(429, "Too many requests from this client.", "Wait `Retry-After` seconds, then retry."),
     # server side
     "encryption_key_missing": ErrorCode(503, "A required encryption key is not configured or unusable.", "Operator must set SMTP_CONFIG_ENCRYPTION_KEY."),
@@ -112,6 +113,7 @@ _RULES: list[tuple[int | None, str, str]] = [
     (400, r"invalid .*status", "invalid_filter"),
     (400, r"confirm=delete", "confirmation_required"),
     (400, r"smtp relay host is not configured", "smtp_not_configured"),
+    (413, r"inline attachment", "attachment_too_large"),
     (413, r"attachment", "attachment_limit_exceeded"),
     (422, r"suppress", "suppressed_recipient"),
     (422, r"attachment", "invalid_attachment"),

@@ -249,6 +249,29 @@ async def enqueue_suppression_added_webhook_event(
         }, created_at)
 
 
+async def enqueue_domain_suppression_added_webhook_event(
+    db: AsyncSession,
+    *,
+    agent_email: str,
+    address: str,
+    source: str,
+    reason: str | None,
+    message_id: str,
+    created_at: datetime.datetime,
+) -> None:
+    """Queue a durable provider-feedback suppression event for the affected inbox."""
+    event_type = "domain.suppression_added"
+    for endpoint in await _subscribed_endpoints(db, agent_email, event_type):
+        _queue(db, endpoint, event_type, {
+            "id": f"evt_{uuid.uuid4().hex}",
+            "address": address,
+            "source": source,
+            "reason": (reason or "")[:200] or None,
+            "message_id": message_id,
+            "created_at": created_at.isoformat(),
+        }, created_at)
+
+
 async def enqueue_domain_webhook_event(
     db: AsyncSession,
     *,

@@ -28,6 +28,40 @@ async def test_account_routes_are_admin_only(client, method, path):
     assert (await client.request(method, path, headers=key, json={} if method == "PATCH" else None)).status_code == 403
 
 
+async def test_account_api_key_compatibility_routes(client):
+    await make_agent(client, A)
+    path = "/v1/account/api-keys"
+    payload = {"name": "Canonical route key", "agent_email": A, "scope": "agent", "expires_in_days": 30}
+
+    assert (await client.get(path)).status_code == 401
+    inbox_key, _ = await make_key(client, A, "full_access")
+    assert (await client.get(path, headers=inbox_key)).status_code == 403
+    assert (await client.post(path, headers=inbox_key, json=payload)).status_code == 403
+
+    created = await client.post(path, headers=ADMIN, json=payload)
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["name"] == payload["name"]
+    assert body["scope"] == payload["scope"]
+    assert body["agent_email"] == A
+    assert body["key_prefix"]
+    assert body["key"]
+
+    listed = await client.get(path, headers=ADMIN)
+    assert listed.status_code == 200
+    page = listed.json()
+    records = page["items"]
+    assert page["next_cursor"] is None
+    assert any(item["id"] == body["id"] and item["key_prefix"] == body["key_prefix"] for item in records)
+    assert all("key" not in item for item in records)
+
+    assert (await client.delete(f"{path}/{body['id']}", headers=ADMIN)).status_code == 422
+    assert (await client.delete(f"{path}/{body['id']}?confirm=NO", headers=ADMIN)).status_code == 422
+    revoked = await client.delete(f"{path}/{body['id']}?confirm=DELETE", headers=ADMIN)
+    assert revoked.status_code == 200 and revoked.json() == {"deleted": True, "id": body["id"]}
+    assert (await client.delete(f"{path}/{body['id']}?confirm=DELETE", headers=ADMIN)).status_code == 404
+
+
 async def test_account_suppressions_aggregate_and_remove(client):
     await make_agent(client, A)
     await make_agent(client, B)

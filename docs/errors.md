@@ -48,6 +48,7 @@ Every error keeps its HTTP status and the historical `detail` field, and adds a 
 | `send_in_progress` | 409 | The scheduled message is already being submitted. | Do not retry; check message status. |
 | `webhook_disabled` | 409 | The webhook endpoint is disabled. | Enable it, then retry. |
 | `attachment_limit_exceeded` | 413 | Too many or too large attachments. | Reduce attachments. |
+| `attachment_too_large` | 413 | Inline attachment exceeds the size limit. | Use the signed download URL instead. |
 | `payload_too_large` | 413 | The request body or upload exceeds the size limit. | Send less data. |
 | `idempotency_key_reuse` | 422 | The Idempotency-Key was already used with a different request. | Use a fresh key for a different request. |
 | `invalid_attachment` | 422 | An attachment is missing fields, has a bad type, or is not valid base64. | Fix the attachment. |

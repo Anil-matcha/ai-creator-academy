@@ -43,8 +43,10 @@ export interface MessagePageParams {
   status?: MessageStatus; q?: string; cursor?: string;
 }
 
-export interface Contact { id: string; agent_email: string; email: string; name: string; company: string; notes: string; created_at: string; updated_at: string }
-export interface ContactInput { email: string; name: string; company?: string; notes?: string }
+export interface Contact { id: string; agent_email: string; email: string; name: string; company: string; notes: string; metadata: Record<string, string | number | boolean | null>; created_at: string; updated_at: string }
+export interface ContactInput { email: string; name: string; company?: string; notes?: string; metadata?: Record<string, string | number | boolean | null> }
+export interface ContactImportRow { email: string; display_name?: string; company?: string; notes?: string; metadata?: Record<string, string | number | boolean | null>; suppressed?: boolean; stage?: EngagementStage }
+export interface ContactImportResult { batch_id: string; created: number; updated: number; skipped: number; failed: number; results: Array<{ row: number; email?: string | null; status: "created" | "updated" | "skipped" | "failed"; reason?: string; contact_id?: string; suppressed?: boolean }>; notice: string }
 export interface ConsentEvent { id: number; agent_email: string; contact_id: string; action: "granted" | "revoked"; source: string; evidence: string; note: string; created_at: string }
 export interface ConsentHistory { current: "granted" | "revoked" | "unknown"; events: ConsentEvent[] }
 export type EngagementStage = "new" | "contacted" | "waiting" | "closed";
@@ -62,11 +64,53 @@ export interface Webhook { id: string; agent_email: string; url: string; enabled
 export interface WebhookCreated extends Webhook { signing_secret: string }
 export interface WebhookDelivery { id: string; endpoint_id: string; agent_email: string; event_type: string; payload: Record<string, unknown>; status: string; attempts: number; last_error: string | null; created_at: string; delivered_at: string | null; replayed_by?: string | null; replayed_at?: string | null; replay_count?: number }
 export interface Agent { id: string; email: string; display_name: string; description: string; status: string; threat_sensitivity: string; hitl_enabled: boolean; auto_reply_enabled: boolean; auto_reply_prompt: string; created_at: string; updated_at: string }
+export interface AgentTestSendResult { status: "accepted" | "pending_review"; message_id: string }
 export interface AgentInput { email: string; display_name: string; description?: string; threat_sensitivity?: string; hitl_enabled?: boolean; auto_reply_enabled?: boolean; auto_reply_prompt?: string }
 export interface ApiKey { id: string; name: string; prefix: string; scope: Scope; agent_email: string; created_at: string; expires_at: string | null }
 export interface ApiKeyCreated extends ApiKey { key: string }
 export interface Domain { id: string; domain: string; status: string; [extra: string]: unknown }
 export interface Protection { threat_sensitivity: "off" | "low" | "medium" | "high"; hitl_enabled: boolean }
 export interface AgentMetrics { agent_email: string; messages: { inbound: number; outbound: number }; by_status: Record<string, Record<string, number>>; unread: number; pending_reviews: number }
+export interface AccountMetricsParams {
+  /** Inclusive RFC 3339 cohort-window start; defaults to 30 days before end. */
+  start?: string | Date;
+  /** Exclusive RFC 3339 cohort-window end; defaults to now. */
+  end?: string | Date;
+  bucket?: "day";
+  group_by?: "agent";
+}
+export interface MetricsCounter {
+  reason_code: string; stage: string; outcome: string; retryable: boolean; observations: number; messages: number;
+}
+export interface MetricsRates {
+  delivered_rate: number | null; bounce_rate: number | null; complaint_rate: number | null; suppression_block_rate: number | null;
+}
+export interface MetricsSummary {
+  accepted: number; submitted: number; delivered: number; bounced_hard: number; bounced_soft: number;
+  bounced_undetermined: number; complained: number; suppressed: number; loopback: number; send_failed: number;
+  received: number; dmarc_pass: number; dmarc_fail: number; dmarc_none: number; dmarc_error: number;
+  review_held: number; review_approved: number; review_rejected: number;
+  review_expired_approved: number; review_expired_rejected: number;
+}
+export interface AgentMetricsGroup {
+  agent_email: string; messages_in_window: number; messages_with_lifecycle: number;
+  reconstructed_observations: number; summary: MetricsSummary; rates: MetricsRates; counters: MetricsCounter[];
+}
+export interface MetricsBucket { day: string; summary: MetricsSummary; rates: MetricsRates }
+export interface WebhookEndpointMetrics {
+  webhook_id: string; url_host: string; deliveries: number; delivered: number; pending: number;
+  endpoint_rejected: number; no_response: number; success_rate: number | null; last_status_code: number | null;
+  enabled: boolean; auto_disabled_at: string | null; auto_disable_reason: string;
+}
+export interface WebhookMetrics {
+  deliveries: number; delivered: number; pending: number; endpoint_rejected: number; no_response: number;
+  success_rate: number | null; window_exceeds_retention: boolean; endpoints_auto_disabled: number;
+  endpoints: WebhookEndpointMetrics[]; endpoints_truncated: boolean;
+}
+export interface AccountMetrics {
+  start: string; end: string; messages_in_window: number; messages_with_lifecycle: number;
+  reconstructed_observations: number; summary: MetricsSummary; rates: MetricsRates; counters: MetricsCounter[];
+  agents: AgentMetricsGroup[]; agents_truncated: boolean; buckets: MetricsBucket[]; webhooks: WebhookMetrics;
+}
 export interface ServerInfo { name: string; version: string; api_version: string; shared_domain: string; mcp_endpoint: string; features: string[] }
 export interface WhoAmI { kind: "admin" | "agent_key"; scope: string; agent_email: string | null; principal_id: string }

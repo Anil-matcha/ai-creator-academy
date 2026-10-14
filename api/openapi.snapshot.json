@@ -1,6 +1,198 @@
 {
   "components": {
     "schemas": {
+      "AccountApiKeyCreate": {
+        "properties": {
+          "agent_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Email"
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 90,
+            "title": "Expires In Days"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "pattern": "^(account|agent)$",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ],
+        "title": "AccountApiKeyCreate",
+        "type": "object"
+      },
+      "AccountApiKeyCreatedResponse": {
+        "properties": {
+          "agent_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Email"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "key",
+          "key_prefix",
+          "scope",
+          "created_at"
+        ],
+        "title": "AccountApiKeyCreatedResponse",
+        "type": "object"
+      },
+      "AccountApiKeyPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountApiKeyResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AccountApiKeyPageResponse",
+        "type": "object"
+      },
+      "AccountApiKeyResponse": {
+        "properties": {
+          "agent_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Email"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "scope",
+          "created_at"
+        ],
+        "title": "AccountApiKeyResponse",
+        "type": "object"
+      },
       "AccountContactCreate": {
         "properties": {
           "agent_email": {
@@ -19,6 +211,11 @@
             "format": "email",
             "title": "Email",
             "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "name": {
             "maxLength": 255,
@@ -176,6 +373,24 @@
           "updated_at"
         ],
         "title": "AgentResponse",
+        "type": "object"
+      },
+      "AgentTestSendResult": {
+        "properties": {
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message_id"
+        ],
+        "title": "AgentTestSendResult",
         "type": "object"
       },
       "AgentUpdate": {
@@ -357,6 +572,24 @@
         "title": "ApiKeyCreatedResponse",
         "type": "object"
       },
+      "ApiKeyDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "title": "ApiKeyDeleteResponse",
+        "type": "object"
+      },
       "ApiKeyResponse": {
         "properties": {
           "agent_email": {
@@ -529,6 +762,11 @@
             "format": "email",
             "title": "Email",
             "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "name": {
             "maxLength": 255,
@@ -722,6 +960,36 @@
         "title": "ContactEngagementWrite",
         "type": "object"
       },
+      "ContactImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Agent Email",
+            "type": "string"
+          },
+          "contacts": {
+            "items": {},
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Contacts",
+            "type": "array"
+          },
+          "on_conflict": {
+            "default": "merge",
+            "pattern": "^(merge|skip)$",
+            "title": "On Conflict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_email",
+          "contacts"
+        ],
+        "title": "ContactImportRequest",
+        "type": "object"
+      },
       "ContactResponse": {
         "properties": {
           "agent_email": {
@@ -745,6 +1013,11 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "name": {
             "title": "Name",
@@ -798,6 +1071,18 @@
               }
             ],
             "title": "Email"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
           },
           "name": {
             "anyOf": [
@@ -3125,6 +3410,164 @@
         "summary": "Unsubscribe Submit",
         "tags": [
           "Public unsubscribe"
+        ]
+      }
+    },
+    "/v1/account/api-keys": {
+      "get": {
+        "operationId": "list_account_api_keys_v1_account_api_keys_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountApiKeyPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Account Api Keys",
+        "tags": [
+          "Account",
+          "API Keys"
+        ]
+      },
+      "post": {
+        "operationId": "create_account_api_key_v1_account_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountApiKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountApiKeyCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Account Api Key",
+        "tags": [
+          "Account",
+          "API Keys"
+        ]
+      }
+    },
+    "/v1/account/api-keys/{id}": {
+      "delete": {
+        "operationId": "revoke_account_api_key_v1_account_api_keys__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Must be the literal DELETE.",
+            "in": "query",
+            "name": "confirm",
+            "required": true,
+            "schema": {
+              "description": "Must be the literal DELETE.",
+              "pattern": "^DELETE$",
+              "title": "Confirm",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Account Api Key",
+        "tags": [
+          "Account",
+          "API Keys"
         ]
       }
     },
@@ -5545,6 +5988,77 @@
         ]
       }
     },
+    "/v1/agents/{email}/messages/{message_id}/attachments/{index}": {
+      "get": {
+        "description": "Return metadata and a short-lived URL for an attachment's zero-based index.",
+        "operationId": "getAttachment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Include base64 data for attachments up to 256 KB.",
+            "in": "query",
+            "name": "inline",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include base64 data for attachments up to 256 KB.",
+              "title": "Inline",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Message Attachment By Index",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/v1/agents/{email}/messages/{message_id}/forward": {
       "post": {
         "operationId": "forward_message_v1_agents__email__messages__message_id__forward_post",
@@ -6744,6 +7258,49 @@
         ]
       }
     },
+    "/v1/agents/{email}/test": {
+      "post": {
+        "description": "Queue a platform-originated message to the agent's own external inbox.",
+        "operationId": "test_agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "title": "Email",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTestSendResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Agent Send",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
     "/v1/api-keys": {
       "get": {
         "operationId": "list_api_keys_v1_api_keys_get",
@@ -6839,6 +7396,16 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "/v1/api-keys",
+              "title": "Scope",
+              "type": "string"
             }
           }
         ],
@@ -7088,6 +7655,46 @@
         "summary": "Create Account Contact",
         "tags": [
           "Account"
+        ]
+      }
+    },
+    "/v1/contacts/import": {
+      "post": {
+        "description": "Import structured contacts into one explicitly selected self-hosted inbox.",
+        "operationId": "import_contacts_json_v1_contacts_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Contacts Json",
+        "tags": [
+          "Contacts"
         ]
       }
     },
@@ -7849,6 +8456,110 @@
         "summary": "Info",
         "tags": [
           "Meta"
+        ]
+      }
+    },
+    "/v1/metrics": {
+      "get": {
+        "description": "Aggregate account-owned message lifecycle facts over a half-open cohort window.",
+        "operationId": "get_account_metrics_v1_metrics_get",
+        "parameters": [
+          {
+            "description": "Inclusive RFC 3339 cohort-window start; defaults to 30 days before end.",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive RFC 3339 cohort-window start; defaults to 30 days before end.",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Exclusive RFC 3339 cohort-window end; defaults to now.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive RFC 3339 cohort-window end; defaults to now.",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "day",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bucket"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "agent",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Account Metrics",
+        "tags": [
+          "Account"
         ]
       }
     },

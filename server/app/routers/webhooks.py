@@ -36,7 +36,8 @@ WEBHOOK_EVENT_TYPES = {
     "email.review_rejected", "email.flagged", "email.blocked",
     "email.accepted_by_relay", "email.failed", "email.delivery_unknown",
     "email.delivered", "email.bounced", "email.complained", "email.delivery_delayed",
-    "email.sent", "domain.sending_verified", "domain.sending_failed", "agent.suppression_added",
+    "email.sent", "domain.sending_verified", "domain.sending_failed", "domain.suppression_added",
+    "agent.suppression_added",
     "contact.due",
 }
 

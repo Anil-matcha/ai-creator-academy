@@ -2,7 +2,7 @@ import datetime
 import csv
 import io
 import uuid
-from typing import List
+from typing import Any, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -12,9 +12,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, get_db
-from app.models import Agent, Contact, ContactConsentEvent, ContactImportBatch, RecipientSuppression
+from app.models import Agent, Contact, ContactConsentEvent, ContactEngagement, ContactImportBatch, RecipientSuppression
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate, ContactConsentWrite, ContactConsentHistoryResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
 from app.security import require_agent_access, require_write
 from app.services.cursors import decode_cursor, encode_cursor
 from app.security import Principal
@@ -26,6 +26,178 @@ router = APIRouter(
     tags=["Contacts"],
     dependencies=[Depends(require_agent_access)],
 )
+
+# This route mirrors the account-scoped hosted shape while keeping storage in the
+# existing per-inbox Contact table. main.py registers this router separately.
+import_router = APIRouter(tags=["Contacts"], dependencies=[Depends(require_write)])
+
+
+class ContactImportRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    display_name: str | None = Field(None, max_length=255)
+    company: str | None = Field(None, max_length=255)
+    notes: str | None = Field(None, max_length=4000)
+    metadata: dict = Field(default_factory=dict)
+    suppressed: bool = False
+    stage: Literal["new", "contacted", "waiting", "closed"] | None = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_import_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("display_name", "company", "notes")
+    @classmethod
+    def trim_import_text(cls, value):
+        return value.strip() if value is not None else None
+
+    @field_validator("display_name")
+    @classmethod
+    def require_nonempty_display_name(cls, value):
+        if value == "":
+            raise ValueError("display_name cannot be empty")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_import_metadata(cls, value):
+        from app.schemas import ContactCreate
+        return ContactCreate(email="metadata@example.com", name="metadata", metadata=value).metadata
+
+
+class ContactImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_email: str = Field(..., min_length=3, max_length=255)
+    contacts: list[Any] = Field(..., min_length=1, max_length=1000)
+    on_conflict: str = Field("merge", pattern="^(merge|skip)$")
+
+    @field_validator("agent_email", mode="before")
+    @classmethod
+    def normalize_agent_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+@import_router.post("/v1/contacts/import")
+async def import_contacts_json(request: Request,
+                               payload: ContactImportRequest,
+                               principal: Principal = Depends(require_write),
+                               db: AsyncSession = Depends(get_db)):
+    """Import structured contacts into one explicitly selected self-hosted inbox."""
+    email = payload.agent_email
+    if not principal.is_admin and principal.agent_email != email:
+        raise HTTPException(status_code=403, detail="Token is not authorized for this agent inbox")
+    await _ensure_agent_exists(email, db)
+    raw_body = await request.body()
+    if len(raw_body) > 1_000_000:
+        raise HTTPException(status_code=413, detail="JSON import must be at most 1 MB")
+
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:contacts:json-import", key,
+                {"agent_email": email, "body": raw_body.decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 200,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            detail = "Idempotency-Key was already used with a different request" if decision.outcome == "conflict" else "Idempotency-Key request is still in progress; retry unchanged"
+            raise HTTPException(status_code=422 if decision.outcome == "conflict" else 409, detail=detail)
+
+    batch_id = f"ci_{uuid.uuid4().hex[:16]}"
+    now = datetime.datetime.utcnow()
+    result_rows = []
+    created_ids = []
+    counts = {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
+    for index, raw_row in enumerate(payload.contacts, start=1):
+        address = raw_row.get("email") if isinstance(raw_row, dict) else None
+        try:
+            row = ContactImportRow.model_validate(raw_row)
+            address = str(row.email)
+        except ValidationError as exc:
+            counts["failed"] += 1
+            result_rows.append({"row": index, "email": address, "status": "failed", "reason": "invalid_row"})
+            continue
+
+        try:
+            async with db.begin_nested():
+                contact = (await db.execute(select(Contact).where(
+                    Contact.agent_email == email, Contact.email == address
+                ))).scalar_one_or_none()
+                if contact is not None and payload.on_conflict == "skip":
+                    counts["skipped"] += 1
+                    result_rows.append({"row": index, "email": address, "status": "skipped", "reason": "already_exists"})
+                    continue
+
+                created = contact is None
+                if contact is None:
+                    contact = Contact(
+                        id=f"ct_{uuid.uuid4().hex[:12]}", agent_email=email, email=address,
+                        name=(row.display_name or address), company=row.company or "", notes=row.notes or "",
+                        metadata_json=dict(row.metadata), import_batch_id=batch_id,
+                        created_at=now, updated_at=now)
+                    db.add(contact)
+                    created_ids.append(contact.id)
+                else:
+                    if row.display_name is not None:
+                        contact.name = row.display_name
+                    if row.company is not None:
+                        contact.company = row.company
+                    if row.notes is not None:
+                        contact.notes = row.notes
+                    if row.metadata:
+                        contact.metadata_json = {**(contact.metadata_json or {}), **row.metadata}
+                    contact.updated_at = now
+                suppression = (await db.execute(select(RecipientSuppression).where(
+                    RecipientSuppression.agent_email == email,
+                    RecipientSuppression.email == address
+                ))).scalar_one_or_none()
+                if row.suppressed:
+                    if suppression is None:
+                        db.add(RecipientSuppression(
+                            id=f"sp_{uuid.uuid4().hex[:12]}", agent_email=email,
+                            email=address, reason="contact_import", created_at=now))
+                suppression_active = row.suppressed or suppression is not None
+                if row.stage is not None:
+                    engagement = (await db.execute(select(ContactEngagement).where(
+                        ContactEngagement.agent_email == email,
+                        ContactEngagement.contact_id == contact.id
+                    ))).scalar_one_or_none()
+                    if engagement is None:
+                        engagement = ContactEngagement(
+                            id=f"eng_{uuid.uuid4().hex[:20]}", agent_email=email,
+                            contact_id=contact.id, stage=row.stage, created_at=now, updated_at=now)
+                        db.add(engagement)
+                    else:
+                        engagement.stage = row.stage
+                        engagement.updated_at = now
+                await db.flush()
+            status = "created" if created else "updated"
+            counts[status] += 1
+            result_rows.append({"row": index, "email": address, "status": status,
+                                "contact_id": contact.id, "suppressed": suppression_active,
+                                **({"stage": row.stage} if row.stage is not None else {})})
+        except Exception:
+            counts["failed"] += 1
+            result_rows.append({"row": index, "email": address, "status": "failed", "reason": "write_failed"})
+
+    batch = ContactImportBatch(id=batch_id, agent_email=email, contact_ids=created_ids, created_at=now)
+    db.add(batch)
+    response_body = {"batch_id": batch_id, **counts, "results": result_rows,
+                     "notice": "Contacts are stored in the selected inbox. Suppression blocks outbound mail; this import never sends mail or records consent."}
+    if decision is not None:
+        await complete_idempotency(db, decision, status=200, body=response_body)
+    await db.commit()
+    if decision is not None:
+        return JSONResponse(status_code=200, content=response_body)
+    return response_body
 
 
 async def _ensure_agent_exists(agent_email: str, db: AsyncSession) -> None:
@@ -128,6 +300,7 @@ async def create_contact(email: str, payload: ContactCreate, request: Request,
         name=payload.name,
         company=payload.company,
         notes=payload.notes,
+        metadata_json=payload.metadata,
         created_at=now,
         updated_at=now,
     )
@@ -155,7 +328,7 @@ async def update_contact(email: str, contact_id: str, payload: ContactUpdate, db
         await _ensure_unique_email(email, changes["email"], db, exclude_id=contact.id)
     for field, value in changes.items():
         if value is not None:
-            setattr(contact, field, value)
+            setattr(contact, "metadata_json" if field == "metadata" else field, value)
     contact.updated_at = datetime.datetime.utcnow()
     try:
         await db.commit()

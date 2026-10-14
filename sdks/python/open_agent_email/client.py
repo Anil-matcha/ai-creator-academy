@@ -34,6 +34,11 @@ class Message(TypedDict, total=False):
     created_at: str
 
 
+class AgentTestSendResult(TypedDict):
+    status: Literal["accepted", "pending_review"]
+    message_id: str
+
+
 class OtpResult(TypedDict, total=False):
     found: bool
     code: str
@@ -41,6 +46,112 @@ class OtpResult(TypedDict, total=False):
     received_at: str
     sender: str
     subject: str
+
+
+class AccountMetricsParams(TypedDict, total=False):
+    """Query options for account metrics; the time window is half-open [start, end)."""
+    start: str | datetime.datetime
+    end: str | datetime.datetime
+    bucket: Literal["day"]
+    group_by: Literal["agent"]
+
+
+class MetricsCounter(TypedDict):
+    reason_code: str
+    stage: str
+    outcome: str
+    retryable: bool
+    observations: int
+    messages: int
+
+
+class MetricsRates(TypedDict):
+    delivered_rate: float | None
+    bounce_rate: float | None
+    complaint_rate: float | None
+    suppression_block_rate: float | None
+
+
+class MetricsSummary(TypedDict):
+    accepted: int
+    submitted: int
+    delivered: int
+    bounced_hard: int
+    bounced_soft: int
+    bounced_undetermined: int
+    complained: int
+    suppressed: int
+    loopback: int
+    send_failed: int
+    received: int
+    dmarc_pass: int
+    dmarc_fail: int
+    dmarc_none: int
+    dmarc_error: int
+    review_held: int
+    review_approved: int
+    review_rejected: int
+    review_expired_approved: int
+    review_expired_rejected: int
+
+
+class AgentMetricsGroup(TypedDict):
+    agent_email: str
+    messages_in_window: int
+    messages_with_lifecycle: int
+    reconstructed_observations: int
+    summary: MetricsSummary
+    rates: MetricsRates
+    counters: list[MetricsCounter]
+
+
+class MetricsBucket(TypedDict):
+    day: str
+    summary: MetricsSummary
+    rates: MetricsRates
+
+
+class WebhookEndpointMetrics(TypedDict):
+    webhook_id: str
+    url_host: str
+    deliveries: int
+    delivered: int
+    pending: int
+    endpoint_rejected: int
+    no_response: int
+    success_rate: float | None
+    last_status_code: int | None
+    enabled: bool
+    auto_disabled_at: str | None
+    auto_disable_reason: str
+
+
+class WebhookMetrics(TypedDict):
+    deliveries: int
+    delivered: int
+    pending: int
+    endpoint_rejected: int
+    no_response: int
+    success_rate: float | None
+    window_exceeds_retention: bool
+    endpoints_auto_disabled: int
+    endpoints: list[WebhookEndpointMetrics]
+    endpoints_truncated: bool
+
+
+class AccountMetrics(TypedDict):
+    start: str
+    end: str
+    messages_in_window: int
+    messages_with_lifecycle: int
+    reconstructed_observations: int
+    summary: MetricsSummary
+    rates: MetricsRates
+    counters: list[MetricsCounter]
+    agents: list[AgentMetricsGroup]
+    agents_truncated: bool
+    buckets: list[MetricsBucket]
+    webhooks: WebhookMetrics
 
 
 class MessagePage(TypedDict):
@@ -55,6 +166,7 @@ class Contact(TypedDict):
     name: str
     company: str
     notes: str
+    metadata: dict[str, str | int | float | bool | None]
     created_at: str
     updated_at: str
 
@@ -64,6 +176,7 @@ class ContactCreate(TypedDict):
     name: str
     company: NotRequired[str]
     notes: NotRequired[str]
+    metadata: NotRequired[dict[str, str | int | float | bool | None]]
 
 
 class ContactUpdate(TypedDict, total=False):
@@ -71,6 +184,17 @@ class ContactUpdate(TypedDict, total=False):
     name: str
     company: str
     notes: str
+    metadata: dict[str, str | int | float | bool | None]
+
+
+class ContactImportRow(TypedDict):
+    email: str
+    display_name: NotRequired[str]
+    company: NotRequired[str]
+    notes: NotRequired[str]
+    metadata: NotRequired[dict[str, str | int | float | bool | None]]
+    suppressed: NotRequired[bool]
+    stage: NotRequired[Literal["new", "contacted", "waiting", "closed"]]
 
 
 class Suppression(TypedDict):
@@ -145,6 +269,26 @@ def _format_send_at(value: datetime.datetime | str) -> str:
         raise ValueError("scheduled_at must be an ISO-8601 datetime") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("scheduled_at must include a timezone offset")
+    return result
+
+
+def _format_metrics_time(value: datetime.datetime | str | None) -> str | None:
+    """Serialize an offset-qualified RFC 3339 metrics window bound."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("metrics start/end must include a timezone offset")
+        return value.isoformat()
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("metrics start/end must be RFC 3339 datetimes")
+    result = value.strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(result.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("metrics start/end must be RFC 3339 datetimes") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("metrics start/end must include a timezone offset")
     return result
 
 
@@ -534,6 +678,18 @@ class AgentEmailClient:
             raw_body=data, content_type="text/csv; charset=utf-8",
         )
 
+    def import_contacts(self, agent_email: str, contacts: list[ContactImportRow], *,
+                        on_conflict: Literal["merge", "skip"] = "merge",
+                        idempotency_key: str | None = None) -> dict[str, Any]:
+        """Import up to 1,000 structured contacts into one explicitly selected inbox."""
+        if not 1 <= len(contacts) <= 1000:
+            raise ValueError("contacts must contain 1–1,000 rows")
+        if on_conflict not in {"merge", "skip"}:
+            raise ValueError("on_conflict must be 'merge' or 'skip'")
+        return self._request("POST", "/v1/contacts/import", payload={
+            "agent_email": agent_email, "contacts": contacts, "on_conflict": on_conflict,
+        }, idempotency_key=idempotency_key)
+
     def list_contact_imports(self, inbox: str) -> list[dict[str, Any]]:
         """List the 50 most recent reversible contact import batches."""
         return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/contacts/imports")
@@ -782,6 +938,13 @@ class AgentEmailClient:
             idempotency_key=idempotency_key,
         )
 
+    def test_agent(self, inbox: str, *, idempotency_key: str | None = None) -> AgentTestSendResult:
+        """Queue a platform-originated test email to the inbox's own address."""
+        return self._request(
+            "POST", f"/v1/agents/{self._inbox_path(inbox)}/test",
+            idempotency_key=idempotency_key,
+        )
+
     def reply_message(
         self,
         inbox: str,
@@ -879,6 +1042,28 @@ class AgentEmailClient:
 
     def get_agent_metrics(self, inbox: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/metrics")
+
+    def get_account_metrics(self, params: AccountMetricsParams | None = None) -> AccountMetrics:
+        """Fetch account-wide metrics; requires an account/admin bearer credential."""
+        options = params or {}
+        bucket = options.get("bucket")
+        group_by = options.get("group_by")
+        if bucket not in {None, "day"}:
+            raise ValueError("bucket must be 'day'")
+        if group_by not in {None, "agent"}:
+            raise ValueError("group_by must be 'agent'")
+        query: dict[str, str] = {}
+        start = _format_metrics_time(options.get("start"))
+        end = _format_metrics_time(options.get("end"))
+        if start is not None:
+            query["start"] = start
+        if end is not None:
+            query["end"] = end
+        if bucket is not None:
+            query["bucket"] = bucket
+        if group_by is not None:
+            query["group_by"] = group_by
+        return self._request("GET", "/v1/metrics", query=query)
 
     def get_protection(self, inbox: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/agents/{self._inbox_path(inbox)}/protection")

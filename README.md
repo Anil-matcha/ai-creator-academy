@@ -165,6 +165,7 @@ Every payload keeps its original top-level fields and adds `type`, `schema_versi
 | `email.accepted_by_relay` | The upstream SMTP relay accepted the message | `message_id`, `agent_email`, `recipient` |
 | `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained` | Provider feedback (SES over SNS) | `message_id`, `agent_email`, `recipient` |
 | `email.failed`, `email.delivery_unknown` | Retries exhausted, or relay acceptance became uncertain | `message_id`, `agent_email`, `recipient` |
+| `domain.suppression_added` | A permanent bounce or complaint added a recipient to the inbox suppression list | `address`, `source` (`bounce`, `complaint`), `reason`, `message_id` |
 | `agent.suppression_added` | A recipient was suppressed: by an operator, an unsubscribe, a permanent bounce or a complaint | `agent_email`, `recipient`, `source` (`operator`, `unsubscribe`, `bounce`, `complaint`), `reason` |
 | `domain.sending_verified` | `POST /v1/domains/{domain}/verify` moved the domain to `verified` | `agent_email`, `domain`, `status`, `records` (per-record status) |
 | `domain.sending_failed` | A verified domain stopped verifying, or a record newly mismatched | `agent_email`, `domain`, `status`, `records` |
@@ -229,6 +230,8 @@ Record explicit operator-entered consent changes at `POST /v1/agents/{email}/con
 
 Import UTF-8 CSV through `POST /v1/agents/{email}/contacts/imports` with `Content-Type: text/csv`. Required header: `email`; optional headers: `name`, `company`, and `notes`. Files are limited to 1 MB and 1,000 data rows. Existing addresses, repeated addresses in the file, invalid rows, and addresses on the inbox suppression list are skipped with a per-row reason. The result includes a `batch_id`; list recent batches with `GET .../contacts/imports`. Reverse a batch with `DELETE .../contacts/imports/{batch_id}?confirm=DELETE`. Reversal deletes untouched contacts created by that batch and retains contacts edited afterward. Batch reversal does not remove suppression entries and does not imply permission to contact any imported address.
 
+Structured JSON imports use `POST /v1/contacts/import` with an explicit `agent_email`, up to 1,000 rows, and optional merge/skip behavior. Rows support bounded metadata, suppression, and engagement stage; every row receives an outcome and the request supports idempotent replay. See [the import contract](docs/contact-import.md).
+
 The dashboard **Follow-ups** page and `/v1/agents/{email}/engagements` track a stage (`new`, `contacted`, `waiting`, or `closed`), optional next due time, and notes for one contact in one inbox. Create with `POST` using `contact_id`, `stage`, `next_due_at` (RFC 3339), and `notes`; update with `PATCH /{engagement_id}`; list with `GET`; remove with `DELETE /{engagement_id}`. Add `?due=true` to list only overdue records that are not closed, replied, or suppressed. Scheduling a suppressed recipient returns HTTP 422, and suppression is checked again when determining due records. A DMARC-authenticated inbound message from the contact sets the server-derived `replied` flag and clears its due time; API clients cannot set or clear that fact. Due times never trigger automatic email, campaigns, or other outreach.
 
 An enabled webhook endpoint subscribed to `contact.due` receives a metadata-only wake-up when an engagement becomes overdue. A bounded background sweep runs once per minute and claims each due schedule atomically before queueing deliveries; retries and overlapping sweeps cannot create another wake-up for that same schedule. Changing the due time re-arms notification. Closed, replied, and suppressed contacts are excluded. The payload contains the event ID, inbox, engagement and contact IDs, stage, and scheduled time; it does not include notes or send any email.
@@ -262,7 +265,7 @@ Connect any Model Context Protocol compatible client to control agent inboxes.
 ### Cursor Setup
 Create an inbox and an API key for it in **API Keys**. Then add to `.cursor/mcp.json` (or `~/.cursor/mcp.json`), replacing the placeholder with the generated key:
 
-API keys expire after 90 days by default. Choose 30 days, 90 days, one year, or no expiration when creating a key. Keys can be read-only, read/send, or review-only; review-only keys are limited to the assigned inbox's review queue and review decisions. Expired keys are rejected automatically; revoke a key at any time from the dashboard.
+API keys expire after 90 days by default. Choose 30 days, 90 days, one year, or no expiration when creating a key. Keys can be read-only, read/send, or review-only; review-only keys are limited to the assigned inbox's review queue and review decisions. Expired keys are rejected automatically; revoke a key at any time from the dashboard. Admin clients can manage keys through both `/v1/api-keys` and the account-prefixed routes `GET/POST /v1/account/api-keys` and `DELETE /v1/account/api-keys/{id}?confirm=DELETE`. The account-prefixed list is cursor-paginated and hides key secrets; creation returns a secret once, and deletion returns a receipt.
 
 ```json
 {
@@ -366,6 +369,8 @@ These checks inspect message text and HTML; they do not inspect attachment bytes
 - **Conversations** – `GET /v1/agents/{email}/conversations[/{id}]` groups messages by thread with unread counts, participants and labels.
 - **Lifecycle** – `GET .../messages/{id}/lifecycle` returns the review, queue, retry and provider-delivery timeline.
 - **Metrics & protection** – `GET /v1/agents/{email}/metrics`; `GET/PUT /v1/agents/{email}/protection` (changing it is admin-only so an agent key cannot weaken its own approval gate).
+- **Account metrics** – `GET /v1/metrics` supports an optional half-open time window, daily buckets, and per-agent grouping. Account metrics require an account/admin key; lifecycle facts are state-derived where this server does not retain a transition ledger.
+- **Inbox test send** – `POST /v1/agents/{email}/test` queues a platform-originated test email to the inbox and returns its message ID; it supports `Idempotency-Key` and follows the inbox review gate.
 - **Events** – `GET /v1/events`, `GET /v1/events/{id}`, `POST /v1/events/{id}/redeliver` (admin) expose the webhook event log. Event listing accepts inclusive `since` and `until` RFC-3339 timestamps with timezone offsets; both filters are bound to the pagination cursor.
 - **Discovery** – `GET /v1/info` (public) and `GET /v1/whoami`.
 - **MCP** – the same capabilities are available as MCP tools (`list_conversations`, `update_message_labels`, `delete_message`, `get_message_lifecycle`, `whoami`, …); `GET /mcp/tools` lists them all.

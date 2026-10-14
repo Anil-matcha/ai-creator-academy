@@ -22,7 +22,11 @@ from app.config import settings
 from app.database import get_db
 from app.models import Message, ProviderFeedbackReceipt, RecipientSuppression
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
-from app.services.webhook_events import enqueue_outbound_status_webhook_event, enqueue_suppression_added_webhook_event
+from app.services.webhook_events import (
+    enqueue_domain_suppression_added_webhook_event,
+    enqueue_outbound_status_webhook_event,
+    enqueue_suppression_added_webhook_event,
+)
 
 router = APIRouter(tags=["Provider feedback"])
 MAX_BODY_BYTES = 256 * 1024
@@ -226,6 +230,11 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
             db, agent_email=message.agent_email, recipient=recipient,
             source="complaint" if event_type == "Complaint" else "bounce",
             reason=reason, created_at=datetime.datetime.utcnow(),
+        )
+        await enqueue_domain_suppression_added_webhook_event(
+            db, agent_email=message.agent_email, address=recipient,
+            source="complaint" if event_type == "Complaint" else "bounce",
+            reason=reason, message_id=message.id, created_at=datetime.datetime.utcnow(),
         )
 
 

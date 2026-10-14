@@ -37,6 +37,7 @@ class Contact(Base):
     name = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False, default="")
     notes = Column(Text, nullable=False, default="")
+    metadata_json = Column("metadata", JSON, nullable=False, default=dict)
     import_batch_id = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

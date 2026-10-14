@@ -25,6 +25,17 @@ const iso = (value: string | Date | undefined) => {
   }
   return value;
 };
+const metricTime = (value: string | Date | undefined) => {
+  if (value === undefined) return undefined;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new TypeError("metrics start/end must be valid RFC 3339 datetimes");
+    return value.toISOString();
+  }
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) || Number.isNaN(Date.parse(value))) {
+    throw new TypeError("metrics start/end must be valid RFC 3339 datetimes with a timezone offset");
+  }
+  return value;
+};
 const scheduledAt = (opts: { scheduled_at?: string | Date; send_at?: string | Date }) => {
   const canonical = iso(opts.scheduled_at);
   const legacy = iso(opts.send_at);
@@ -116,10 +127,21 @@ export class AgentEmailClient {
     update: (email: string, patch: Partial<Omit<T.AgentInput, "email">> & { status?: string }) =>
       this.request<T.Agent>("PATCH", `/v1/agents/${seg(email)}`, { body: patch }),
     delete: (email: string) => this.request<void>("DELETE", `/v1/agents/${seg(email)}`),
+    test: (email: string, ro?: T.RequestOptions) =>
+      this.request<T.AgentTestSendResult>("POST", `/v1/agents/${seg(email)}/test`, this.#idem(ro)),
     metrics: (email: string) => this.request<T.AgentMetrics>("GET", `/v1/agents/${seg(email)}/metrics`),
     protection: (email: string) => this.request<T.Protection>("GET", `/v1/agents/${seg(email)}/protection`),
     setProtection: (email: string, protection: T.Protection) =>
       this.request<T.Protection>("PUT", `/v1/agents/${seg(email)}/protection`, { body: protection }),
+  };
+
+  /** Account-wide metrics require an account/admin bearer credential. */
+  readonly account = {
+    metrics: (params: T.AccountMetricsParams = {}) =>
+      this.request<T.AccountMetrics>("GET", "/v1/metrics", { query: {
+        start: metricTime(params.start), end: metricTime(params.end),
+        bucket: params.bucket, group_by: params.group_by,
+      } }),
   };
 
   // ---- messages --------------------------------------------------------
@@ -183,6 +205,10 @@ export class AgentEmailClient {
     delete: (inbox: string, id: string) => this.request<void>("DELETE", `/v1/agents/${seg(inbox)}/contacts/${seg(id)}`),
     importCsv: (inbox: string, csv: string) =>
       this.request<Record<string, unknown>>("POST", `/v1/agents/${seg(inbox)}/contacts/imports`, { raw: { body: csv, contentType: "text/csv; charset=utf-8" } }),
+    importStructured: (agentEmail: string, contacts: T.ContactImportRow[], opts: { onConflict?: "merge" | "skip" } & T.RequestOptions = {}) =>
+      this.request<T.ContactImportResult>("POST", "/v1/contacts/import", {
+        ...this.#idem(opts), body: { agent_email: agentEmail, contacts, on_conflict: opts.onConflict ?? "merge" },
+      }),
     listImports: (inbox: string) => this.request<Array<Record<string, unknown>>>("GET", `/v1/agents/${seg(inbox)}/contacts/imports`),
     reverseImport: (inbox: string, batchId: string) =>
       this.request<Record<string, unknown>>("DELETE", `/v1/agents/${seg(inbox)}/contacts/imports/${seg(batchId)}`, { query: { confirm: "DELETE" } }),
