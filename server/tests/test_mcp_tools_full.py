@@ -24,6 +24,8 @@ list_webhook_deliveries list_webhooks preview_template record_contact_consent re
 register_domain reject_review reply_to_message restore_message retry_outbox_job rotate_webhook_secret
 send_message set_outreach_contact test_webhook update_agent update_contact update_message_labels
 update_protection update_template update_webhook verify_domain whoami
+list_account_suppressions delete_account_suppression export_account list_account_contacts restore_agent
+get_review_settings list_starter_templates get_starter_template validate_template copy_starter_template
 """.split())
 
 # Written out independently of the implementation so a misclassified tool fails here.
@@ -34,14 +36,15 @@ ADMIN_TOOLS = {
     "rotate_webhook_secret", "test_webhook", "list_webhook_deliveries", "list_events", "get_event",
     "redeliver_event", "list_api_keys", "create_api_key", "delete_api_key", "list_domains",
     "register_domain", "verify_domain", "delete_domain", "get_account_metrics", "list_outbox",
-    "retry_outbox_job",
+    "retry_outbox_job", "list_account_suppressions", "delete_account_suppression", "export_account",
+    "list_account_contacts", "restore_agent", "get_review_settings",
 }
 INBOX_WRITE_TOOLS = {
     "send_message", "reply_to_message", "forward_to_human", "update_message_labels", "delete_message",
     "restore_message", "create_agent_suppression", "delete_agent_suppression", "create_template",
     "update_template", "delete_template", "create_contact", "update_contact", "delete_contact",
     "import_contacts", "delete_contact_import", "record_contact_consent", "set_outreach_contact",
-    "delete_outreach_contact",
+    "delete_outreach_contact", "copy_starter_template",
 }
 INBOX_READ_TOOLS = {
     "list_messages", "get_message", "get_recent_otp", "list_conversations", "get_conversation",
@@ -49,7 +52,7 @@ INBOX_READ_TOOLS = {
     "list_suppressions", "get_attachment", "get_attachment_data", "get_template", "preview_template",
     "get_contact_consent", "list_outreach_contacts",
 }
-ANY_CREDENTIAL_TOOLS = {"whoami"}
+ANY_CREDENTIAL_TOOLS = {"whoami", "list_starter_templates", "get_starter_template", "validate_template"}
 
 DENIAL_MARKERS = ("not authorized", "Administrator token required", "does not permit", "limited to review tools")
 A = "a@agents.local"

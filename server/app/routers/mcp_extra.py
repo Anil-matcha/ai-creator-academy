@@ -13,8 +13,8 @@ from app.models import (
     Agent, ContactEngagement, EmailTemplate, Message, MessageAttachment, RecipientSuppression,
 )
 from app.routers import (
-    agents, api_keys, contacts, conversations, domains, engagements, events, messages, meta,
-    outbox, stats, suppressions, templates, webhooks,
+    account, agents, api_keys, contacts, conversations, domains, engagements, events, messages, meta,
+    outbox, starter_templates, stats, suppressions, templates, webhooks,
 )
 from app.schemas import (
     AgentCreate, AgentResponse, AgentUpdate, ApiKeyCreate, ApiKeyResponse, ContactConsentWrite,
@@ -47,7 +47,11 @@ EXT_TOOLS = [
     _tool("get_protection", "Read the inbox's threat sensitivity and outbound approval gate.", _EMAIL, ["agent_email"]),
     _tool("update_protection", "Administrator only: set threat sensitivity (off/low/medium/high) and the approval gate.",
           {**_EMAIL, "threat_sensitivity": {"type": "string", "enum": ["off", "low", "medium", "high"]},
-           "hitl_enabled": {"type": "boolean"}}, ["agent_email", "threat_sensitivity", "hitl_enabled"]),
+           "hitl_enabled": {"type": "boolean"},
+           "review_notify_email": {"type": ["string", "null"], "description": "Reviewer address for emailed approve/reject links; null clears it"},
+           "review_expiry_hours": {"type": ["integer", "null"], "minimum": 1, "maximum": 720, "description": "Resolve reviews still pending after this many hours; null disables expiry"},
+           "review_expiry_action": {"type": ["string", "null"], "enum": ["approve", "reject", None], "description": "What expiry does; default reject"}},
+          ["agent_email", "threat_sensitivity", "hitl_enabled"]),
     _tool("update_message_labels", "Replace a message's labels (triage tags such as needs-human).",
           {**_MSG, "labels": {"type": "array", "items": {"type": "string"}, "maxItems": 20}},
           ["agent_email", "message_id", "labels"]),
@@ -107,7 +111,9 @@ async def run_ext_tool(db: AsyncSession, name: str, args: dict, principal: Princ
     if name == "get_protection":
         return json.dumps(await meta.get_protection(email, db))
     if name == "update_protection":
-        body = meta.ProtectionUpdate(threat_sensitivity=args["threat_sensitivity"], hitl_enabled=args["hitl_enabled"])
+        body = meta.ProtectionUpdate(
+            threat_sensitivity=args["threat_sensitivity"], hitl_enabled=args["hitl_enabled"],
+            **_fields(args, "review_notify_email", "review_expiry_hours", "review_expiry_action"))
         return json.dumps(await meta.update_protection(email, body, db))
     if name == "update_message_labels":
         req = MessageLabelsUpdate(labels=args["labels"])
@@ -576,10 +582,85 @@ _NEW_SPECS = [
      ["job_id"], "admin", _h_retry_outbox_job),
 ]
 
+# --- account-level, starter-template and review-setting tools ---
+
+async def _h_list_account_suppressions(db, args, principal):
+    return await account.list_account_suppressions(args.get("address"), _int(args, "limit", 200, 1, 1000), db)
+
+
+async def _h_delete_account_suppression(db, args, principal):
+    _require(args, "address")
+    return await account.remove_account_suppression(args["address"], db)
+
+
+async def _h_export_account(db, args, principal):
+    return await account.export_account(_int(args, "limit_per_collection", account.EXPORT_DEFAULT_LIMIT,
+                                             1, account.EXPORT_MAX_LIMIT), db)
+
+
+async def _h_list_account_contacts(db, args, principal):
+    return await account.list_account_contacts(
+        args.get("agent_email"), args.get("q"), _int(args, "limit", 100, 1, 500), db)
+
+
+async def _h_restore_agent(db, args, principal):
+    _require(args, "agent_email")
+    return _m(AgentResponse, await agents.restore_agent(args["agent_email"], db))
+
+
+async def _h_get_review_settings(db, args, principal):
+    _require(args, "agent_email")
+    return await meta.get_review_settings(args["agent_email"], db)
+
+
+async def _h_list_starter_templates(db, args, principal):
+    return await starter_templates.list_starter_templates()
+
+
+async def _h_get_starter_template(db, args, principal):
+    _require(args, "alias")
+    return await starter_templates.get_starter_template(args["alias"])
+
+
+async def _h_validate_template(db, args, principal):
+    _require(args, "subject")
+    payload = EmailTemplatePreviewRequest(**_fields(args, "subject", "body_text", "body_html", "data"))
+    return await starter_templates.validate_template(payload)
+
+
+async def _h_copy_starter_template(db, args, principal):
+    _require(args, "agent_email", "alias")
+    created = await starter_templates.copy_starter_template(args["agent_email"], args["alias"], principal, db)
+    return _m(EmailTemplateResponse, created)
+
+
+_MORE_SPECS = [
+    ("list_account_suppressions", "Administrator only: suppressed recipients across every inbox, optionally for one address.",
+     {"address": _ID, "limit": _limit(200, 1000)}, [], "admin", _h_list_account_suppressions),
+    ("delete_account_suppression", "Administrator only: remove an address from every inbox's suppression list.",
+     {"address": _ID}, ["address"], "admin", _h_delete_account_suppression),
+    ("export_account", "Administrator only: bounded configuration export (inboxes, contacts, templates, suppressions, webhook endpoints) without message bodies, attachments, keys or secrets. `truncated` reports capped collections.",
+     {"limit_per_collection": _limit(account.EXPORT_DEFAULT_LIMIT, account.EXPORT_MAX_LIMIT)}, [], "admin", _h_export_account),
+    ("list_account_contacts", "Administrator only: contacts across inboxes, filterable by inbox and by address, name or company text.",
+     {**_AE, "q": _ID, "limit": _limit(100, 500)}, [], "admin", _h_list_account_contacts),
+    ("restore_agent", "Administrator only: restore a soft-deleted inbox so it receives mail again.",
+     _AE, ["agent_email"], "admin", _h_restore_agent),
+    ("get_review_settings", "Administrator only: the inbox's review notification address, expiry window and expiry action.",
+     _AE, ["agent_email"], "admin", _h_get_review_settings),
+    ("list_starter_templates", "List the built-in starter email templates (verification code, password reset, welcome, receipt, and more).",
+     {}, [], "any", _h_list_starter_templates),
+    ("get_starter_template", "Fetch one starter template by alias with its body, variables and sample data.",
+     {"alias": _ID}, ["alias"], "any", _h_get_starter_template),
+    ("validate_template", "Check placeholder syntax and render sample data without saving anything.",
+     {"subject": _ID, "body_text": _ID, "body_html": _ID, "data": {"type": "object"}}, ["subject"], "any", _h_validate_template),
+    ("copy_starter_template", "Copy a starter template into an inbox as an editable saved template.",
+     {**_AE, "alias": _ID}, ["agent_email", "alias"], "write", _h_copy_starter_template),
+]
+
 _HANDLERS = {}
-for _name, _desc, _props, _req, _kind, _handler in _NEW_SPECS:
+for _name, _desc, _props, _req, _kind, _handler in _NEW_SPECS + _MORE_SPECS:
     EXT_TOOLS.append(_tool(_name, _desc, dict(_props), _req))
     _HANDLERS[_name] = _handler
-    {"read": EXT_READ, "write": EXT_WRITE, "admin": EXT_ADMIN}[_kind].add(_name)
+    {"read": EXT_READ, "write": EXT_WRITE, "admin": EXT_ADMIN, "any": set()}[_kind].add(_name)
 
 EXT_NAMES = {t["name"] for t in EXT_TOOLS}
