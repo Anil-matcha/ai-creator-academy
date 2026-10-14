@@ -19,6 +19,7 @@ from app.models import Agent, WebhookDelivery, WebhookEndpoint
 from app.security import Principal, require_admin
 from app.services.smtp_secrets import encrypt_secret
 from app.services.webhook_delivery import validate_webhook_url
+from app.services.webhook_events import build_payload
 
 router = APIRouter(prefix="/v1/webhooks", tags=["Webhooks"], dependencies=[Depends(require_admin)])
 MAX_ENDPOINTS_PER_INBOX = 50
@@ -28,6 +29,7 @@ WEBHOOK_EVENT_TYPES = {
     "email.review_rejected", "email.flagged", "email.blocked",
     "email.accepted_by_relay", "email.failed", "email.delivery_unknown",
     "email.delivered", "email.bounced", "email.complained", "email.delivery_delayed",
+    "email.sent", "domain.sending_verified", "domain.sending_failed", "agent.suppression_added",
     "contact.due",
 }
 
@@ -256,13 +258,13 @@ async def send_test_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)
         endpoint_id=endpoint.id,
         agent_email=endpoint.agent_email,
         event_type="webhook.test",
-        payload={
+        payload=build_payload("webhook.test", {
             "id": delivery_id,
             "event_type": "webhook.test",
             "test": True,
             "created_at": now.isoformat(),
             "message": "Synthetic test event; no email was sent or received.",
-        },
+        }),
         status="pending",
         attempts=0,
         available_at=now,

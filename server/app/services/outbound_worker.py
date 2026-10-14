@@ -175,15 +175,18 @@ async def _dispatch_one() -> bool:
         if message:
             message.status = status
             message.delivery_error = info if status in {"failed", "delivery_unknown", "blocked"} else None
-            event_type = {
-                "accepted_by_relay": "email.accepted_by_relay",
-                "failed": "email.failed",
-                "delivery_unknown": "email.delivery_unknown",
-                "blocked": "email.blocked",
-            }.get(status)
+            # `email.sent` means the message left this system: accepted by the upstream relay,
+            # or delivered to a local inbox. It is not a delivery confirmation.
+            event_types = {
+                "accepted_by_relay": ["email.accepted_by_relay", "email.sent"],
+                "delivered": ["email.sent"],
+                "failed": ["email.failed"],
+                "delivery_unknown": ["email.delivery_unknown"],
+                "blocked": ["email.blocked"],
+            }.get(status, [])
             # This runs only after the conditional job transition succeeds, so
             # stale/duplicate dispatch results cannot create duplicate events.
-            if event_type:
+            for event_type in event_types:
                 await enqueue_outbound_status_webhook_event(
                     db,
                     event_type=event_type,

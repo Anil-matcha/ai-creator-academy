@@ -9,7 +9,7 @@ from sqlalchemy import and_, select, update
 
 from app.database import AsyncSessionLocal
 from app.models import Contact, ContactEngagement, RecipientSuppression, WebhookDelivery
-from app.services.webhook_events import _subscribed_endpoints
+from app.services.webhook_events import _subscribed_endpoints, build_payload
 
 logger = logging.getLogger("contact_due_webhooks")
 SWEEP_INTERVAL_SECONDS = 60
@@ -76,14 +76,15 @@ async def publish_due_contact_events(now: datetime.datetime | None = None, limit
                     endpoint_id=endpoint.id,
                     agent_email=engagement.agent_email,
                     event_type="contact.due",
-                    payload={
+                    payload=build_payload("contact.due", {
                         "id": event_id,
                         "agent_email": engagement.agent_email,
                         "engagement_id": engagement.id,
                         "contact_id": contact.id,
                         "stage": engagement.stage[:32],
                         "next_due_at": timestamp,
-                    },
+                        "created_at": now.isoformat(),
+                    }),
                     status="pending",
                     attempts=0,
                     available_at=now,
