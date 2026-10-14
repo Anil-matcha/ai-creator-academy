@@ -1,16 +1,19 @@
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import ReviewItem
 from app.schemas import ReviewItemResponse, ReviewDecisionRequest
 from app.services.hitl_service import HitlService
 from app.security import Principal, require_reviewer
 from app.services.cursors import decode_cursor, encode_cursor
+from app.services.idempotency import reserve_idempotency, complete_idempotency, release_idempotency_claim
 from sqlalchemy import and_, or_
 
 router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"])
@@ -85,27 +88,65 @@ async def get_review(review_id: str, principal: Principal = Depends(require_revi
 @router.post("/{review_id}/approve", response_model=ReviewItemResponse)
 async def approve_review(
     review_id: str,
+    request: Request,
     body: Optional[ReviewDecisionRequest] = None,
     principal: Principal = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     notes = body.notes if body else "Approved by human reviewer"
-    if not principal.is_admin:
-        review_agent = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == review_id))
-        if review_agent != principal.agent_email:
-            raise HTTPException(status_code=404, detail="Review item not found")
-    review = await HitlService.resolve_review(
-        db=db,
-        review_id=review_id,
-        action="approve",
-        notes=notes,
-        reviewer_id=principal.principal_id,
-    )
+    review_agent = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == review_id))
+    if not review_agent or (not principal.is_admin and review_agent != principal.agent_email):
+        raise HTTPException(status_code=404, detail="Review item not found")
+
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        raw_body = await request.body()
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:reviews:approve", key,
+                {"review_id": review_id, "body": raw_body.decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 200,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+
+    try:
+        review = await HitlService.resolve_review(
+            db=db,
+            review_id=review_id,
+            action="approve",
+            notes=notes,
+            reviewer_id=principal.principal_id,
+            commit=decision is None,
+            publish=decision is None,
+        )
+    except HTTPException:
+        if decision is not None:
+            await db.rollback()
+            await release_idempotency_claim(AsyncSessionLocal, decision)
+        raise
     # Reload with message
     res = await db.execute(
         select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.id == review_id)
     )
-    return res.scalar_one()
+    review = res.scalar_one()
+    if decision is not None:
+        response_body = jsonable_encoder(ReviewItemResponse.model_validate(review))
+        await complete_idempotency(db, decision, status=200, body=response_body)
+        await db.commit()
+        await HitlService.publish_resolution(review, review.message, "approve", notes)
+        return JSONResponse(status_code=200, content=response_body)
+    return review
 
 @router.post("/{review_id}/reject", response_model=ReviewItemResponse)
 async def reject_review(

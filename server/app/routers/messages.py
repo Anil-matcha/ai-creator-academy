@@ -465,7 +465,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
     return reply_msg
 
 @router.post("/{message_id}/forward", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
-async def forward_message(email: str, message_id: str, req: MessageForwardRequest, db: AsyncSession = Depends(get_db)):
+async def forward_message(email: str, message_id: str, req: MessageForwardRequest, request: Request, db: AsyncSession = Depends(get_db)):
     agent_res = await db.execute(select(Agent).where(Agent.email == email))
     agent = agent_res.scalar_one_or_none()
     if not agent:
@@ -485,6 +485,7 @@ async def forward_message(email: str, message_id: str, req: MessageForwardReques
             original=original,
             recipient=req.recipient,
             note=req.note,
+            idempotency_key=request.headers.get("Idempotency-Key"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

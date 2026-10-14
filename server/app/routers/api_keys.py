@@ -3,15 +3,21 @@ import secrets
 import hashlib
 import datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import ApiKey, Agent
 from app.schemas import ApiKeyCreate, ApiKeyResponse, ApiKeyCreatedResponse
-from app.security import require_admin
+from app.security import Principal, require_admin
 from app.services.cursors import decode_cursor, encode_cursor
+from app.services.idempotency import (
+    reserve_idempotency, complete_idempotency, release_idempotency_claim,
+    ensure_idempotency_response_encryption,
+)
 
 router = APIRouter(prefix="/v1/api-keys", tags=["API Keys"], dependencies=[Depends(require_admin)])
 
@@ -40,9 +46,37 @@ async def list_api_keys_page(limit: int = Query(50, ge=1, le=200), cursor: str |
     return {"items": [ApiKeyResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 @router.post("", response_model=ApiKeyCreatedResponse, status_code=201, dependencies=[Depends(require_admin)])
-async def create_api_key(payload: ApiKeyCreate, db: AsyncSession = Depends(get_db)):
+async def create_api_key(payload: ApiKeyCreate, request: Request,
+                         principal: Principal = Depends(require_admin),
+                         db: AsyncSession = Depends(get_db)):
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            ensure_idempotency_response_encryption()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:api-keys:create", key, await request.body())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 201,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+
     agent = await db.execute(select(Agent).where(Agent.email == payload.agent_email))
     if agent.scalar_one_or_none() is None:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=404, detail="Agent not found")
     token_secret = secrets.token_urlsafe(32)
     prefix = f"oae_{token_secret[:8]}"
@@ -64,9 +98,23 @@ async def create_api_key(payload: ApiKeyCreate, db: AsyncSession = Depends(get_d
         ),
     )
     db.add(api_key)
+    response_body = jsonable_encoder(ApiKeyCreatedResponse(
+        id=api_key.id,
+        name=api_key.name,
+        key=full_key,
+        prefix=api_key.prefix,
+        scope=api_key.scope,
+        agent_email=api_key.agent_email,
+        created_at=api_key.created_at,
+        expires_at=api_key.expires_at,
+    ))
+    if decision is not None:
+        await complete_idempotency(db, decision, status=201, body=response_body, encrypt_response=True)
     await db.commit()
     await db.refresh(api_key)
 
+    if decision is not None:
+        return JSONResponse(status_code=201, content=response_body)
     return ApiKeyCreatedResponse(
         id=api_key.id,
         name=api_key.name,

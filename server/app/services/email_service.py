@@ -804,6 +804,7 @@ class EmailService:
         original: Message,
         recipient: str,
         note: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Message:
         recipient = recipient.strip()
         local_part, separator, domain = recipient.rpartition("@")
@@ -839,6 +840,7 @@ class EmailService:
             subject=subject,
             body_text="\n".join(body_parts),
             thread_id=original.thread_id,
+            idempotency_key=idempotency_key,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in attachment_rows],
         )

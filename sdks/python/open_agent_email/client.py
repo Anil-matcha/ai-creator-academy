@@ -994,13 +994,14 @@ class AgentEmailClient:
 
     def list_events(
         self, *, agent_email: str | None = None, event_type: str | None = None,
-        status: str | None = None, limit: int = 50, cursor: str | None = None,
+        status: str | None = None, since: str | None = None, until: str | None = None,
+        limit: int = 50, cursor: str | None = None,
     ) -> dict[str, Any]:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         query: dict[str, str | int | float] = {"limit": limit}
         for key, value in (("agent_email", agent_email), ("event_type", event_type),
-                           ("status", status), ("cursor", cursor)):
+                           ("status", status), ("since", since), ("until", until), ("cursor", cursor)):
             if value is not None:
                 query[key] = value
         return self._request("GET", "/v1/events", query=query)

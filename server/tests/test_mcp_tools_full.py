@@ -5,9 +5,10 @@ import datetime
 import json
 
 import pytest
+from sqlalchemy import func, select
 
 from app.database import AsyncSessionLocal
-from app.models import Message, MessageAttachment, OutboundJob, WebhookDelivery
+from app.models import Contact, ContactImportBatch, Domain, IdempotencyRecord, Message, MessageAttachment, OutboundJob, WebhookDelivery, WebhookEndpoint
 from app.routers import mcp_extra
 from app.routers.mcp import MCP_TOOLS
 from tests.conftest import ADMIN, make_agent, make_key
@@ -328,6 +329,9 @@ async def test_event_tools(client):
         await db.commit()
     page = await ok(client, ADMIN, "list_events")
     assert [e["id"] for e in page["items"]] == ["evt_x"]
+    bounded = await ok(client, ADMIN, "list_events", since=(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).isoformat(),
+                       until=(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)).isoformat())
+    assert [e["id"] for e in bounded["items"]] == ["evt_x"]
     assert (await ok(client, ADMIN, "get_event", event_id="evt_x"))["payload"] == {"k": 1}
     assert (await ok(client, ADMIN, "redeliver_event", event_id="evt_x"))["status"] == "pending"
     await fails(client, ADMIN, "redeliver_event", event_id="evt_x")     # already queued
@@ -393,6 +397,79 @@ async def test_account_metrics_and_outbox_tools(client):
     await fails(client, ADMIN, "list_outbox", status="bogus")
     await fails(client, ADMIN, "retry_outbox_job", job_id=jobs[0]["id"])           # only failed/uncertain jobs retry
     await fails(client, ADMIN, "retry_outbox_job", job_id="missing")
+
+
+async def test_mcp_forward_supports_idempotency_key(client):
+    await make_agent(client, A)
+    original = await ok(client, ADMIN, "send_message", agent_email=A,
+                        recipient="to@example.com", subject="s", body_text="b")
+    arguments = {
+        "agent_email": A,
+        "message_id": original["message_id"],
+        "recipient": "human@example.com",
+        "note": "Please review",
+        "idempotency_key": "mcp-forward-1",
+    }
+    first = await ok(client, ADMIN, "forward_to_human", **arguments)
+    retry = await ok(client, ADMIN, "forward_to_human", **arguments)
+    assert first["message_id"] == retry["message_id"]
+    messages = await client.get(f"/v1/agents/{A}/messages", headers=ADMIN)
+    assert len(messages.json()) == 2
+
+    changed = {**arguments, "note": "Different context"}
+    await fails(client, ADMIN, "forward_to_human", contains="different request", **changed)
+
+
+async def test_mcp_forwards_idempotency_for_parity_write_operations(client):
+    await make_agent(client, A)
+
+    contact_args = {"agent_email": A, "email": "idem@example.com", "name": "Idem", "idempotency_key": "mcp-contact-1"}
+    contact = await ok(client, ADMIN, "create_contact", **contact_args)
+    assert await ok(client, ADMIN, "create_contact", **contact_args) == contact
+    await fails(client, ADMIN, "create_contact", contains="different request", **{**contact_args, "name": "Changed"})
+
+    csv_args = {"agent_email": A, "csv": "email,name\nimported@example.com,Imported\n", "idempotency_key": "mcp-import-1"}
+    imported = await ok(client, ADMIN, "import_contacts", **csv_args)
+    assert await ok(client, ADMIN, "import_contacts", **csv_args) == imported
+    imported_contacts = await client.get(f"/v1/agents/{A}/contacts", headers=ADMIN)
+    assert imported_contacts.status_code == 200
+
+    webhook_args = {"agent_email": A, "url": "https://example.com/mcp-idem", "idempotency_key": "mcp-webhook-1"}
+    webhook = await ok(client, ADMIN, "create_webhook", **webhook_args)
+    assert await ok(client, ADMIN, "create_webhook", **webhook_args) == webhook
+    await fails(client, ADMIN, "create_webhook", contains="different request", **{**webhook_args, "enabled": False})
+
+    key_args = {"name": "mcp-idem", "agent_email": A, "scope": "read_only", "idempotency_key": "mcp-api-key-1"}
+    api_key = await ok(client, ADMIN, "create_api_key", **key_args)
+    assert await ok(client, ADMIN, "create_api_key", **key_args) == api_key
+    await fails(client, ADMIN, "create_api_key", contains="different request", **{**key_args, "name": "changed"})
+
+    rotated = await ok(client, ADMIN, "rotate_webhook_secret", webhook_id=webhook["id"], idempotency_key="mcp-rotate-1")
+    assert await ok(client, ADMIN, "rotate_webhook_secret", webhook_id=webhook["id"], idempotency_key="mcp-rotate-1") == rotated
+
+    async with AsyncSessionLocal() as db:
+        db.add(Domain(id="dom_mcpidem", domain="mcp-idem.example", status="pending_dns",
+                      mx_record="mx", spf_record="spf", dkim_record="dkim", dmarc_record="dmarc",
+                      created_at=datetime.datetime.utcnow()))
+        await db.commit()
+    assert await ok(client, ADMIN, "delete_domain", domain="mcp-idem.example", idempotency_key="mcp-domain-1") == {
+        "deleted": True, "domain": "mcp-idem.example"}
+    assert await ok(client, ADMIN, "delete_domain", domain="mcp-idem.example", idempotency_key="mcp-domain-1") == {
+        "deleted": True, "domain": "mcp-idem.example"}
+
+    sent = await ok(client, ADMIN, "send_message", agent_email=A,
+                    recipient="review@example.com", subject="s", body_text="b")
+    review_id = (await ok(client, ADMIN, "list_reviews"))[0]["review_id"]
+    approval_args = {"review_id": review_id, "notes": "Approved through MCP", "idempotency_key": "mcp-approve-1"}
+    approval = await ok(client, ADMIN, "approve_review", **approval_args)
+    assert approval["message_id"] == sent["message_id"]
+    assert await ok(client, ADMIN, "approve_review", **approval_args) == approval
+    await fails(client, ADMIN, "approve_review", contains="different request", **{**approval_args, "notes": "Changed"})
+
+    async with AsyncSessionLocal() as db:
+        assert await db.scalar(select(func.count()).select_from(ContactImportBatch)) == 1
+        assert await db.scalar(select(func.count()).select_from(WebhookEndpoint)) == 1
+        assert await db.scalar(select(func.count()).select_from(IdempotencyRecord)) >= 7
 
 
 async def test_uncertain_outbox_retry_requires_duplicate_risk_confirmation(client):

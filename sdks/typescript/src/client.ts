@@ -272,9 +272,9 @@ export class AgentEmailClient {
   };
 
   readonly events = {
-    page: (params: { agent_email?: string; event_type?: string; status?: string; limit?: number; cursor?: string } = {}) =>
+    page: (params: { agent_email?: string; event_type?: string; status?: string; since?: string; until?: string; limit?: number; cursor?: string } = {}) =>
       this.request<T.Page<T.WebhookDelivery>>("GET", "/v1/events", { query: { ...params } }),
-    iterate: (params: { agent_email?: string; event_type?: string; status?: string; limit?: number } = {}) =>
+    iterate: (params: { agent_email?: string; event_type?: string; status?: string; since?: string; until?: string; limit?: number } = {}) =>
       paginate<T.WebhookDelivery>((cursor) => this.events.page({ ...params, cursor })),
     get: (id: string) => this.request<T.WebhookDelivery>("GET", `/v1/events/${seg(id)}`),
     redeliver: (id: string) => this.request<{ id: string; status: string }>("POST", `/v1/events/${seg(id)}/redeliver`),

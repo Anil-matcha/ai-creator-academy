@@ -2,18 +2,19 @@ import uuid
 import datetime
 import asyncio
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import Domain
 from app.schemas import DomainCreate, DomainResponse
-from app.security import require_admin
+from app.security import Principal, require_admin
 from app.services import domain_dns
 from app.services.smtp_secrets import encrypt_secret
 from app.services.webhook_events import enqueue_domain_webhook_event
 from app.services.cursors import decode_cursor, encode_cursor
+from app.services.idempotency import reserve_idempotency, complete_idempotency, release_idempotency_claim
 from sqlalchemy import and_, or_
 
 router = APIRouter(prefix="/v1/domains", tags=["Domains"], dependencies=[Depends(require_admin)])
@@ -131,13 +132,38 @@ async def verify_domain(domain_name: str, db: AsyncSession = Depends(get_db)):
     return domain
 
 @router.delete("/{domain_name}", status_code=204)
-async def delete_domain(domain_name: str, db: AsyncSession = Depends(get_db)):
+async def delete_domain(domain_name: str, request: Request,
+                        principal: Principal = Depends(require_admin),
+                        db: AsyncSession = Depends(get_db)):
     clean_domain = domain_name.strip().lower()
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:domains:delete", key,
+                {"domain": clean_domain, "body": (await request.body()).decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return Response(status_code=decision.response_status or 204,
+                             headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
     res = await db.execute(select(Domain).where(Domain.domain == clean_domain))
     domain = res.scalar_one_or_none()
     if not domain:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=404, detail="Domain not found")
 
     await db.delete(domain)
+    if decision is not None:
+        await complete_idempotency(db, decision, status=204, body=None)
     await db.commit()
-    return None
+    return Response(status_code=204)

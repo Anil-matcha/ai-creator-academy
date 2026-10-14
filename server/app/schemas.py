@@ -451,6 +451,7 @@ class MessageResponse(BaseModel):
     threat_details: str
     labels: List[str] = Field(default_factory=list)
     scheduled_for: Optional[datetime] = None
+    scheduled_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
     created_at: datetime
 

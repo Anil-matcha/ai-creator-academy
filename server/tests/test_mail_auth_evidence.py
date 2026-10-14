@@ -65,6 +65,7 @@ def test_message_authentication_supports_legacy_and_structured_evidence():
     message.rfc_message_id = "<message-1@example.com>"
     message.verified_domain = None
     message.status = "delivered"
+    message.labels = []
     message.threat_score = 0
     message.threat_details = ""
     message.created_at = datetime.datetime.now(datetime.timezone.utc)

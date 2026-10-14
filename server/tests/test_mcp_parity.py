@@ -44,12 +44,18 @@ async def test_labels_trash_restore_and_lifecycle_via_mcp(client):
 
 
 async def test_scheduled_send_via_mcp(client):
-    await setup(client)
+    original = await setup(client)
     when = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)).isoformat()
     err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", send_at=when, **PAYLOAD)
     assert not err and out["status"] == "scheduled" and out["scheduled_for"]
+    assert out["scheduled_at"] == out["scheduled_for"]
     err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", scheduled_at=when, **PAYLOAD)
     assert not err and out["status"] == "scheduled" and out["scheduled_for"]
+    assert out["scheduled_at"] == out["scheduled_for"]
+    err, out = await call(client, ADMIN, "reply_to_message", agent_email="a@agents.local",
+                          message_id=original["id"], body_text="later", scheduled_at=when)
+    assert not err and out["status"] == "scheduled"
+    assert out["scheduled_at"] == out["scheduled_for"]
     err, _ = await call(client, ADMIN, "send_message", agent_email="a@agents.local", scheduled_at="2030-01-01T00:00:00", **PAYLOAD)
     assert err
     err, out = await call(client, ADMIN, "send_message", agent_email="a@agents.local", send_at="not-a-date", **PAYLOAD)

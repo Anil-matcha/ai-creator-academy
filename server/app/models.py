@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint, JSON
+from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint, JSON, text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -127,6 +127,30 @@ class ProviderFeedbackReceipt(Base):
     received_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
+class IdempotencyRecord(Base):
+    """Durable response receipt for a scoped API idempotency key."""
+    __tablename__ = "idempotency_records"
+    __table_args__ = (
+        UniqueConstraint("scope", "idempotency_key", name="uq_idempotency_scope_key"),
+        Index("ix_idempotency_records_expires_at", "expires_at"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    scope = Column(String(512), nullable=False)
+    idempotency_key = Column(String(128), nullable=False)
+    request_digest = Column(String(64), nullable=False)
+    state = Column(String(16), nullable=False, default="in_progress")  # in_progress, completed
+    claim_token = Column(String(64), nullable=False)
+    response_status = Column(Integer, nullable=True)
+    response_body = Column(JSON, nullable=True)
+    response_encrypted = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    response_headers = Column(JSON, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    lease_expires_at = Column(DateTime, nullable=False)
+
+
 class UnsubscribeToken(Base):
     """Hashed, inbox-and-recipient scoped public unsubscribe capability."""
     __tablename__ = "unsubscribe_tokens"
@@ -207,6 +231,11 @@ class Message(Base):
     deleted_at = Column(DateTime, nullable=True, index=True)  # trash; restorable
     scheduled_for = Column(DateTime, nullable=True)  # deferred outbound submission time (UTC)
     canceled_by_trash = Column(Boolean, nullable=True)  # a scheduled send canceled by trashing; restore may re-arm it
+
+    @property
+    def scheduled_at(self):
+        """Canonical API name for the legacy scheduled_for storage column."""
+        return self.scheduled_for
     
     # State & Threat
     status = Column(String(32), default="delivered", index=True)  # delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed

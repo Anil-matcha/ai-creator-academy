@@ -244,7 +244,7 @@ def cmd_messages(args: argparse.Namespace) -> int:
             if not args.template and body is None:
                 raise UsageError("reply needs --body/--body-file (or --template)")
             data = client.reply_message(agent, args.id, **content, **common)
-        emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "conversation_id", "scheduled_for"]))
+        emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "conversation_id", "scheduled_at"]))
     elif action == "forward":
         data = client.forward_message(agent, args.id, recipient=args.to, note=args.note)
         emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject"]))
@@ -319,7 +319,8 @@ def cmd_webhooks(args: argparse.Namespace) -> int:
 def cmd_events(args: argparse.Namespace) -> int:
     client = make_client(args)
     if args.action == "list":
-        data = client.list_events(agent_email=args.agent, event_type=args.type, status=args.status, limit=args.limit)
+        data = client.list_events(agent_email=args.agent, event_type=args.type, status=args.status,
+                                  since=args.since, until=args.until, limit=args.limit)
         emit(args, data, lambda d: render_table(
             d.get("items", []), ["id", "agent_email", "event_type", "status", "attempts", "created_at"]))
     else:
@@ -589,6 +590,8 @@ def build_parser() -> argparse.ArgumentParser:
     acts["list"].add_argument("--agent")
     acts["list"].add_argument("--type")
     acts["list"].add_argument("--status")
+    acts["list"].add_argument("--since", help="inclusive RFC-3339 timestamp with timezone offset")
+    acts["list"].add_argument("--until", help="inclusive RFC-3339 timestamp with timezone offset")
     acts["list"].add_argument("--limit", type=int, default=20)
     acts["redeliver"].add_argument("id")
 

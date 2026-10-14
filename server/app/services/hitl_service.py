@@ -21,6 +21,8 @@ class HitlService:
         action: str,  # approve or reject
         notes: str = None,
         reviewer_id: str = "",
+        commit: bool = True,
+        publish: bool = True,
     ) -> ReviewItem:
         """
         Human reviewer approves or rejects a held message.
@@ -86,9 +88,21 @@ class HitlService:
                     available_at=max(datetime.datetime.utcnow(), message.scheduled_for or datetime.datetime.min),
                     created_at=datetime.datetime.utcnow(),
                 ))
-        # Commit the approval and delivery job together so a retry cannot double-dispatch.
-        await db.commit()
+        # Callers that store a replay receipt can commit both atomically.
+        if commit:
+            await db.commit()
 
+        if publish:
+            await cls.publish_resolution(review, message, action, notes)
+
+        if commit:
+            await db.refresh(review)
+
+        return review
+
+    @classmethod
+    async def publish_resolution(cls, review: ReviewItem, message: Message | None,
+                                 action: str, notes: str | None) -> None:
         if message and action == "approve":
             msg_payload = {
                 "id": message.id,
@@ -108,8 +122,6 @@ class HitlService:
                 await ws_manager.send_agent_message(message.agent_email, "email.received", msg_payload)
                 await ws_manager.broadcast_event("email.received", msg_payload)
 
-        await db.refresh(review)
-
         # Broadcast review resolved
         await ws_manager.broadcast_event("review.resolved", {
             "review_id": review.id,
@@ -117,5 +129,3 @@ class HitlService:
             "status": review.status,
             "notes": notes
         })
-
-        return review

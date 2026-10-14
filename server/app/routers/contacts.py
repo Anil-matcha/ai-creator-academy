@@ -5,16 +5,20 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, delete, func, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import Agent, Contact, ContactConsentEvent, ContactImportBatch, RecipientSuppression
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate, ContactConsentWrite, ContactConsentHistoryResponse
 from pydantic import ValidationError
 from app.security import require_agent_access, require_write
 from app.services.cursors import decode_cursor, encode_cursor
+from app.security import Principal
+from app.services.idempotency import reserve_idempotency, complete_idempotency, release_idempotency_claim
 
 
 router = APIRouter(
@@ -78,9 +82,37 @@ async def list_contacts_page(email: str, limit: int = Query(50, ge=1, le=200),
 
 
 @router.post("", response_model=ContactResponse, status_code=201, dependencies=[Depends(require_write)])
-async def create_contact(email: str, payload: ContactCreate, db: AsyncSession = Depends(get_db)):
+async def create_contact(email: str, payload: ContactCreate, request: Request,
+                         principal: Principal = Depends(require_agent_access),
+                         db: AsyncSession = Depends(get_db)):
     await _ensure_agent_exists(email, db)
-    await _ensure_unique_email(email, payload.email, db)
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        raw_body = await request.body()
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:contacts:create", key,
+                {"agent_email": email, "body": raw_body.decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 201,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+    try:
+        await _ensure_unique_email(email, payload.email, db)
+    except HTTPException:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
+        raise
     now = datetime.datetime.utcnow()
     contact = Contact(
         id=f"ct_{uuid.uuid4().hex[:12]}",
@@ -93,12 +125,18 @@ async def create_contact(email: str, payload: ContactCreate, db: AsyncSession = 
         updated_at=now,
     )
     db.add(contact)
+    if decision is not None:
+        await db.flush()
+        response_body = jsonable_encoder(ContactResponse.model_validate(contact))
+        await complete_idempotency(db, decision, status=201, body=response_body)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="A contact with this email already exists in this inbox") from None
     await db.refresh(contact)
+    if decision is not None:
+        return JSONResponse(status_code=201, content=response_body)
     return contact
 
 
@@ -160,7 +198,9 @@ async def record_contact_consent(email: str, contact_id: str, payload: ContactCo
 
 
 @router.post("/imports", dependencies=[Depends(require_write)])
-async def import_contacts(email: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def import_contacts(email: str, request: Request,
+                          principal: Principal = Depends(require_agent_access),
+                          db: AsyncSession = Depends(get_db)):
     """Import inert contacts from a bounded CSV with email,name,company,notes columns."""
     await _ensure_agent_exists(email, db)
     body = bytearray()
@@ -169,7 +209,8 @@ async def import_contacts(email: str, request: Request, db: AsyncSession = Depen
             raise HTTPException(status_code=413, detail="CSV file must be at most 1 MB")
         body.extend(chunk)
     try:
-        text = bytes(body).decode("utf-8-sig")
+        raw_body = bytes(body)
+        text = raw_body.decode("utf-8-sig")
         rows = csv.DictReader(io.StringIO(text, newline=""), strict=True)
         raw_headers = rows.fieldnames or []
         normalized_headers = [str(header or "").strip().lower() for header in raw_headers]
@@ -196,6 +237,26 @@ async def import_contacts(email: str, request: Request, db: AsyncSession = Depen
     if any(None in row or any(value is None for value in row.values()) for row in parsed):
         raise HTTPException(status_code=400, detail="Every CSV row must have exactly the same number of columns as the header")
     normalized_rows = [{str(k or "").strip().lower(): (v or "").strip() for k, v in row.items()} for row in parsed]
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:contacts:imports:create", key,
+                {"agent_email": email, "body": raw_body.decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 200,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
     addresses = [row.get("email", "").strip().lower() for row in normalized_rows if row.get("email", "").strip()]
     existing = set((await db.execute(select(Contact.email).where(Contact.agent_email == email, Contact.email.in_(addresses)))).scalars().all())
     suppressed = set((await db.execute(select(RecipientSuppression.email).where(RecipientSuppression.agent_email == email, RecipientSuppression.email.in_(addresses)))).scalars().all())
@@ -231,11 +292,16 @@ async def import_contacts(email: str, request: Request, db: AsyncSession = Depen
         created_ids.append(contact_id)
         outcomes.append({"row": index, "email": address, "status": "created"})
     batch = ContactImportBatch(id=batch_id, agent_email=email, contact_ids=created_ids, created_at=now)
+    response_body = {"batch_id": batch_id, "created": len(created_ids), "skipped": len(outcomes) - len(created_ids), "results": outcomes,
+                     "notice": "Imported contacts are records only. This operation does not send email or record consent."}
     db.add(batch)
     db.add_all(new_contacts)
+    if decision is not None:
+        await complete_idempotency(db, decision, status=200, body=response_body)
     await db.commit()
-    return {"batch_id": batch_id, "created": len(created_ids), "skipped": len(outcomes) - len(created_ids), "results": outcomes,
-            "notice": "Imported contacts are records only. This operation does not send email or record consent."}
+    if decision is not None:
+        return JSONResponse(status_code=200, content=response_body)
+    return response_body
 
 
 @router.get("/imports")

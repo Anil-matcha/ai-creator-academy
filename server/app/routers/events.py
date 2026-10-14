@@ -1,5 +1,6 @@
 """Event log view over webhook deliveries (/v1/events)."""
 
+import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,11 +18,14 @@ router = APIRouter(prefix="/v1/events", tags=["Events"], dependencies=[Depends(r
 async def list_events(agent_email: Optional[str] = Query(None, max_length=255),
                       event_type: Optional[str] = Query(None, min_length=1, max_length=64),
                       status: Optional[str] = Query(None),
+                      since: Optional[datetime.datetime] = Query(None, description="Include events at or after this offset-qualified timestamp"),
+                      until: Optional[datetime.datetime] = Query(None, description="Include events at or before this offset-qualified timestamp"),
                       limit: int = Query(50, ge=1, le=100),
                       cursor: Optional[str] = Query(None, max_length=2048),
                       db: AsyncSession = Depends(get_db)):
     page = await webhooks.page_deliveries(endpoint_id=None, status=status, event_type=event_type,
-                                          agent_email=agent_email, limit=limit, cursor=cursor, db=db)
+                                          agent_email=agent_email, since=since, until=until,
+                                          limit=limit, cursor=cursor, db=db)
     return page
 
 

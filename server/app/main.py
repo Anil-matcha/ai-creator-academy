@@ -165,6 +165,9 @@ async def lifespan(app: FastAPI):
     from app.services.message_purge import run_trash_janitor
     trash_janitor_task = asyncio.create_task(run_trash_janitor(), name="trash-retention-janitor")
     app.state.trash_janitor_task = trash_janitor_task
+    from app.services.idempotency import run_idempotency_sweeper
+    idempotency_task = asyncio.create_task(run_idempotency_sweeper(), name="idempotency-retention-sweeper")
+    app.state.idempotency_sweeper_task = idempotency_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -211,6 +214,12 @@ async def lifespan(app: FastAPI):
     trash_janitor_task.cancel()
     try:
         await trash_janitor_task
+    except asyncio.CancelledError:
+        pass
+
+    idempotency_task.cancel()
+    try:
+        await idempotency_task
     except asyncio.CancelledError:
         pass
 

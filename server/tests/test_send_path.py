@@ -41,6 +41,25 @@ async def test_idempotency_keys_are_inbox_scoped(client):
     assert await _count() == 2
 
 
+async def test_forward_replays_idempotently_and_rejects_key_reuse(client):
+    await make_agent(client, "a@agents.local")
+    original = await client.post(MSGS, headers=ADMIN, json=PAYLOAD)
+    assert original.status_code == 201
+    url = f"{MSGS}/{original.json()['id']}/forward"
+    headers = {**ADMIN, "Idempotency-Key": "forward-1"}
+    request = {"recipient": "human@example.com", "note": "Please review"}
+
+    first = await client.post(url, headers=headers, json=request)
+    retry = await client.post(url, headers=headers, json=request)
+    assert first.status_code == retry.status_code == 201
+    assert first.json()["id"] == retry.json()["id"]
+    assert await _count() == 2
+
+    changed = await client.post(url, headers=headers, json={**request, "note": "Different context"})
+    assert changed.status_code == 409
+    assert await _count() == 2
+
+
 async def test_suppressed_recipient_blocked_before_message_created(client):
     await make_agent(client, "a@agents.local")
     r = await client.post("/v1/agents/a@agents.local/suppressions", headers=ADMIN, json={"email": "To@Example.com"})

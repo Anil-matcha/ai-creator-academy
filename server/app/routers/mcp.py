@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, Request, HTTPException
+from starlette.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -12,8 +13,9 @@ from app.services.attachment_utils import decode_attachment_inputs
 from app.services.hitl_service import HitlService
 from app.services.otp_finder import find_recent_otp
 from app.security import Principal, get_principal
-from app.schemas import normalize_send_at
-from app.routers.mcp_extra import EXT_ADMIN, EXT_NAMES, EXT_READ, EXT_TOOLS, EXT_WRITE, run_ext_tool
+from app.schemas import ReviewDecisionRequest, normalize_send_at
+from app.routers import reviews as reviews_router
+from app.routers.mcp_extra import EXT_ADMIN, EXT_NAMES, EXT_READ, EXT_TOOLS, EXT_WRITE, _mcp_request, run_ext_tool
 
 router = APIRouter(prefix="/mcp", tags=["Model Context Protocol (MCP)"])
 
@@ -115,7 +117,8 @@ MCP_TOOLS = [
                 "agent_email": {"type": "string"},
                 "message_id": {"type": "string"},
                 "recipient": {"type": "string", "description": "Human teammate email address"},
-                "note": {"type": "string", "description": "Optional context for the human"}
+                "note": {"type": "string", "description": "Optional context for the human"},
+                "idempotency_key": {"type": "string", "maxLength": 128, "description": "Optional retry key; reuse only for the same request"}
             },
             "required": ["agent_email", "message_id", "recipient"]
         }
@@ -138,7 +141,8 @@ MCP_TOOLS = [
             "type": "object",
             "properties": {
                 "review_id": {"type": "string"},
-                "notes": {"type": "string"}
+                "notes": {"type": "string"},
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}
             },
             "required": ["review_id"]
         }
@@ -378,6 +382,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         )
         return json.dumps({
             "status": msg.status,
+            "scheduled_at": msg.scheduled_for.isoformat() if msg.scheduled_for else None,
             "scheduled_for": msg.scheduled_for.isoformat() if msg.scheduled_for else None,
             "message_id": msg.id,
             "conversation_id": msg.conversation_id,
@@ -414,6 +419,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         )
         return json.dumps({
             "status": reply_msg.status,
+            "scheduled_at": reply_msg.scheduled_for.isoformat() if reply_msg.scheduled_for else None,
+            "scheduled_for": reply_msg.scheduled_for.isoformat() if reply_msg.scheduled_for else None,
             "message_id": reply_msg.id,
             "thread_id": reply_msg.thread_id,
             "conversation_id": reply_msg.conversation_id,
@@ -440,6 +447,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             original=original,
             recipient=args["recipient"],
             note=args.get("note"),
+            idempotency_key=args.get("idempotency_key"),
         )
         return json.dumps({
             "status": forwarded.status,
@@ -474,10 +482,16 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             agent_email = await db.scalar(select(ReviewItem.agent_email).where(ReviewItem.id == args["review_id"]))
             if agent_email != principal.agent_email:
                 raise PermissionError("Review item is outside this reviewer's inbox scope")
-        rev = await HitlService.resolve_review(
-            db, args["review_id"], "approve", args.get("notes", "Approved via MCP"), principal.principal_id
+        notes = args.get("notes", "Approved via MCP")
+        raw_body = json.dumps({"action": "approve", "notes": notes}, separators=(",", ":")).encode("utf-8")
+        result = await reviews_router.approve_review(
+            args["review_id"], _mcp_request(args, raw_body), ReviewDecisionRequest(action="approve", notes=notes), principal, db
         )
-        return json.dumps({"status": "approved", "review_id": rev.id, "message_id": rev.message_id})
+        if isinstance(result, JSONResponse):
+            result = json.loads(result.body)
+        review_id = result.get("id", result.get("review_id")) if isinstance(result, dict) else result.id
+        message_id = result.get("message_id") if isinstance(result, dict) else result.message_id
+        return json.dumps({"status": "approved", "review_id": review_id, "message_id": message_id})
 
     elif name == "reject_review":
         if not principal.is_admin:

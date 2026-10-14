@@ -9,15 +9,21 @@ import uuid
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import Agent, WebhookDelivery, WebhookEndpoint
 from app.security import Principal, require_admin
 from app.services.smtp_secrets import encrypt_secret
+from app.services.idempotency import (
+    reserve_idempotency, complete_idempotency, release_idempotency_claim,
+    ensure_idempotency_response_encryption,
+)
 from app.services.webhook_delivery import validate_webhook_url
 from app.services.webhook_events import build_payload
 from app.services.cursors import decode_cursor, encode_cursor
@@ -52,7 +58,8 @@ def _validate_event_types(value: list[str]) -> list[str]:
 
 def _encode_delivery_cursor(
     item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
-    agent_email: Optional[str] = None,
+    agent_email: Optional[str] = None, since: datetime.datetime | None = None,
+    until: datetime.datetime | None = None,
 ) -> str:
     payload = {
         "created_at": item.created_at.isoformat(),
@@ -61,6 +68,8 @@ def _encode_delivery_cursor(
         "status": status,
         "event_type": event_type,
         "agent_email": agent_email,
+        "since": since.isoformat() if since else None,
+        "until": until.isoformat() if until else None,
     }
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -68,7 +77,8 @@ def _encode_delivery_cursor(
 
 def _decode_delivery_cursor(
     cursor: str, endpoint_id: Optional[str], status: Optional[str], event_type: Optional[str],
-    agent_email: Optional[str] = None,
+    agent_email: Optional[str] = None, since: datetime.datetime | None = None,
+    until: datetime.datetime | None = None,
 ):
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
@@ -77,12 +87,17 @@ def _decode_delivery_cursor(
         old_keys = {"created_at", "id", "endpoint_id", "status"}
         prior_keys = old_keys | {"event_type"}
         new_keys = prior_keys | {"agent_email"}
-        if not isinstance(payload, dict) or set(payload) not in (old_keys, prior_keys, new_keys):
+        date_keys = new_keys | {"since", "until"}
+        if not isinstance(payload, dict) or set(payload) not in (old_keys, prior_keys, new_keys, date_keys):
             raise ValueError
         cursor_event_type = payload.get("event_type")
         if cursor_event_type != event_type or payload.get("agent_email") != agent_email:
             raise ValueError("filter mismatch")
         if payload["endpoint_id"] != endpoint_id or payload["status"] != status:
+            raise ValueError("filter mismatch")
+        if payload.get("since") != (since.isoformat() if since else None):
+            raise ValueError("filter mismatch")
+        if payload.get("until") != (until.isoformat() if until else None):
             raise ValueError("filter mismatch")
         if not isinstance(payload["id"], str) or not payload["id"] or len(payload["id"]) > 64:
             raise ValueError
@@ -148,33 +163,72 @@ def _endpoint_response(endpoint: WebhookEndpoint) -> dict:
 
 
 @router.post("", response_model=WebhookCreated, status_code=201)
-async def create_webhook(payload: WebhookCreate, db: AsyncSession = Depends(get_db)):
+async def create_webhook(payload: WebhookCreate, request: Request,
+                         principal: Principal = Depends(require_admin),
+                         db: AsyncSession = Depends(get_db)):
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            ensure_idempotency_response_encryption()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:webhooks:create", key, await request.body())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 201,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+
     agent_result = await db.execute(select(Agent).where(
         Agent.email == payload.agent_email.strip().lower(),
     ).with_for_update())
     agent = agent_result.scalar_one_or_none()
     if not agent:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=404, detail="Agent inbox not found")
     endpoint_count = await db.scalar(select(func.count()).select_from(WebhookEndpoint).where(
         WebhookEndpoint.agent_email == agent.email,
     ))
     if endpoint_count >= MAX_ENDPOINTS_PER_INBOX:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=409, detail=f"An inbox can have at most {MAX_ENDPOINTS_PER_INBOX} webhook endpoints")
     try:
         url = validate_webhook_url(payload.url)
         raw_secret = "whsec_" + secrets.token_urlsafe(32)
         encrypted = encrypt_secret(raw_secret, "webhook signing secret")
     except ValueError as exc:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     now = datetime.datetime.utcnow()
     endpoint = WebhookEndpoint(id=f"wh_{uuid.uuid4().hex}", agent_email=agent.email, url=url,
                                signing_secret=encrypted, enabled=payload.enabled,
                                event_types=payload.events, created_at=now, updated_at=now)
     db.add(endpoint)
+    response_body = jsonable_encoder({**_endpoint_response(endpoint), "signing_secret": raw_secret})
+    if decision is not None:
+        await complete_idempotency(db, decision, status=201, body=response_body, encrypt_response=True)
     await db.commit()
     await db.refresh(endpoint)
+    if decision is not None:
+        return JSONResponse(status_code=201, content=response_body)
     return {**_endpoint_response(endpoint), "signing_secret": raw_secret}
 
 
@@ -235,23 +289,54 @@ async def update_webhook(endpoint_id: str, payload: WebhookUpdate, db: AsyncSess
 
 
 @router.post("/{endpoint_id}/rotate-secret", response_model=WebhookCreated)
-async def rotate_webhook_secret(endpoint_id: str, db: AsyncSession = Depends(get_db)):
+async def rotate_webhook_secret(endpoint_id: str, request: Request,
+                                principal: Principal = Depends(require_admin),
+                                db: AsyncSession = Depends(get_db)):
     """Rotate a signing secret and return its plaintext exactly once.
 
     The currently active secret remains valid for 24 hours. A repeated rotation
     replaces any still-active overlap window with the immediately prior secret.
     """
+    key = request.headers.get("Idempotency-Key")
+    decision = None
+    if key is not None:
+        try:
+            ensure_idempotency_response_encryption()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            decision = await reserve_idempotency(
+                f"{principal.principal_id}:webhooks:rotate-secret", key,
+                {"endpoint_id": endpoint_id, "body": (await request.body()).decode("latin1")})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if decision.outcome == "replay":
+            return JSONResponse(status_code=decision.response_status or 200,
+                                content=decision.response_body,
+                                headers=decision.response_headers or {})
+        if decision.outcome != "reserved":
+            messages = {
+                "conflict": "Idempotency-Key was already used with a different request",
+                "in_progress": "Idempotency-Key request is still in progress; retry unchanged",
+                "expired_in_progress": "Idempotency-Key request did not finish; operator recovery is required",
+            }
+            raise HTTPException(status_code=409, detail=messages[decision.outcome])
+
     result = await db.execute(
         select(WebhookEndpoint).where(WebhookEndpoint.id == endpoint_id).with_for_update()
     )
     endpoint = result.scalar_one_or_none()
     if not endpoint:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=404, detail="Webhook endpoint not found")
 
     try:
         raw_secret = "whsec_" + secrets.token_urlsafe(32)
         encrypted = encrypt_secret(raw_secret, "webhook signing secret")
     except RuntimeError as exc:
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     now = datetime.datetime.utcnow()
@@ -267,9 +352,16 @@ async def rotate_webhook_secret(endpoint_id: str, db: AsyncSession = Depends(get
     ))
     if result.rowcount != 1:
         await db.rollback()
+        if decision is not None:
+            await release_idempotency_claim(AsyncSessionLocal, decision)
         raise HTTPException(status_code=409, detail="Webhook secret changed; retry rotation")
-    await db.commit()
     await db.refresh(endpoint)
+    response_body = jsonable_encoder({**_endpoint_response(endpoint), "signing_secret": raw_secret})
+    if decision is not None:
+        await complete_idempotency(db, decision, status=200, body=response_body, encrypt_response=True)
+    await db.commit()
+    if decision is not None:
+        return JSONResponse(status_code=200, content=response_body)
     return {**_endpoint_response(endpoint), "signing_secret": raw_secret}
 
 
@@ -347,11 +439,25 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
                           status: Optional[str] = Query(None),
                           event_type: Optional[str] = Query(None, min_length=1, max_length=64),
                           agent_email: Optional[str] = Query(None, max_length=255),
+                          since: Optional[datetime.datetime] = Query(None, description="Include events at or after this offset-qualified timestamp"),
+                          until: Optional[datetime.datetime] = Query(None, description="Include events at or before this offset-qualified timestamp"),
                           limit: int = Query(50, ge=1, le=100),
                           cursor: Optional[str] = Query(None, max_length=2048),
                           db: AsyncSession = Depends(get_db)):
     if status and status not in DELIVERY_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid webhook delivery status")
+
+    def utc_naive(value: datetime.datetime | None, name: str) -> datetime.datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise HTTPException(status_code=422, detail=f"{name} must include a timezone offset")
+        return value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    since = utc_naive(since, "since")
+    until = utc_naive(until, "until")
+    if since and until and since > until:
+        raise HTTPException(status_code=422, detail="since must be earlier than or equal to until")
 
     normalized_agent_email = agent_email.strip().lower() if agent_email else None
     query = select(WebhookDelivery).where(WebhookDelivery.status != "expired")
@@ -363,8 +469,14 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
         query = query.where(WebhookDelivery.event_type == event_type)
     if normalized_agent_email:
         query = query.where(WebhookDelivery.agent_email == normalized_agent_email)
+    if since:
+        query = query.where(WebhookDelivery.created_at >= since)
+    if until:
+        query = query.where(WebhookDelivery.created_at <= until)
     if cursor is not None:
-        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status, event_type, normalized_agent_email)
+        created_at, delivery_id = _decode_delivery_cursor(
+            cursor, endpoint_id, status, event_type, normalized_agent_email, since, until,
+        )
         query = query.where(or_(
             WebhookDelivery.created_at < created_at,
             and_(WebhookDelivery.created_at == created_at, WebhookDelivery.id < delivery_id),
@@ -375,7 +487,9 @@ async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
     ).limit(limit + 1))).scalars().all()
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status, event_type, normalized_agent_email) if has_more and items else None
+    next_cursor = _encode_delivery_cursor(
+        items[-1], endpoint_id, status, event_type, normalized_agent_email, since, until,
+    ) if has_more and items else None
     return {
         "items": [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
                    "event_type": item.event_type, "payload": item.payload, "status": item.status,

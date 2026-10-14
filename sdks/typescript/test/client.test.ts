@@ -154,6 +154,13 @@ test("outbox, events and webhook delivery iterators page correctly", async () =>
   }
 });
 
+test("event iterator keeps time filters on every page", async () => {
+  const { client, calls } = mock({ json: { items: [], next_cursor: null } });
+  for await (const _ of client.events.iterate({ since: "2026-01-01T00:00:00Z", until: "2026-01-02T00:00:00Z" })) { /* exhausted */ }
+  assert.equal(calls[0]!.url.searchParams.get("since"), "2026-01-01T00:00:00Z");
+  assert.equal(calls[0]!.url.searchParams.get("until"), "2026-01-02T00:00:00Z");
+});
+
 test("contact CSV import sends raw text/csv and reverse requires confirm", async () => {
   const { client, calls } = mock({ json: {} });
   await client.contacts.importCsv(INBOX, "email,name\na@b.com,A\n");

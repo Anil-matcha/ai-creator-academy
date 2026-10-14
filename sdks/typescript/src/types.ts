@@ -13,7 +13,7 @@ export interface Message {
   auth_evidence?: Record<string, unknown> | null;
   status: MessageStatus; provider_delivery_status?: string | null; provider_delivery_error?: string | null;
   delivery_error?: string | null; threat_score: number; threat_details: string;
-  labels: string[]; scheduled_for: string | null; deleted_at: string | null; created_at: string;
+  labels: string[]; scheduled_for: string | null; scheduled_at: string | null; deleted_at: string | null; created_at: string;
 }
 export interface Page<T> { items: T[]; next_cursor: string | null }
 export interface OtpResult { found: boolean; code?: string; message_id?: string; received_at?: string; sender?: string; subject?: string }

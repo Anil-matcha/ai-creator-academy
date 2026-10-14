@@ -4,6 +4,8 @@ import datetime
 import json
 
 from pydantic import BaseModel
+from starlette.datastructures import Headers
+from starlette.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,6 +77,13 @@ EXT_READ = {"list_conversations", "get_conversation", "get_message_lifecycle", "
 
 
 def _dump(value):
+    if isinstance(value, Response):
+        if not value.body:
+            return None
+        try:
+            return json.loads(value.body)
+        except (TypeError, json.JSONDecodeError):
+            return value.body.decode("utf-8", errors="replace")
     if isinstance(value, list):
         return [_dump(v) for v in value]
     if isinstance(value, dict):
@@ -179,14 +188,30 @@ def _fields(args, *keys):
     return {k: args[k] for k in keys if k in args}
 
 
-class _CsvBody:
-    """Minimal stand-in for the request object the CSV import route streams from."""
+class _McpRequest:
+    """Request adapter for route handlers invoked directly by MCP tools."""
 
-    def __init__(self, data: bytes):
-        self._data = data
+    def __init__(self, body: bytes = b"", idempotency_key: str | None = None):
+        self._body = body
+        self.headers = Headers(raw=[(b"idempotency-key", idempotency_key.encode("latin1"))]
+                                if idempotency_key is not None else [])
+
+    async def body(self) -> bytes:
+        return self._body
 
     async def stream(self):
-        yield self._data
+        yield self._body
+
+
+def _mcp_request(args, body: bytes = b""):
+    key = args.get("idempotency_key")
+    if key is not None and (not isinstance(key, str) or not key):
+        raise ValueError("idempotency_key must be a non-empty string")
+    return _McpRequest(body, key)
+
+
+def _json_request_body(args, *keys):
+    return json.dumps(_fields(args, *keys), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 async def _h_get_attachment(db, args, principal):
@@ -261,7 +286,9 @@ async def _h_preview_template(db, args, principal):
 async def _h_create_contact(db, args, principal):
     _require(args, "agent_email")
     payload = ContactCreate(**_fields(args, "email", "name", "company", "notes"))
-    return _m(ContactResponse, await contacts.create_contact(args["agent_email"], payload, db))
+    request = _mcp_request(args, _json_request_body(args, "email", "name", "company", "notes"))
+    result = await contacts.create_contact(args["agent_email"], payload, request, principal, db)
+    return _m(ContactResponse, _dump(result))
 
 
 async def _h_update_contact(db, args, principal):
@@ -281,7 +308,8 @@ async def _h_import_contacts(db, args, principal):
     csv_text = args["csv"]
     if not isinstance(csv_text, str) or len(csv_text) > MAX_IMPORT_CSV_CHARS:
         raise ValueError(f"csv must be a string of at most {MAX_IMPORT_CSV_CHARS} characters")
-    return await contacts.import_contacts(args["agent_email"], _CsvBody(csv_text.encode("utf-8")), db)
+    request = _mcp_request(args, csv_text.encode("utf-8"))
+    return await contacts.import_contacts(args["agent_email"], request, principal, db)
 
 
 async def _h_delete_contact_import(db, args, principal):
@@ -348,7 +376,8 @@ async def _h_get_webhook(db, args, principal):
 
 async def _h_create_webhook(db, args, principal):
     payload = webhooks.WebhookCreate(**_fields(args, "agent_email", "url", "enabled", "events"))
-    return await webhooks.create_webhook(payload, db)  # includes the signing secret, shown only now
+    request = _mcp_request(args, _json_request_body(args, "agent_email", "url", "enabled", "events"))
+    return _dump(await webhooks.create_webhook(payload, request, principal, db))  # includes the signing secret, shown only now
 
 
 async def _h_update_webhook(db, args, principal):
@@ -365,7 +394,7 @@ async def _h_delete_webhook(db, args, principal):
 
 async def _h_rotate_webhook_secret(db, args, principal):
     _require(args, "webhook_id")
-    return await webhooks.rotate_webhook_secret(args["webhook_id"], db)  # new secret, shown only now
+    return await webhooks.rotate_webhook_secret(args["webhook_id"], _mcp_request(args), principal, db)  # new secret, shown only now
 
 
 async def _h_test_webhook(db, args, principal):
@@ -380,9 +409,11 @@ async def _h_list_webhook_deliveries(db, args, principal):
 
 
 async def _h_list_events(db, args, principal):
+    since = datetime.datetime.fromisoformat(args["since"]) if args.get("since") else None
+    until = datetime.datetime.fromisoformat(args["until"]) if args.get("until") else None
     return await events.list_events(
-        args.get("agent_email"), args.get("event_type"), args.get("status"),
-        _int(args, "limit", 50, 1, 100), args.get("cursor"), db)
+        agent_email=args.get("agent_email"), event_type=args.get("event_type"), status=args.get("status"),
+        since=since, until=until, limit=_int(args, "limit", 50, 1, 100), cursor=args.get("cursor"), db=db)
 
 
 async def _h_get_event(db, args, principal):
@@ -401,7 +432,9 @@ async def _h_list_api_keys(db, args, principal):
 
 async def _h_create_api_key(db, args, principal):
     payload = ApiKeyCreate(**_fields(args, "name", "agent_email", "scope", "expires_in_days"))
-    return (await api_keys.create_api_key(payload, db)).model_dump(mode="json")  # key shown only now
+    request = _mcp_request(args, _json_request_body(args, "name", "agent_email", "scope", "expires_in_days"))
+    result = await api_keys.create_api_key(payload, request, principal, db)
+    return _dump(result)  # key shown only now
 
 
 async def _h_delete_api_key(db, args, principal):
@@ -426,7 +459,8 @@ async def _h_verify_domain(db, args, principal):
 
 async def _h_delete_domain(db, args, principal):
     _require(args, "domain")
-    await domains.delete_domain(args["domain"], db)
+    request = _mcp_request(args)
+    await domains.delete_domain(args["domain"], request, principal, db)
     return {"deleted": True, "domain": args["domain"]}
 
 
@@ -504,13 +538,13 @@ _NEW_SPECS = [
     ("delete_template", "Delete a saved template.",
      {**_AE, "template_id": _ID}, ["agent_email", "template_id"], "write", _h_delete_template),
     ("create_contact", "Add an inert contact record to the inbox. It does not imply consent and sends nothing.",
-     {**_AE, **_CONTACT_FIELDS}, ["agent_email", "email", "name"], "write", _h_create_contact),
+     {**_AE, **_CONTACT_FIELDS, "idempotency_key": _ID}, ["agent_email", "email", "name"], "write", _h_create_contact),
     ("update_contact", "Change a contact's fields.",
      {**_AE, "contact_id": _ID, **_CONTACT_FIELDS}, ["agent_email", "contact_id"], "write", _h_update_contact),
     ("delete_contact", "Delete a contact and its follow-up record.",
      {**_AE, "contact_id": _ID}, ["agent_email", "contact_id"], "write", _h_delete_contact),
     ("import_contacts", "Import contacts from CSV text (header: email,name,company,notes; at most 1000 rows and 1 MB). Reports every row and skips duplicates and suppressed recipients.",
-     {**_AE, "csv": _ID}, ["agent_email", "csv"], "write", _h_import_contacts),
+     {**_AE, "csv": _ID, "idempotency_key": _ID}, ["agent_email", "csv"], "write", _h_import_contacts),
     ("delete_contact_import", "Reverse an import batch, deleting only contacts not edited since import. Requires confirm=DELETE.",
      {**_AE, "batch_id": _ID, "confirm": {"type": "string", "enum": ["DELETE"]}},
      ["agent_email", "batch_id", "confirm"], "write", _h_delete_contact_import),
@@ -536,19 +570,20 @@ _NEW_SPECS = [
     ("get_webhook", "Administrator only: fetch one webhook endpoint (no secret).",
      _WH_ID, ["webhook_id"], "admin", _h_get_webhook),
     ("create_webhook", "Administrator only: register an HTTPS webhook (port 443, public host) for an inbox. The signing secret is returned once, in this response only.",
-     {**_AE, "url": _ID, "enabled": {"type": "boolean"}, "events": _EVENTS}, ["agent_email", "url"], "admin", _h_create_webhook),
+     {**_AE, "url": _ID, "enabled": {"type": "boolean"}, "events": _EVENTS, "idempotency_key": _ID}, ["agent_email", "url"], "admin", _h_create_webhook),
     ("update_webhook", "Administrator only: change a webhook's url, enabled flag or event filter.",
      {**_WH_ID, "url": _ID, "enabled": {"type": "boolean"}, "events": _EVENTS}, ["webhook_id"], "admin", _h_update_webhook),
     ("delete_webhook", "Administrator only: delete a webhook endpoint and its delivery history.",
      _WH_ID, ["webhook_id"], "admin", _h_delete_webhook),
     ("rotate_webhook_secret", "Administrator only: issue a new signing secret, returned once; the old one stays valid for 24 hours.",
-     _WH_ID, ["webhook_id"], "admin", _h_rotate_webhook_secret),
+     {**_WH_ID, "idempotency_key": _ID}, ["webhook_id"], "admin", _h_rotate_webhook_secret),
     ("test_webhook", "Administrator only: queue a signed synthetic event to an enabled webhook.",
      _WH_ID, ["webhook_id"], "admin", _h_test_webhook),
     ("list_webhook_deliveries", "Administrator only: delivery attempts for one webhook, newest first.",
      {**_WH_ID, "status": _DELIVERY_STATUS, "limit": _limit(100, 200)}, ["webhook_id"], "admin", _h_list_webhook_deliveries),
     ("list_events", "Administrator only: cursor-paged event log across webhooks, filterable by inbox, type and status.",
-     {**_AE, "event_type": _ID, "status": _DELIVERY_STATUS, "limit": _limit(50, 100), "cursor": _ID},
+     {**_AE, "event_type": _ID, "status": _DELIVERY_STATUS, "since": {"type": "string", "format": "date-time"},
+      "until": {"type": "string", "format": "date-time"}, "limit": _limit(50, 100), "cursor": _ID},
      [], "admin", _h_list_events),
     ("get_event", "Administrator only: fetch one event with its payload and delivery state.",
      {"event_id": _ID}, ["event_id"], "admin", _h_get_event),
@@ -558,7 +593,7 @@ _NEW_SPECS = [
      {}, [], "admin", _h_list_api_keys),
     ("create_api_key", "Administrator only: mint an inbox-scoped key (read_only, full_access or reviewer; 90-day expiry by default). The key is returned once, in this response only.",
      {"name": _ID, "agent_email": _ID, "scope": {"type": "string", "enum": ["read_only", "full_access", "reviewer"]},
-      "expires_in_days": {"type": "integer", "minimum": 1, "maximum": 3650}},
+      "expires_in_days": {"type": "integer", "minimum": 1, "maximum": 3650}, "idempotency_key": _ID},
      ["name", "agent_email"], "admin", _h_create_api_key),
     ("delete_api_key", "Administrator only: revoke an API key immediately.",
      {"key_id": _ID}, ["key_id"], "admin", _h_delete_api_key),
@@ -569,7 +604,7 @@ _NEW_SPECS = [
     ("verify_domain", "Administrator only: look up the domain's MX, SPF, DKIM and DMARC records and update their status (verified, pending, mismatch, error). The domain becomes verified when MX, SPF and DKIM all match.",
      {"domain": _ID}, ["domain"], "admin", _h_verify_domain),
     ("delete_domain", "Administrator only: remove a registered domain.",
-     {"domain": _ID}, ["domain"], "admin", _h_delete_domain),
+     {"domain": _ID, "idempotency_key": _ID}, ["domain"], "admin", _h_delete_domain),
     ("create_agent", "Administrator only: create an inbox.",
      {"email": _ID, **_AGENT_FIELDS}, ["email", "display_name"], "admin", _h_create_agent),
     ("get_agent", "Administrator only: fetch one inbox's configuration.",

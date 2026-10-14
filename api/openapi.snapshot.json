@@ -1600,6 +1600,18 @@
             "title": "Rfc Message Id",
             "type": "string"
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
           "scheduled_for": {
             "anyOf": [
               {
@@ -7468,6 +7480,44 @@
             }
           },
           {
+            "description": "Include events at or after this offset-qualified timestamp",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include events at or after this offset-qualified timestamp",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "Include events at or before this offset-qualified timestamp",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include events at or before this offset-qualified timestamp",
+              "title": "Until"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -8780,6 +8830,44 @@
                 }
               ],
               "title": "Agent Email"
+            }
+          },
+          {
+            "description": "Include events at or after this offset-qualified timestamp",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include events at or after this offset-qualified timestamp",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "Include events at or before this offset-qualified timestamp",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include events at or before this offset-qualified timestamp",
+              "title": "Until"
             }
           },
           {
