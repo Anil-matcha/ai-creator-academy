@@ -45,6 +45,8 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN request_hash VARCHAR(64)"))
             if "auth_evidence" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN auth_evidence JSON"))
+            if "inbound_dedup_hash" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN inbound_dedup_hash VARCHAR(64)"))
             outbox_columns = {column["name"] for column in inspector.get_columns("outbound_jobs")}
             if "retried_by" not in outbox_columns:
                 sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_by VARCHAR(128)"))
@@ -55,6 +57,8 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
             if "uq_messages_agent_idempotency_key" not in message_indexes:
                 sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_idempotency_key ON messages (agent_email, idempotency_key)"))
+            if "uq_messages_agent_inbound_dedup_hash" not in message_indexes:
+                sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_inbound_dedup_hash ON messages (agent_email, inbound_dedup_hash)"))
         await conn.run_sync(apply_additive_schema_updates)
     logger.info("Database schema ready.")
 

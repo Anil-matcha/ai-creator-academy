@@ -6,6 +6,7 @@ from external mail transfer agents (MTAs) such as Gmail, Outlook, or test script
 
 import asyncio
 import email
+import hashlib
 from email import policy
 from email.utils import parseaddr
 import logging
@@ -237,6 +238,9 @@ class SmtpSession:
             mail_from=self.mail_from,
             helo_domain=self.helo_domain,
         )
+        inbound_dedup_hash = hashlib.sha256(
+            self.mail_from.strip().lower().encode("utf-8", errors="replace") + b"\0" + raw_bytes
+        ).hexdigest()
 
         # An SMTP transaction can have multiple RCPT TO commands. Deliver one
         # copy into each accepted inbox and avoid duplicate copies for repeated RCPTs.
@@ -259,6 +263,7 @@ class SmtpSession:
                     dkim_status=dkim_status,
                     dmarc_status=dmarc_status,
                     auth_evidence=auth_evidence,
+                    inbound_dedup_hash=inbound_dedup_hash,
                     raw_message_id=raw_message_id,
                     in_reply_to=in_reply_to,
                     references=references,

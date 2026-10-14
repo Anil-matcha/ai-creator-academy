@@ -199,6 +199,7 @@ class EmailService:
         dkim_status: str = "unverified",
         dmarc_status: str = "unverified",
         auth_evidence: Optional[Dict[str, Any]] = None,
+        inbound_dedup_hash: Optional[str] = None,
         verified_domain: Optional[str] = None,
         raw_message_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
@@ -218,6 +219,15 @@ class EmailService:
             body_html=body_html,
             sensitivity=agent.threat_sensitivity
         )
+
+        if inbound_dedup_hash:
+            existing_result = await db.execute(select(Message).where(
+                Message.agent_email == agent.email,
+                Message.inbound_dedup_hash == inbound_dedup_hash,
+            ))
+            existing = existing_result.scalar_one_or_none()
+            if existing:
+                return existing, scan_result, None
 
         raw_message_id = " ".join((raw_message_id or "").split())[:998] or None
         in_reply_to = " ".join((in_reply_to or "").split())[:255] or None
@@ -287,6 +297,7 @@ class EmailService:
             dkim_status=dkim_status,
             dmarc_status=dmarc_status,
             auth_evidence=auth_evidence,
+            inbound_dedup_hash=inbound_dedup_hash,
             verified_domain=verified_domain or (sender.split("@")[-1] if "@" in sender else None),
             status=status,
             threat_score=scan_result.threat_score,
@@ -323,7 +334,20 @@ class EmailService:
                 created_at=datetime.datetime.utcnow()
             )
             db.add(review_item)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if not inbound_dedup_hash:
+                raise
+            existing_result = await db.execute(select(Message).where(
+                Message.agent_email == agent.email,
+                Message.inbound_dedup_hash == inbound_dedup_hash,
+            ))
+            existing = existing_result.scalar_one_or_none()
+            if not existing:
+                raise
+            return existing, scan_result, None
         await db.refresh(message)
 
         msg_payload = {
