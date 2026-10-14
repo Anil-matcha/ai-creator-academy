@@ -13,3 +13,4 @@ dnspython>=2.6.1
 pyspf>=2.0.14
 dkimpy>=1.1.8
 checkdmarc>=6.0.4,<7
+cryptography>=42.0.0

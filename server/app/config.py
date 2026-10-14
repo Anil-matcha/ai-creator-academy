@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     
     # Set explicitly in the environment; no built-in administrator credential.
     ADMIN_API_KEY: str = ""
+    # Fernet key used to encrypt configured SMTP relay passwords at rest.
+    SMTP_CONFIG_ENCRYPTION_KEY: str = ""
 
     # Per-process sliding-window limit for REST and MCP requests, keyed by socket peer IP.
     API_RATE_LIMIT_REQUESTS: int = 120

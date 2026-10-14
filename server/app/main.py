@@ -52,6 +52,10 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_by VARCHAR(128)"))
             if "retried_at" not in outbox_columns:
                 sync_conn.execute(text(f"ALTER TABLE outbound_jobs ADD COLUMN retried_at {timestamp_type}"))
+            if sync_conn.dialect.name == "postgresql":
+                smtp_columns = {column["name"]: column for column in inspector.get_columns("smtp_configs")}
+                if str(smtp_columns.get("password", {}).get("type", "")).upper() != "TEXT":
+                    sync_conn.execute(text("ALTER TABLE smtp_configs ALTER COLUMN password TYPE TEXT"))
             message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
             if "ix_messages_raw_message_id" not in message_indexes:
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
@@ -60,6 +64,20 @@ async def lifespan(app: FastAPI):
             if "uq_messages_agent_inbound_dedup_hash" not in message_indexes:
                 sync_conn.execute(text("CREATE UNIQUE INDEX uq_messages_agent_inbound_dedup_hash ON messages (agent_email, inbound_dedup_hash)"))
         await conn.run_sync(apply_additive_schema_updates)
+    if settings.SMTP_CONFIG_ENCRYPTION_KEY:
+        from sqlalchemy import select
+        from app.models import SmtpConfig
+        from app.services.smtp_secrets import PREFIX, encrypt_password, decrypt_password
+        async with AsyncSessionLocal() as db:
+            configs = (await db.execute(select(SmtpConfig))).scalars().all()
+            for config in configs:
+                if config.password and config.password.startswith(PREFIX):
+                    # Fail startup when an encrypted value cannot be recovered.
+                    decrypt_password(config.password)
+                elif config.password:
+                    # Upgrade legacy plaintext values in the same database transaction.
+                    config.password = encrypt_password(config.password)
+            await db.commit()
     logger.info("Database schema ready.")
 
     from app.services.outbound_worker import run_outbound_worker

@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
 from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob
+from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
@@ -164,12 +165,17 @@ class EmailService:
 
         from_addr = config.from_email or agent.email
         port_num = int(config.port) if str(config.port).isdigit() else 587
+        try:
+            smtp_password = decrypt_password(config.password)
+        except RuntimeError as exc:
+            logger.error("SMTP credential decryption failed: %s", exc)
+            return "failed", "SMTP relay credential is unavailable; verify SMTP_CONFIG_ENCRYPTION_KEY"
         success, info = await asyncio.to_thread(
             _send_smtp_sync,
             host=config.host,
             port=port_num,
             username=config.username,
-            password=config.password,
+            password=smtp_password,
             use_tls=config.use_tls,
             use_ssl=config.use_ssl,
             from_addr=from_addr,

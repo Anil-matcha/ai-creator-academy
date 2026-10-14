@@ -24,7 +24,10 @@ async def _dispatch_one() -> bool:
             select(OutboundJob)
             .where(or_(
                 (OutboundJob.status == "pending") & (OutboundJob.available_at <= now),
-                (OutboundJob.status == "processing") & (OutboundJob.locked_at < stale_before),
+                (OutboundJob.status == "processing") & or_(
+                    OutboundJob.locked_at.is_(None),
+                    OutboundJob.locked_at < stale_before,
+                ),
             ))
             .order_by(OutboundJob.available_at, OutboundJob.created_at)
             .limit(1)
@@ -37,7 +40,10 @@ async def _dispatch_one() -> bool:
         claim = update(OutboundJob).where(
             OutboundJob.id == job.id,
             OutboundJob.status == old_status,
-            (OutboundJob.available_at <= now) if old_status == "pending" else (OutboundJob.locked_at < stale_before),
+            (OutboundJob.available_at <= now) if old_status == "pending" else or_(
+                OutboundJob.locked_at.is_(None),
+                OutboundJob.locked_at < stale_before,
+            ),
         ).values(status="processing", locked_at=now, attempts=OutboundJob.attempts + 1)
         claimed = await db.execute(claim)
         if claimed.rowcount != 1:

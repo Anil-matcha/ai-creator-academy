@@ -9,6 +9,7 @@ from app.models import SmtpConfig
 from app.schemas import SmtpConfigUpdate, SmtpConfigResponse, SmtpTestRequest, SmtpTestResponse
 from app.services.email_service import _send_smtp_sync
 from app.security import require_admin
+from app.services.smtp_secrets import decrypt_password, encrypt_password
 
 router = APIRouter(prefix="/v1/settings", tags=["Settings"], dependencies=[Depends(require_admin)])
 
@@ -58,7 +59,10 @@ async def update_smtp_config(payload: SmtpConfigUpdate, db: AsyncSession = Depen
     config.port = str(payload.port).strip()
     config.username = payload.username.strip()
     if payload.password is not None and payload.password != "":
-        config.password = payload.password
+        try:
+            config.password = encrypt_password(payload.password)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     config.use_tls = payload.use_tls
     config.use_ssl = payload.use_ssl
     config.from_email = payload.from_email.strip()
@@ -100,12 +104,17 @@ async def test_smtp_connection(payload: SmtpTestRequest, db: AsyncSession = Depe
         f"Gateway: Open Agent Email"
     )
 
+    try:
+        password = decrypt_password(config.password)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     success, message = await asyncio.to_thread(
         _send_smtp_sync,
         host=config.host,
         port=port_num,
         username=config.username,
-        password=config.password,
+        password=password,
         use_tls=config.use_tls,
         use_ssl=config.use_ssl,
         from_addr=from_addr,

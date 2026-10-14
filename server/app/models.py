@@ -97,6 +97,17 @@ class OutboundJob(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
+class OutboundRetryEvent(Base):
+    __tablename__ = "outbound_retry_events"
+
+    id = Column(String(64), primary_key=True, index=True)
+    job_id = Column(String(64), ForeignKey("outbound_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor = Column(String(128), nullable=False)
+    requested_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    previous_attempts = Column(Integer, nullable=False)
+    previous_error = Column(Text, nullable=True)
+
+
 class ReviewItem(Base):
     __tablename__ = "review_items"
 
@@ -165,7 +176,7 @@ class SmtpConfig(Base):
     host = Column(String(255), nullable=False, default="")
     port = Column(String(16), default="587")
     username = Column(String(255), nullable=False, default="")
-    password = Column(String(255), nullable=False, default="")
+    password = Column(Text, nullable=False, default="")
     use_tls = Column(Boolean, default=True)
     use_ssl = Column(Boolean, default=False)
     from_email = Column(String(255), nullable=False, default="")

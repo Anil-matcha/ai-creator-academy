@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,8 +7,8 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Message, OutboundJob
-from app.schemas import OutboundJobResponse
+from app.models import Message, OutboundJob, OutboundRetryEvent
+from app.schemas import OutboundJobResponse, OutboundRetryEventResponse
 from app.security import Principal, require_admin
 
 router = APIRouter(prefix="/v1/outbox", tags=["Outbound Queue"], dependencies=[Depends(require_admin)])
@@ -35,6 +36,11 @@ async def retry_outbound_job(
     db: AsyncSession = Depends(get_db),
 ):
     retried_at = datetime.datetime.utcnow()
+    current = await db.get(OutboundJob, job_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Outbound job not found")
+    prior_attempts = current.attempts
+    prior_error = current.last_error
     result = await db.execute(
         update(OutboundJob)
         .where(OutboundJob.id == job_id, OutboundJob.status == "failed")
@@ -49,10 +55,16 @@ async def retry_outbound_job(
         )
     )
     if result.rowcount != 1:
-        exists = await db.scalar(select(OutboundJob.id).where(OutboundJob.id == job_id))
-        if not exists:
-            raise HTTPException(status_code=404, detail="Outbound job not found")
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
+
+    db.add(OutboundRetryEvent(
+        id=str(uuid.uuid4()),
+        job_id=job_id,
+        actor=principal.principal_id,
+        requested_at=retried_at,
+        previous_attempts=prior_attempts,
+        previous_error=prior_error,
+    ))
 
     job = await db.get(OutboundJob, job_id)
     message = await db.get(Message, job.message_id)
@@ -62,3 +74,20 @@ async def retry_outbound_job(
     await db.commit()
     await db.refresh(job)
     return job
+
+
+@router.get("/{job_id}/retries", response_model=List[OutboundRetryEventResponse])
+async def list_outbound_retry_events(
+    job_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    if not await db.scalar(select(OutboundJob.id).where(OutboundJob.id == job_id)):
+        raise HTTPException(status_code=404, detail="Outbound job not found")
+    result = await db.execute(
+        select(OutboundRetryEvent)
+        .where(OutboundRetryEvent.job_id == job_id)
+        .order_by(OutboundRetryEvent.requested_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()

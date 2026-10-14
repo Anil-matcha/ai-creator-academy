@@ -379,6 +379,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
 
     elif name == "list_reviews":
         status_filter = args.get("status", "pending")
+        if not isinstance(status_filter, str) or status_filter not in {"pending", "approved", "rejected"}:
+            raise ValueError("status must be one of: pending, approved, rejected")
         limit = args.get("limit", 50)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
             raise ValueError("limit must be an integer between 1 and 100")

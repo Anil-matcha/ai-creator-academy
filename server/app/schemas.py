@@ -156,6 +156,18 @@ class OutboundJobResponse(BaseModel):
         from_attributes = True
 
 
+class OutboundRetryEventResponse(BaseModel):
+    id: str
+    job_id: str
+    actor: str
+    requested_at: datetime
+    previous_attempts: int
+    previous_error: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
 # --- Domain Schemas ---
 class DomainCreate(BaseModel):
     domain: str = Field(..., example="agents.mycompany.com")
