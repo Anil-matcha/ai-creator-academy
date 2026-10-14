@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.database import AsyncSessionLocal
 from app.models import Agent
 from app.services.email_service import EmailService
+from app.services.mail_auth import evaluate_inbound_authentication
 from sqlalchemy import select
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SMTP] %(message)s")
@@ -53,6 +54,8 @@ class SmtpSession:
         self.writer = writer
         self.mail_from = ""
         self.rcpt_to = []
+        self.helo_domain = ""
+        self.peer_ip = None
 
     async def send_response(self, code: int, message: str):
         self.writer.write(f"{code} {message}\r\n".encode("utf-8"))
@@ -60,6 +63,7 @@ class SmtpSession:
 
     async def handle(self):
         peer = self.writer.get_extra_info("peername")
+        self.peer_ip = peer[0] if isinstance(peer, tuple) and peer else None
         logger.info(f"Incoming connection from {peer}")
         await self.send_response(220, "open-agent-email SMTP Gateway Ready")
 
@@ -117,6 +121,8 @@ class SmtpSession:
 
             cmd_upper = line.upper()
             if cmd_upper.startswith("EHLO") or cmd_upper.startswith("HELO"):
+                helo_parts = line.split(maxsplit=1)
+                self.helo_domain = helo_parts[1].strip() if len(helo_parts) > 1 else ""
                 await self.send_response(250, "Hello, pleased to meet you")
             elif cmd_upper.startswith("MAIL FROM:"):
                 self.mail_from = line[10:].strip("<> ")
@@ -213,6 +219,13 @@ class SmtpSession:
         if not body_text and body_html:
             body_text = body_html
 
+        spf_status, dkim_status = await evaluate_inbound_authentication(
+            raw_message=raw_bytes,
+            peer_ip=getattr(self, "peer_ip", None),
+            mail_from=self.mail_from,
+            helo_domain=self.helo_domain,
+        )
+
         # An SMTP transaction can have multiple RCPT TO commands. Deliver one
         # copy into each accepted inbox and avoid duplicate copies for repeated RCPTs.
         for target_recipient in dict.fromkeys(self.rcpt_to):
@@ -230,8 +243,8 @@ class SmtpSession:
                     subject=subject,
                     body_text=body_text or "(Empty Body)",
                     body_html=body_html,
-                    spf_status="unverified",
-                    dkim_status="unverified",
+                    spf_status=spf_status,
+                    dkim_status=dkim_status,
                     dmarc_status="unverified",
                     raw_message_id=raw_message_id,
                     in_reply_to=in_reply_to,

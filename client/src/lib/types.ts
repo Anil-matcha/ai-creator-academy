@@ -41,8 +41,8 @@ export interface Message {
   in_reply_to?: string;
   references?: string;
   rfc_message_id: string;
-  spf_status: "pass" | "fail" | "neutral" | "none" | "unverified";
-  dkim_status: "pass" | "fail" | "none" | "unverified";
+  spf_status: "pass" | "fail" | "softfail" | "neutral" | "none" | "permerror" | "temperror" | "unverified";
+  dkim_status: "pass" | "fail" | "none" | "temperror" | "unverified";
   dmarc_status: "pass" | "fail" | "none" | "unverified";
   verified_domain?: string;
   delivery_error?: string | null;
