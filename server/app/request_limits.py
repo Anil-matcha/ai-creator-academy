@@ -4,6 +4,8 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from app.errors import error_body
+
 
 class RequestBodyTooLarge(Exception):
     pass
@@ -15,7 +17,9 @@ class RequestBodyLimitMiddleware:
         self.max_bytes = max_bytes
 
     async def _reject(self, send: Callable, public_unsubscribe: bool = False) -> None:
-        body = json.dumps({"detail": "Request body exceeds configured size limit"}).encode("utf-8")
+        body = json.dumps(
+            error_body(413, "Request body exceeds configured size limit", code="payload_too_large")
+        ).encode("utf-8")
         headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
         if public_unsubscribe:
             headers.extend([

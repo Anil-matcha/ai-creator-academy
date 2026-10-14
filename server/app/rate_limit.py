@@ -8,6 +8,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.errors import error_body
+
 
 class ApiRateLimitMiddleware:
     def __init__(
@@ -63,7 +65,10 @@ class ApiRateLimitMiddleware:
                 hits.append(now)
 
         if retry_after is not None:
-            body = json.dumps({"detail": "Rate limit exceeded; try again later."}).encode()
+            body = json.dumps(error_body(
+                429, "Rate limit exceeded; try again later.", code="rate_limited",
+                details={"retry_after_seconds": retry_after},
+            )).encode()
             headers = [
                 (b"content-type", b"application/json"),
                 (b"retry-after", str(retry_after).encode("ascii")),

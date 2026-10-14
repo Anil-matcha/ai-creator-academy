@@ -14,6 +14,7 @@ from app.routers import public_review
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
+from app.errors import install_error_handlers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("open_agent_email")
@@ -223,6 +224,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+install_error_handlers(app)
 
 # CORS setup
 # Register rate limiting before CORS so CORS headers are still added to 429 replies.
