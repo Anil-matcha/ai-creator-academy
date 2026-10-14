@@ -11,6 +11,7 @@ from app.services.ws_manager import ws_manager
 from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
+from app.request_limits import RequestBodyLimitMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("open_agent_email")
@@ -99,6 +100,10 @@ app = FastAPI(
 
 # CORS setup
 # Register rate limiting before CORS so CORS headers are still added to 429 replies.
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    max_bytes=settings.HTTP_MAX_REQUEST_BYTES,
+)
 app.add_middleware(
     ApiRateLimitMiddleware,
     requests=settings.API_RATE_LIMIT_REQUESTS,

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # Uvicorn returns 503 when the number of concurrent connections/tasks reaches this cap.
     HTTP_MAX_CONCURRENCY: int = 200
     HTTP_KEEPALIVE_TIMEOUT_SECONDS: int = 5
+    HTTP_MAX_REQUEST_BYTES: int = 10 * 1024 * 1024
 
     @field_validator("API_RATE_LIMIT_REQUESTS", "API_RATE_LIMIT_WINDOW_SECONDS", "API_RATE_LIMIT_MAX_CLIENTS")
     @classmethod
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
             raise ValueError("API rate limit settings must be greater than zero")
         return value
 
-    @field_validator("HTTP_MAX_CONCURRENCY", "HTTP_KEEPALIVE_TIMEOUT_SECONDS")
+    @field_validator("HTTP_MAX_CONCURRENCY", "HTTP_KEEPALIVE_TIMEOUT_SECONDS", "HTTP_MAX_REQUEST_BYTES")
     @classmethod
     def validate_http_limits(cls, value: int) -> int:
         if value <= 0:
