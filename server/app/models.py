@@ -51,6 +51,17 @@ class RecipientSuppression(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
+class UnsubscribeToken(Base):
+    """Hashed, inbox-and-recipient scoped public unsubscribe capability."""
+    __tablename__ = "unsubscribe_tokens"
+
+    token_hash = Column(String(64), primary_key=True)
+    agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
+    recipient = Column(String(255), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+
+
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (

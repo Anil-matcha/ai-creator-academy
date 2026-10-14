@@ -8,7 +8,7 @@ import asyncio
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -227,6 +227,7 @@ app.include_router(webhooks.router)
 app.include_router(agents.router)
 app.include_router(contacts.router)
 app.include_router(suppressions.router)
+app.include_router(public_unsubscribe.router)
 app.include_router(messages.router)
 app.include_router(reviews.router)
 app.include_router(domains.router)

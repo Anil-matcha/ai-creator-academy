@@ -14,12 +14,23 @@ class RequestBodyLimitMiddleware:
         self.app = app
         self.max_bytes = max_bytes
 
-    async def _reject(self, send: Callable) -> None:
+    async def _reject(self, send: Callable, public_unsubscribe: bool = False) -> None:
         body = json.dumps({"detail": "Request body exceeds configured size limit"}).encode("utf-8")
+        headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+        if public_unsubscribe:
+            headers.extend([
+                (b"cache-control", b"no-store, max-age=0"),
+                (b"pragma", b"no-cache"),
+                (b"referrer-policy", b"no-referrer"),
+                (b"x-content-type-options", b"nosniff"),
+                (b"x-frame-options", b"DENY"),
+                (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
+                (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"),
+            ])
         await send({
             "type": "http.response.start",
             "status": 413,
-            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+            "headers": headers,
         })
         await send({"type": "http.response.body", "body": body})
 
@@ -29,10 +40,11 @@ class RequestBodyLimitMiddleware:
             return
 
         content_lengths = [value for name, value in scope.get("headers", []) if name.lower() == b"content-length"]
+        public_unsubscribe = scope.get("path", "").startswith("/unsubscribe/")
         if content_lengths:
             try:
                 if any(int(value) > self.max_bytes for value in content_lengths):
-                    await self._reject(send)
+                    await self._reject(send, public_unsubscribe)
                     return
             except ValueError:
                 pass  # The streaming check below still enforces the cap.
@@ -51,4 +63,4 @@ class RequestBodyLimitMiddleware:
         try:
             await self.app(scope, receive_limited, send)
         except RequestBodyTooLarge:
-            await self._reject(send)
+            await self._reject(send, public_unsubscribe)

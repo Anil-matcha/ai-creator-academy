@@ -64,10 +64,23 @@ class ApiRateLimitMiddleware:
 
         if retry_after is not None:
             body = json.dumps({"detail": "Rate limit exceeded; try again later."}).encode()
-            await send({"type": "http.response.start", "status": 429, "headers": [
+            headers = [
                 (b"content-type", b"application/json"),
                 (b"retry-after", str(retry_after).encode("ascii")),
                 (b"content-length", str(len(body)).encode("ascii")),
+            ]
+            if scope.get("path", "").startswith("/unsubscribe/"):
+                headers.extend([
+                    (b"cache-control", b"no-store, max-age=0"),
+                    (b"pragma", b"no-cache"),
+                    (b"referrer-policy", b"no-referrer"),
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
+                    (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"),
+                ])
+            await send({"type": "http.response.start", "status": 429, "headers": [
+                *headers,
             ]})
             await send({"type": "http.response.body", "body": body})
             return
@@ -76,7 +89,11 @@ class ApiRateLimitMiddleware:
 
     @staticmethod
     def _is_limited_path(path: str) -> bool:
-        return path.startswith("/v1/") or path == "/v1" or path.startswith("/mcp/") or path == "/mcp"
+        return (
+            path.startswith("/v1/") or path == "/v1"
+            or path.startswith("/mcp/") or path == "/mcp"
+            or path.startswith("/unsubscribe/")
+        )
 
     def _prune(self, now: float) -> None:
         cutoff = now - self.window_seconds

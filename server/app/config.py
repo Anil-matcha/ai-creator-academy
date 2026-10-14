@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     SHARED_DOMAIN: str = "agents.local"
+    # Public HTTPS origin used for outbound unsubscribe links. Invalid/empty values disable links.
+    PUBLIC_BASE_URL: str = ""
     DEFAULT_SENSITIVITY: str = "medium"  # low, medium, high
     
     # Security & CORS

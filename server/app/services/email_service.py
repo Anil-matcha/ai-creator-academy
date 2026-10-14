@@ -12,13 +12,14 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from email.utils import formatdate, make_msgid
+from html import escape
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
-from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery
+from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig, OutboundJob, WebhookEndpoint, WebhookDelivery, UnsubscribeToken
 from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
@@ -28,6 +29,7 @@ from app.services.webhook_events import (
     enqueue_inbound_security_webhook_event,
 )
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
+from app.services.unsubscribe import issue_token, public_base_url
 
 logger = logging.getLogger("email_service")
 SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
@@ -49,6 +51,7 @@ def _send_smtp_sync(
     reply_to: Optional[str] = None,
     custom_msg_id: Optional[str] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    unsubscribe_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     submission_started = False
     try:
@@ -60,17 +63,30 @@ def _send_smtp_sync(
             msg["Reply-To"] = reply_to
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = custom_msg_id or make_msgid()
+        if unsubscribe_url:
+            msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         if in_reply_to:
             msg["In-Reply-To"] = in_reply_to
         if references:
             msg["References"] = references
 
         body = MIMEMultipart("alternative") if attachments else msg
-        part1 = MIMEText(body_text, "plain", "utf-8")
+        visible_text = body_text
+        if unsubscribe_url:
+            visible_text = body_text.rstrip() + "\n\nTo stop receiving these emails, unsubscribe here:\n" + unsubscribe_url
+        part1 = MIMEText(visible_text, "plain", "utf-8")
         body.attach(part1)
 
         if body_html:
-            part2 = MIMEText(body_html, "html", "utf-8")
+            html_body = body_html
+            if unsubscribe_url:
+                html_body += (
+                    '<p style="font-size:12px;color:#666">'
+                    f'<a href="{escape(unsubscribe_url, quote=True)}">Unsubscribe from future emails</a>'
+                    "</p>"
+                )
+            part2 = MIMEText(html_body, "html", "utf-8")
             body.attach(part2)
         if attachments:
             msg.attach(body)
@@ -187,6 +203,18 @@ class EmailService:
             return "failed", "Upstream SMTP relay is not configured or enabled"
 
         from_addr = config.from_email or agent.email
+        unsubscribe_url = None
+        base_url = public_base_url()
+        if base_url:
+            raw_token, token_hash = issue_token()
+            db.add(UnsubscribeToken(
+                token_hash=token_hash,
+                agent_email=agent.email,
+                recipient=canonicalize_recipient(message.recipient),
+            ))
+            # Persist before SMTP can accept mail containing this capability.
+            await db.commit()
+            unsubscribe_url = f"{base_url}/unsubscribe/{raw_token}"
         port_num = int(config.port) if str(config.port).isdigit() else 587
         try:
             smtp_password = decrypt_password(config.password)
@@ -210,6 +238,7 @@ class EmailService:
             references=message.references,
             reply_to=agent.email,
             custom_msg_id=message.rfc_message_id,
+            unsubscribe_url=unsubscribe_url,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )
