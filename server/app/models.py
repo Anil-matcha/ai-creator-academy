@@ -84,6 +84,7 @@ class ReviewItem(Base):
     threat_score = Column(Float, default=0.0)
     status = Column(String(32), default="pending", index=True)  # pending, approved, rejected
     reviewer_notes = Column(Text, nullable=True)
+    reviewed_by = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     resolved_at = Column(DateTime, nullable=True)
 

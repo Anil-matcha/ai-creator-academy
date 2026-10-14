@@ -122,6 +122,7 @@ class ReviewItemResponse(BaseModel):
     threat_score: float
     status: str
     reviewer_notes: Optional[str]
+    reviewed_by: Optional[str] = None
     created_at: datetime
     resolved_at: Optional[datetime]
     message: Optional[MessageResponse] = None

@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models import ReviewItem
 from app.schemas import ReviewItemResponse, ReviewDecisionRequest
 from app.services.hitl_service import HitlService
-from app.security import require_admin
+from app.security import Principal, require_admin
 
 router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"], dependencies=[Depends(require_admin)])
 
@@ -45,6 +45,7 @@ async def get_review(review_id: str, db: AsyncSession = Depends(get_db)):
 async def approve_review(
     review_id: str,
     body: Optional[ReviewDecisionRequest] = None,
+    principal: Principal = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     notes = body.notes if body else "Approved by human reviewer"
@@ -52,7 +53,8 @@ async def approve_review(
         db=db,
         review_id=review_id,
         action="approve",
-        notes=notes
+        notes=notes,
+        reviewer_id=principal.principal_id,
     )
     # Reload with message
     res = await db.execute(
@@ -64,6 +66,7 @@ async def approve_review(
 async def reject_review(
     review_id: str,
     body: Optional[ReviewDecisionRequest] = None,
+    principal: Principal = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     notes = body.notes if body else "Rejected by human reviewer"
@@ -71,7 +74,8 @@ async def reject_review(
         db=db,
         review_id=review_id,
         action="reject",
-        notes=notes
+        notes=notes,
+        reviewer_id=principal.principal_id,
     )
     # Reload with message
     res = await db.execute(

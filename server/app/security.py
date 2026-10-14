@@ -19,6 +19,7 @@ class Principal:
     is_admin: bool
     scope: str = ""
     agent_email: str | None = None
+    principal_id: str = ""
 
 
 def _unauthorized() -> HTTPException:
@@ -45,7 +46,8 @@ async def get_principal(
 async def authenticate_token(token: str, db: AsyncSession) -> Principal:
     admin_token = settings.ADMIN_API_KEY.strip()
     if admin_token and hmac.compare_digest(token, admin_token):
-        return Principal(is_admin=True)
+        token_id = hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+        return Principal(is_admin=True, principal_id=f"admin:{token_id}")
 
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     result = await db.execute(select(ApiKey).where(ApiKey.key_hash == token_hash))
@@ -62,6 +64,7 @@ async def authenticate_token(token: str, db: AsyncSession) -> Principal:
         is_admin=False,
         scope=api_key.scope,
         agent_email=api_key.agent_email,
+        principal_id=f"api_key:{api_key.id}",
     )
 
 
