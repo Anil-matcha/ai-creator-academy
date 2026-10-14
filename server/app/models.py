@@ -15,6 +15,7 @@ class Agent(Base):
     hitl_enabled = Column(Boolean, default=True)
     auto_reply_enabled = Column(Boolean, default=False)
     auto_reply_prompt = Column(Text, default="You are an autonomous AI assistant replying concisely via email.")
+    deleted_at = Column(DateTime, nullable=True, index=True)  # soft delete; restorable
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

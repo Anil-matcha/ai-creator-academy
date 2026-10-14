@@ -47,6 +47,7 @@ class AgentResponse(BaseModel):
     hitl_enabled: bool
     auto_reply_enabled: bool
     auto_reply_prompt: str
+    deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

@@ -1,7 +1,7 @@
 import uuid
 import datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -16,8 +16,12 @@ from app.database import AsyncSessionLocal
 router = APIRouter(prefix="/v1/agents", tags=["Agents"], dependencies=[Depends(require_admin)])
 
 @router.get("", response_model=List[AgentResponse])
-async def list_agents(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Agent).order_by(Agent.created_at.desc()))
+async def list_agents(include_deleted: bool = Query(False, description="Also list soft-deleted inboxes"),
+                      db: AsyncSession = Depends(get_db)):
+    query = select(Agent).order_by(Agent.created_at.desc())
+    if not include_deleted:
+        query = query.where(Agent.deleted_at.is_(None))
+    result = await db.execute(query)
     return result.scalars().all()
 
 @router.post("", response_model=AgentResponse, status_code=201)
@@ -71,14 +75,31 @@ async def update_agent(email: str, update_in: AgentUpdate, db: AsyncSession = De
     return agent
 
 @router.delete("/{email}", status_code=204)
-async def delete_agent(email: str, db: AsyncSession = Depends(get_db)):
+async def delete_agent(email: str, purge: bool = Query(False, description="Permanently delete the inbox and all its data"),
+                       db: AsyncSession = Depends(get_db)):
+    """Soft-delete by default: the inbox stops receiving mail and is hidden, but can be restored."""
     res = await db.execute(select(Agent).where(Agent.email == email))
     agent = res.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    await db.delete(agent)
+    if purge:
+        await db.delete(agent)
+    elif agent.deleted_at is None:
+        agent.deleted_at = datetime.datetime.utcnow()
     await db.commit()
     return None
+
+
+@router.post("/{email}/restore", response_model=AgentResponse)
+async def restore_agent(email: str, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(Agent).where(Agent.email == email))
+    agent = res.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent.deleted_at = None
+    await db.commit()
+    await db.refresh(agent)
+    return agent
 
 @router.websocket("/{email}/ws")
 async def agent_websocket_endpoint(websocket: WebSocket, email: str):

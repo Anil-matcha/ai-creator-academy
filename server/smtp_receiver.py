@@ -197,7 +197,7 @@ class SmtpSession:
                     await self.send_response(501, "Invalid forward path")
                 else:
                     async with AsyncSessionLocal() as db:
-                        res = await db.execute(select(Agent).where(func.lower(Agent.email) == recipient_path.lower(), Agent.status == "active"))
+                        res = await db.execute(select(Agent).where(func.lower(Agent.email) == recipient_path.lower(), Agent.status == "active", Agent.deleted_at.is_(None)))
                         known_agent = res.scalar_one_or_none()
                     if known_agent:
                         self.rcpt_to.append(known_agent.email)
@@ -320,7 +320,7 @@ class SmtpSession:
         for target_recipient in dict.fromkeys(self.rcpt_to):
             logger.info(f"Ingesting real SMTP mail from '{sender}' to '{target_recipient}'")
             async with AsyncSessionLocal() as db:
-                res = await db.execute(select(Agent).where(Agent.email == target_recipient))
+                res = await db.execute(select(Agent).where(Agent.email == target_recipient, Agent.deleted_at.is_(None)))
                 agent = res.scalar_one_or_none()
                 if not agent:
                     logger.warning(f"No configured agent found for recipient {target_recipient}. Dropping recipient copy.")

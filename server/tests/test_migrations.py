@@ -7,6 +7,11 @@ import app.migrate as migrate
 from app.database import Base
 
 
+def _head():
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(migrate._config()).get_current_head()
+
+
 def _versions(path):
     con = sqlite3.connect(path)
     try:
@@ -29,7 +34,7 @@ async def test_fresh_database_is_stamped_at_head(db_path):
     engine.dispose()
     assert await migrate.database_state() == "legacy"
     await migrate.run_migrations("empty")
-    assert _versions(db_path) == [("0001",)]
+    assert _versions(db_path) == [(_head(),)]
     assert await migrate.database_state() == "versioned"
 
 
@@ -40,11 +45,17 @@ async def test_baseline_upgrade_from_nothing_builds_full_schema(db_path):
 
 
 async def test_legacy_database_is_stamped_then_upgraded(db_path):
-    engine = create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
-    engine.dispose()
+    # A pre-Alembic database has the baseline tables but no version table.
+    await migrate.asyncio.to_thread(migrate.command.upgrade, migrate._config(), migrate.BASELINE_REVISION)
+    con = sqlite3.connect(db_path)
+    con.execute("drop table alembic_version")
+    con.commit()
+    con.close()
+    assert await migrate.database_state() == "legacy"
     await migrate.run_migrations("legacy")
-    assert _versions(db_path) == [("0001",)]
+    assert _versions(db_path) == [(_head(),)]
+    columns = {c["name"] for c in inspect(create_engine(f"sqlite:///{db_path}")).get_columns("agents")}
+    assert "deleted_at" in columns
 
 
 async def test_baseline_matches_models_no_drift(db_path):
