@@ -607,8 +607,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
     except AgentEmailError as exc:
+        code = f" [{exc.code}]" if exc.code else ""
         detail = f": {exc.detail}" if exc.detail else ""
-        print(f"error: {exc}{detail}", file=sys.stderr)
+        retry = f" (retry after {exc.retry_after_seconds:g}s)" if exc.retry_after_seconds is not None else ""
+        print(f"error: {exc}{code}{detail}{retry}", file=sys.stderr)
         return EXIT_API
     except BrokenPipeError:
         return EXIT_OK

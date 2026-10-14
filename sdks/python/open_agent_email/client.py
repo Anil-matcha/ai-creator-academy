@@ -143,10 +143,62 @@ def _format_send_at(value: datetime.datetime | str) -> str:
 class AgentEmailError(Exception):
     """An API or transport error. The bearer token is never included in errors."""
 
-    def __init__(self, message: str, *, status_code: int | None = None, detail: Any = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        detail: Any = None,
+        code: str | None = None,
+        details: Any = None,
+        retry_after_seconds: float | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        #: The response's legacy `detail` field (string, list, or the whole body).
         self.detail = detail
+        #: Stable machine code from the server's error catalog, e.g. ``rate_limited``.
+        self.code = code
+        #: Structured ``error.details`` (validation errors: list of ``{path, message, type}``).
+        self.details = details
+        #: Seconds to wait before retrying, taken from ``error.details`` or ``Retry-After``.
+        self.retry_after_seconds = retry_after_seconds
+
+
+class RateLimitError(AgentEmailError):
+    """HTTP 429 / code ``rate_limited``. Wait ``retry_after_seconds`` before retrying."""
+
+
+class IdempotencyKeyReuseError(AgentEmailError):
+    """Code ``idempotency_key_reuse``: the key was already used with a different request."""
+
+
+def _error_from_http(status: int, body: Any, retry_after_header: str | None) -> AgentEmailError:
+    """Build the most specific error for a failed response; works with or without `error`."""
+    structured = body.get("error") if isinstance(body, dict) else None
+    structured = structured if isinstance(structured, dict) else {}
+    detail = body.get("detail") if isinstance(body, dict) else body
+    code = structured.get("code") if isinstance(structured.get("code"), str) else None
+    details = structured.get("details")
+
+    retry_after: float | None = None
+    from_details = details.get("retry_after_seconds") if isinstance(details, dict) else None
+    if isinstance(from_details, (int, float)) and not isinstance(from_details, bool):
+        retry_after = float(from_details)
+    elif retry_after_header:
+        try:
+            parsed = float(retry_after_header)
+            retry_after = parsed if parsed >= 0 else None
+        except ValueError:
+            retry_after = None
+
+    kwargs = dict(status_code=status, detail=detail, code=code, details=details, retry_after_seconds=retry_after)
+    message = f"Open Agent Email API returned HTTP {status}"
+    if code == "rate_limited" or status == 429:
+        return RateLimitError(message, **kwargs)
+    if code == "idempotency_key_reuse":
+        return IdempotencyKeyReuseError(message, **kwargs)
+    return AgentEmailError(message, **kwargs)
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -228,12 +280,8 @@ class AgentEmailClient:
                 body = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 body = None
-            detail = body.get("detail") if isinstance(body, dict) else body
-            raise AgentEmailError(
-                f"Open Agent Email API returned HTTP {exc.code}",
-                status_code=exc.code,
-                detail=detail,
-            ) from None
+            retry_after = exc.headers.get("Retry-After") if exc.headers is not None else None
+            raise _error_from_http(exc.code, body, retry_after) from None
         except (URLError, TimeoutError, OSError) as exc:
             # Avoid including request headers or URL credentials in transport diagnostics.
             reason = getattr(exc, "reason", None)

@@ -1,4 +1,4 @@
-import { AgentEmailError } from "./errors.js";
+import { AgentEmailError, errorFromResponse } from "./errors.js";
 import { listen as listenInbox, type ListenOptions, type InboxEvent } from "./listen.js";
 import type * as T from "./types.js";
 
@@ -80,9 +80,7 @@ export class AgentEmailClient {
       try { data = JSON.parse(text); } catch { data = text; }
     }
     if (!response.ok) {
-      const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : data;
-      const summary = typeof detail === "string" ? detail : JSON.stringify(detail);
-      throw new AgentEmailError(`${method} ${path} failed with ${response.status}: ${summary ?? "no detail"}`, { status: response.status, detail });
+      throw errorFromResponse(`${method} ${path}`, response.status, data, response.headers.get("retry-after"));
     }
     return data as R;
   }

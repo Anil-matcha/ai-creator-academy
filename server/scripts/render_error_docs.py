@@ -25,6 +25,7 @@ Every error keeps its HTTP status and the historical `detail` field, and adds a 
 - Validation failures (`422`) set `code` to `validation_error` and `details` to a list of `{path, message, type}`; `detail` keeps FastAPI's original list.
 - Rate limits (`429`) send a `Retry-After` header and `error.details.retry_after_seconds`.
 - An unrecognized code should be handled by its HTTP status.
+- The TypeScript and Python SDKs expose `code`, `details` and `retryAfterSeconds` / `retry_after_seconds` on their error type, with `RateLimitError` and `IdempotencyKeyReuseError` subclasses; `oae` prints the code (`error: ... [rate_limited]: ...`).
 
 | Code | HTTP | Meaning | Retry guidance |
 |---|---|---|---|
