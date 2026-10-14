@@ -17,7 +17,7 @@ async def list_messages(
     direction: Optional[str] = Query(None, description="inbound or outbound"),
     status: Optional[str] = Query(None, description="delivered, accepted_by_relay, sending, pending_review, rejected, blocked, failed"),
     thread_id: Optional[str] = Query(None),
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db)
 ):
     query = select(Message).where(Message.agent_email == email)
@@ -149,10 +149,16 @@ async def forward_message(email: str, message_id: str, req: MessageForwardReques
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @router.get("/thread/{thread_id}", response_model=List[MessageResponse])
-async def get_thread(email: str, thread_id: str, db: AsyncSession = Depends(get_db)):
+async def get_thread(
+    email: str,
+    thread_id: str,
+    limit: int = Query(500, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Message)
         .where(and_(Message.agent_email == email, Message.thread_id == thread_id))
         .order_by(Message.created_at.asc())
+        .limit(limit)
     )
     return result.scalars().all()

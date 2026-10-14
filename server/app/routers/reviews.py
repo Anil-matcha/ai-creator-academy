@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"])
 async def list_reviews(
     status: Optional[str] = Query(None, description="pending, approved, rejected"),
     agent_email: Optional[str] = Query(None),
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     principal: Principal = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):

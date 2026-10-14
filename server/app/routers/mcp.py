@@ -30,7 +30,8 @@ MCP_TOOLS = [
             "properties": {
                 "agent_email": {"type": "string", "description": "Agent email address"},
                 "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Optional filter"},
-                "status": {"type": "string", "enum": ["delivered", "accepted_by_relay", "sending", "pending_review", "rejected", "blocked", "failed"]}
+                "status": {"type": "string", "enum": ["delivered", "accepted_by_relay", "sending", "pending_review", "rejected", "blocked", "failed"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
             },
             "required": ["agent_email"]
         }
@@ -96,7 +97,8 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "enum": ["pending", "approved", "rejected"], "default": "pending"}
+                "status": {"type": "string", "enum": ["pending", "approved", "rejected"], "default": "pending"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}
             }
         }
     },
@@ -239,12 +241,15 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
 
     elif name == "list_messages":
         email = args["agent_email"]
+        limit = args.get("limit", 20)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ValueError("limit must be an integer between 1 and 100")
         q = select(Message).where(Message.agent_email == email)
         if "direction" in args:
             q = q.where(Message.direction == args["direction"])
         if "status" in args:
             q = q.where(Message.status == args["status"])
-        msgs = (await db.execute(q.order_by(Message.created_at.desc()).limit(20))).scalars().all()
+        msgs = (await db.execute(q.order_by(Message.created_at.desc()).limit(limit))).scalars().all()
         return json.dumps([{
             "id": m.id,
             "direction": m.direction,
@@ -360,10 +365,13 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
 
     elif name == "list_reviews":
         status_filter = args.get("status", "pending")
+        limit = args.get("limit", 50)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ValueError("limit must be an integer between 1 and 100")
         query = select(ReviewItem).options(selectinload(ReviewItem.message)).where(ReviewItem.status == status_filter)
         if not principal.is_admin:
             query = query.where(ReviewItem.agent_email == principal.agent_email)
-        res = await db.execute(query)
+        res = await db.execute(query.order_by(ReviewItem.created_at.desc()).limit(limit))
         reviews = res.scalars().all()
         return json.dumps([{
             "review_id": r.id,
