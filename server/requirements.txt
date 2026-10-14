@@ -16,3 +16,4 @@ dkimpy>=1.1.8
 checkdmarc>=6.0.4,<7
 cryptography>=42.0.0
 alembic>=1.13
+aiosmtpd>=1.4.6,<2

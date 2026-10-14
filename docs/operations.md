@@ -42,6 +42,24 @@ Rehearse a restore into a scratch environment on a schedule; an untested backup 
 
 Message attachment metadata contains signed download URLs that expire after five minutes. Set `ATTACHMENT_URL_SIGNING_KEY` to a stable secret if links must remain valid across restarts or independently of the SMTP encryption key; otherwise the server derives the signing key from `SMTP_CONFIG_ENCRYPTION_KEY`, falling back to the admin API key. Back up an explicitly configured signing key with the database and protect it as a secret.
 
+## Optional attachment malware scanning
+
+Attachment scanning is disabled by default. To enable the Compose ClamAV service, set `ATTACHMENT_SCAN_ENABLED=true` in `.env` and run `docker compose --profile attachment-scan up --build`. The daemon listens only on the Compose network; do not publish its port to the host or the internet. The Compose service persists signature data in the `clamav-signatures` volume. For a non-Compose deployment, point the server at a trusted clamd service using the settings below.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `ATTACHMENT_SCAN_ENABLED` | `false` | Enable scanning at the shared inbound/outbound service boundary. |
+| `ATTACHMENT_SCAN_HOST` | `clamav` | Private clamd hostname or IP. |
+| `ATTACHMENT_SCAN_PORT` | `3310` | clamd TCP port. |
+| `ATTACHMENT_SCAN_TIMEOUT_SECONDS` | `15` | Per-message scan budget, including queue wait, all attachment connections, transfers, and replies. |
+| `ATTACHMENT_SCAN_MAX_BYTES` | `26214400` | Largest decoded attachment eligible for scanning. |
+| `ATTACHMENT_SCAN_MAX_CONCURRENT` | `4` | Maximum simultaneous scan operations per server process. |
+| `ATTACHMENT_SCAN_CHUNK_BYTES` | `65536` | Maximum data chunk sent to clamd at a time. |
+
+The server sends attachment bytes through clamd's `INSTREAM` protocol without creating temporary files. Attachments are scanned sequentially per message; concurrent requests are bounded by the configured scan limit. A clean scan permits normal persistence or dispatch. Detected malware is a permanent rejection (SMTP 554; REST/MCP HTTP 422), before message or idempotency-record writes. A file over `ATTACHMENT_SCAN_MAX_BYTES` is permanently rejected as too large (SMTP 552; REST/MCP HTTP 413). If clamd is unavailable, returns an error, or misses the message scan deadline, the server fails closed with a transient error (SMTP 451; REST/MCP HTTP 503); SMTP senders may retry after service recovery. Monitor daemon health and signature-update logs, provision clamd memory/CPU for expected message volume, and alert on repeated scanner errors. During scanner maintenance, attachment-bearing requests are unavailable while scanning remains enabled; disable the feature only as an explicit operator decision.
+
+This scans file bytes for signatures recognized by the installed ClamAV database. It does not replace the separate prompt-injection checks on message text, and it cannot guarantee detection of zero-day or otherwise unknown malware.
+
 ## Webhook event retention
 
 `WEBHOOK_DELIVERY_RETENTION_DAYS` defaults to 30. The delivery worker erases payloads, retry errors, replay metadata, and leases for older delivered or terminally failed events, while keeping a compact event ID tombstone. Listing excludes expired tombstones; `GET /v1/events/{id}` and replay return HTTP 410 after expiry. Endpoint deletion removes its deliveries and tombstones.

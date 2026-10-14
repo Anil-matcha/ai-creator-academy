@@ -31,6 +31,7 @@ from app.services.webhook_events import (
     enqueue_inbound_security_webhook_event,
 )
 from app.services.attachment_utils import validate_composed_message_size
+from app.services.attachment_scan import scan_attachments
 from app.services.recipient_suppressions import canonicalize_recipient, get_recipient_suppression
 from app.services.unsubscribe import issue_token, public_base_url
 
@@ -317,6 +318,9 @@ class EmailService:
         3. Creates Message & optionally ReviewItem
         4. Broadcasts over WebSockets
         """
+        # A configured scanner is part of acceptance: never commit unscanned or
+        # infected attachment bytes. This runs before dedup queries or DB writes.
+        await scan_attachments(attachments)
         scan_result = ThreatScanner.scan(
             subject=subject,
             body_text=body_text,
@@ -607,6 +611,9 @@ class EmailService:
         If HITL approval gate is enabled, places message into pending_review.
         Otherwise, delivers to local inbox or upstream SMTP relay.
         """
+        # This common service boundary covers REST, MCP, replies, and forwards.
+        # It runs before idempotency lookup or any message/receipt is persisted.
+        await scan_attachments(attachments)
         raw_recipient = recipient
         try:
             recipient = canonicalize_recipient(recipient)

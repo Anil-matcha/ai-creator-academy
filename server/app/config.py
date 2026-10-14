@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     OUTBOUND_MAX_ATTACHMENT_BYTES: int = 10 * 1024 * 1024
     OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES: int = 25 * 1024 * 1024
     OUTBOUND_MAX_COMPOSED_BYTES: int = 10 * 1024 * 1024
+    # Optional ClamAV daemon scanning. When enabled, scan failures reject the request.
+    ATTACHMENT_SCAN_ENABLED: bool = False
+    ATTACHMENT_SCAN_HOST: str = "clamav"
+    ATTACHMENT_SCAN_PORT: int = 3310
+    ATTACHMENT_SCAN_TIMEOUT_SECONDS: float = 15
+    ATTACHMENT_SCAN_MAX_BYTES: int = 25 * 1024 * 1024
+    ATTACHMENT_SCAN_MAX_CONCURRENT: int = 4
+    ATTACHMENT_SCAN_CHUNK_BYTES: int = 64 * 1024
     # Dedicated key is preferred. Existing required server secrets are fallback keys
     # so upgrades do not require an extra setting.
     ATTACHMENT_URL_SIGNING_KEY: str = ""
@@ -73,6 +81,8 @@ class Settings(BaseSettings):
         "HTTP_MAX_CONCURRENCY", "HTTP_KEEPALIVE_TIMEOUT_SECONDS", "HTTP_MAX_REQUEST_BYTES",
         "OUTBOUND_MAX_ATTACHMENTS", "OUTBOUND_MAX_ATTACHMENT_BYTES", "OUTBOUND_MAX_TOTAL_ATTACHMENT_BYTES",
         "OUTBOUND_MAX_COMPOSED_BYTES",
+        "ATTACHMENT_SCAN_PORT", "ATTACHMENT_SCAN_TIMEOUT_SECONDS", "ATTACHMENT_SCAN_MAX_BYTES",
+        "ATTACHMENT_SCAN_MAX_CONCURRENT", "ATTACHMENT_SCAN_CHUNK_BYTES",
         "WEBHOOK_DELIVERY_RETENTION_DAYS",
     )
     @classmethod

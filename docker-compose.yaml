@@ -19,8 +19,24 @@ services:
       - SMTP_CONFIG_ENCRYPTION_KEY=${SMTP_CONFIG_ENCRYPTION_KEY:-}
       - SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS=${SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS:-}
       - WEBHOOK_DELIVERY_RETENTION_DAYS=${WEBHOOK_DELIVERY_RETENTION_DAYS:-30}
+      - ATTACHMENT_SCAN_ENABLED=${ATTACHMENT_SCAN_ENABLED:-false}
+      - ATTACHMENT_SCAN_HOST=${ATTACHMENT_SCAN_HOST:-clamav}
+      - ATTACHMENT_SCAN_PORT=${ATTACHMENT_SCAN_PORT:-3310}
+      - ATTACHMENT_SCAN_TIMEOUT_SECONDS=${ATTACHMENT_SCAN_TIMEOUT_SECONDS:-15}
+      - ATTACHMENT_SCAN_MAX_BYTES=${ATTACHMENT_SCAN_MAX_BYTES:-26214400}
+      - ATTACHMENT_SCAN_MAX_CONCURRENT=${ATTACHMENT_SCAN_MAX_CONCURRENT:-4}
+      - ATTACHMENT_SCAN_CHUNK_BYTES=${ATTACHMENT_SCAN_CHUNK_BYTES:-65536}
     volumes:
       - ./server/open_agent_email.db:/app/open_agent_email.db
+
+  clamav:
+    image: clamav/clamav:1.4.3
+    profiles: ["attachment-scan"]
+    volumes:
+      - clamav-signatures:/var/lib/clamav
+    expose:
+      - "3310"
+    restart: unless-stopped
 
   client:
     build:
@@ -38,3 +54,6 @@ services:
     ports:
       - "1025:1025" # SMTP port
       - "8025:8025" # Web UI
+
+volumes:
+  clamav-signatures:
