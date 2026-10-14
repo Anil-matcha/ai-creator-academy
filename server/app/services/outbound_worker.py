@@ -10,6 +10,7 @@ from app.database import AsyncSessionLocal
 from app.models import Agent, Message, OutboundJob
 from app.services.email_service import EmailService
 from app.services.ws_manager import ws_manager
+from app.services.webhook_events import enqueue_outbound_status_webhook_event
 
 logger = logging.getLogger("outbound_worker")
 MAX_ATTEMPTS = 8
@@ -54,6 +55,15 @@ async def _dispatch_one() -> bool:
                 if message:
                     message.status = "delivery_unknown"
                     message.delivery_error = STALE_DELIVERY_UNKNOWN
+                    await enqueue_outbound_status_webhook_event(
+                        db,
+                        event_type="email.delivery_unknown",
+                        message_id=message.id,
+                        agent_email=message.agent_email,
+                        recipient=message.recipient,
+                        status=message.status,
+                        created_at=message.created_at,
+                    )
                 await db.commit()
                 logger.error("Outbound message %s has unknown delivery; automatic retry stopped", stale_message_id)
                 if message:
@@ -139,6 +149,11 @@ async def _dispatch_one() -> bool:
             logger.warning("Outbound message %s failed; retry %s scheduled", job.message_id, job.attempts)
             return True
 
+        completed_status = (
+            "uncertain" if status == "delivery_unknown"
+            else "failed" if status == "failed"
+            else "complete"
+        )
         completed = await db.execute(
             update(OutboundJob)
             .where(
@@ -147,9 +162,9 @@ async def _dispatch_one() -> bool:
                 OutboundJob.locked_at == claim_locked_at,
             )
             .values(
-                status="failed" if status == "failed" else "complete",
+                status=completed_status,
                 locked_at=None,
-                last_error=info if status == "failed" else None,
+                last_error=info if status in {"failed", "delivery_unknown"} else None,
             )
         )
         if completed.rowcount != 1:
@@ -158,7 +173,24 @@ async def _dispatch_one() -> bool:
             return True
         if message:
             message.status = status
-            message.delivery_error = info if status == "failed" else None
+            message.delivery_error = info if status in {"failed", "delivery_unknown"} else None
+            event_type = {
+                "accepted_by_relay": "email.accepted_by_relay",
+                "failed": "email.failed",
+                "delivery_unknown": "email.delivery_unknown",
+            }.get(status)
+            # This runs only after the conditional job transition succeeds, so
+            # stale/duplicate dispatch results cannot create duplicate events.
+            if event_type:
+                await enqueue_outbound_status_webhook_event(
+                    db,
+                    event_type=event_type,
+                    message_id=message.id,
+                    agent_email=message.agent_email,
+                    recipient=message.recipient,
+                    status=message.status,
+                    created_at=message.created_at,
+                )
         await db.commit()
 
         if message:
@@ -178,6 +210,7 @@ async def _dispatch_one() -> bool:
                 "failed": "email.failed",
                 "accepted_by_relay": "email.accepted",
                 "delivered": "email.sent",
+                "delivery_unknown": "email.delivery_unknown",
             }[status]
             await ws_manager.send_agent_message(message.agent_email, event_name, payload)
             await ws_manager.broadcast_event(event_name, payload)

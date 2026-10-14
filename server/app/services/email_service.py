@@ -26,6 +26,7 @@ from app.services.ws_manager import ws_manager
 from app.services.webhook_events import enqueue_email_webhook_event
 
 logger = logging.getLogger("email_service")
+SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
 
 def _send_smtp_sync(
     host: str,
@@ -45,6 +46,7 @@ def _send_smtp_sync(
     custom_msg_id: Optional[str] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[bool, str]:
+    submission_started = False
     try:
         msg = MIMEMultipart("mixed") if attachments else MIMEMultipart("alternative")
         msg["From"] = from_addr
@@ -91,13 +93,24 @@ def _send_smtp_sync(
         if username and password:
             server.login(username, password)
 
-        server.sendmail(from_addr, [to_addr], msg.as_string())
+        message_data = msg.as_string()
+        submission_started = True
+        refused = server.sendmail(from_addr, [to_addr], message_data)
         try:
             server.quit()
         except Exception as e:
-            # DATA was accepted; a later QUIT failure does not undo relay acceptance.
-            logger.debug(f"SMTP relay accepted the message but QUIT failed: {e}")
+            # QUIT happens after sendmail returned, so it cannot change that result.
+            logger.debug(f"SMTP transaction result was received but QUIT failed: {e}")
+        if refused:
+            refusal_codes = [str(response[0]) for response in refused.values() if response]
+            return False, f"SMTP relay refused the recipient (code {refusal_codes[0] if refusal_codes else 'unknown'})"
         return True, "Accepted by upstream SMTP relay"
+    except (smtplib.SMTPServerDisconnected, TimeoutError, ConnectionError, OSError) as e:
+        if submission_started:
+            logger.error("SMTP relay connection ended during message submission; acceptance is unknown")
+            return False, SMTP_ACCEPTANCE_UNKNOWN
+        logger.error(f"SMTP delivery failed: {e}")
+        return False, str(e)
     except Exception as e:
         logger.error(f"SMTP delivery failed: {e}")
         return False, str(e)
@@ -191,6 +204,8 @@ class EmailService:
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )
+        if not success and info == SMTP_ACCEPTANCE_UNKNOWN:
+            return "delivery_unknown", info
         return ("accepted_by_relay" if success else "failed"), info
 
     @classmethod

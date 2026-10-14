@@ -210,6 +210,7 @@ export interface Stats {
   total_messages: number;
   inbound_count: number;
   outbound_count: number;
+  unread_messages: number;
   pending_reviews: number;
   threats_neutralized: number;
   active_websockets: number;

@@ -272,6 +272,7 @@ class StatsResponse(BaseModel):
     total_messages: int
     inbound_count: int
     outbound_count: int
+    unread_messages: int
     pending_reviews: int
     threats_neutralized: int
     active_websockets: int

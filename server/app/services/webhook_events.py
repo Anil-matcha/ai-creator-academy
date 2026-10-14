@@ -95,3 +95,40 @@ async def enqueue_email_received_webhook_event(
             available_at=created_at,
             created_at=created_at,
         ))
+
+
+async def enqueue_outbound_status_webhook_event(
+    db: AsyncSession,
+    *,
+    event_type: str,
+    message_id: str,
+    agent_email: str,
+    recipient: str,
+    status: str,
+    created_at: datetime.datetime,
+) -> None:
+    """Queue metadata-only outbound lifecycle events for this inbox."""
+    endpoints = (await db.execute(select(WebhookEndpoint).where(
+        WebhookEndpoint.agent_email == agent_email,
+        WebhookEndpoint.enabled.is_(True),
+    ))).scalars().all()
+    for endpoint in endpoints:
+        event_id = f"evt_{uuid.uuid4().hex}"
+        db.add(WebhookDelivery(
+            id=event_id,
+            endpoint_id=endpoint.id,
+            agent_email=agent_email,
+            event_type=event_type,
+            payload={
+                "id": event_id,
+                "message_id": message_id,
+                "agent_email": agent_email,
+                "recipient": recipient,
+                "status": status,
+                "created_at": created_at.isoformat(),
+            },
+            status="pending",
+            attempts=0,
+            available_at=created_at,
+            created_at=created_at,
+        ))

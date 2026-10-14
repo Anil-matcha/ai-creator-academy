@@ -20,12 +20,14 @@ import { api } from "@/lib/api";
 export function Sidebar() {
   const pathname = usePathname();
   const [pendingReviews, setPendingReviews] = useState<number>(0);
+  const [unreadMessages, setUnreadMessages] = useState<number>(0);
 
   useEffect(() => {
     const fetchPending = async () => {
       try {
         const stats = await api.getStats();
         setPendingReviews(stats.pending_reviews);
+        setUnreadMessages(stats.unread_messages);
       } catch {
         // quiet fallback
       }
@@ -37,12 +39,19 @@ export function Sidebar() {
 
   const navItems = [
     { name: "Overview", href: "/", icon: LayoutDashboard },
-    { name: "Inboxes", href: "/inbox", icon: Mail },
+    {
+      name: "Inboxes",
+      href: "/inbox",
+      icon: Mail,
+      badge: unreadMessages > 0 ? unreadMessages : undefined,
+      badgeTone: "unread",
+    },
     {
       name: "Reviews",
       href: "/reviews",
       icon: ShieldAlert,
       badge: pendingReviews > 0 ? pendingReviews : undefined,
+      badgeTone: "review",
     },
     { name: "Outbox", href: "/outbox", icon: Archive },
     { name: "Webhooks", href: "/webhooks", icon: Webhook },
@@ -91,7 +100,7 @@ export function Sidebar() {
                   <span>{item.name}</span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 bg-[#9e6a03]/30 text-[#d29922] border border-[#d29922]/30 rounded">
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${item.badgeTone === "unread" ? "bg-[#238636]/20 text-[#3fb950] border border-[#3fb950]/30" : "bg-[#9e6a03]/30 text-[#d29922] border border-[#d29922]/30"}`}>
                     {item.badge}
                   </span>
                 )}

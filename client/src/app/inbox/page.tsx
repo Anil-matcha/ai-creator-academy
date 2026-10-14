@@ -25,7 +25,6 @@ export default function InboxPage() {
   const [threadAttachments, setThreadAttachments] = useState<Record<string, MessageAttachment[]>>({});
   const [filterDirection, setFilterDirection] = useState<"" | "inbound" | "outbound">("");
   const [filterReadStatus, setFilterReadStatus] = useState<"unread" | "read" | "all">("all");
-  const [markingRead, setMarkingRead] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [listError, setListError] = useState<string>("");
@@ -33,8 +32,17 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const messageRequestId = useRef(0);
+  const readMarkRequests = useRef(new Set<string>());
+  const failedReadMarks = useRef(new Set<string>());
+  const previousReadSelection = useRef("");
+  const selectedMessageKey = useRef("");
   const activeMessageView = useRef("");
+  const activeAgentEmail = useRef(selectedAgentEmail);
+  const activeReadStatus = useRef(filterReadStatus);
+  selectedMessageKey.current = `${selectedAgentEmail}\u0000${selectedMessage?.id || ""}`;
   activeMessageView.current = `${selectedAgentEmail}\u0000${filterDirection}\u0000${filterReadStatus}\u0000${searchQuery}`;
+  activeAgentEmail.current = selectedAgentEmail;
+  activeReadStatus.current = filterReadStatus;
 
   // In-Thread Reply Form
   const [replyText, setReplyText] = useState<string>("");
@@ -136,35 +144,63 @@ export default function InboxPage() {
     return () => { active = false; };
   }, [selectedAgentEmail, selectedMessage?.id]);
 
-  // Mark inbound mail as read and keep the visible list and thread in sync.
-  const handleMarkRead = async () => {
-    if (!selectedMessage || selectedMessage.direction !== "inbound" || selectedMessage.is_read || markingRead) return;
-    const previousSelected = selectedMessage;
+  useEffect(() => {
+    const previousKey = previousReadSelection.current;
+    const currentKey = selectedMessageKey.current;
+    if (previousKey && previousKey !== currentKey) {
+      failedReadMarks.current.delete(previousKey);
+      readMarkRequests.current.delete(previousKey);
+    }
+    previousReadSelection.current = currentKey;
+  }, [selectedAgentEmail, selectedMessage?.id]);
+
+  // Opening an unread inbound message marks it read. Keep GETs read-only and
+  // deduplicate effect reruns (including React Strict Mode) by mailbox/message.
+  useEffect(() => {
+    if (!selectedAgentEmail || !selectedMessage || selectedMessage.direction !== "inbound" || selectedMessage.is_read) return;
+    const agentEmail = selectedAgentEmail;
+    const message = selectedMessage;
+    const messageKey = `${agentEmail}\u0000${message.id}`;
+    if (readMarkRequests.current.has(messageKey) || failedReadMarks.current.has(messageKey)) return;
+    readMarkRequests.current.add(messageKey);
+
     const viewAtStart = activeMessageView.current;
-    const mark = (message: Message) => message.id === previousSelected.id ? { ...message, is_read: true } : message;
-    setMarkingRead(true);
-    setSelectedMessage({ ...previousSelected, is_read: true });
+    const mark = (item: Message) => item.id === message.id ? { ...item, is_read: true } : item;
+    setSelectedMessage((current) => current?.id === message.id ? { ...current, is_read: true } : current);
     setMessages((current) => current.map(mark));
     setThreadMessages((current) => current.map(mark));
-    try {
-      const updated = await api.markMessageRead(selectedAgentEmail, previousSelected.id);
-      if (activeMessageView.current === viewAtStart) {
-        setSelectedMessage((current) => current?.id === updated.id ? updated : current);
-        setMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
-        setThreadMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
-        await loadMessages();
-      }
-    } catch (error) {
-      if (activeMessageView.current === viewAtStart) {
-        setSelectedMessage((current) => current?.id === previousSelected.id ? previousSelected : current);
-        setMessages((current) => current.map((message) => message.id === previousSelected.id ? previousSelected : message));
-        setThreadMessages((current) => current.map((message) => message.id === previousSelected.id ? previousSelected : message));
-        setListError(error instanceof Error ? error.message : "Could not mark this message as read.");
-      }
-    } finally {
-      setMarkingRead(false);
-    }
-  };
+
+    api.markMessageRead(agentEmail, message.id)
+      .then((updated) => {
+        if (activeAgentEmail.current !== agentEmail) return;
+        const stillSelected = selectedMessageKey.current === messageKey;
+        if (stillSelected && activeReadStatus.current === "unread") {
+          setSelectedMessage((current) => current?.id === updated.id ? null : current);
+        } else if (stillSelected) {
+          setSelectedMessage((current) => current?.id === updated.id ? updated : current);
+        }
+        setMessages((current) => activeReadStatus.current === "unread"
+          ? current.filter((item) => item.id !== updated.id)
+          : current.map((item) => item.id === updated.id ? updated : item));
+        if (stillSelected) {
+          setThreadMessages((current) => current.map((item) => item.id === updated.id ? updated : item));
+        }
+      })
+      .catch((error) => {
+        if (activeAgentEmail.current !== agentEmail) return;
+        const stillSelected = selectedMessageKey.current === messageKey;
+        if (stillSelected) setSelectedMessage((current) => current?.id === message.id ? message : current);
+        setMessages((current) => current.map((item) => item.id === message.id ? message : item));
+        if (stillSelected) {
+          setThreadMessages((current) => current.map((item) => item.id === message.id ? message : item));
+        }
+        readMarkRequests.current.delete(messageKey);
+        if (stillSelected) failedReadMarks.current.add(messageKey);
+        if (activeMessageView.current === viewAtStart) {
+          setListError(error instanceof Error ? error.message : "Could not mark this message as read.");
+        }
+      });
+  }, [selectedAgentEmail, selectedMessage?.id, selectedMessage?.direction, selectedMessage?.is_read, filterReadStatus, messages]);
 
   // Handle Send Reply
   const handleSendReply = async () => {
@@ -478,17 +514,6 @@ export default function InboxPage() {
                     {selectedMessage.status.replace("_", " ")}
                   </span>
                 </div>
-
-                {selectedMessage.direction === "inbound" && !selectedMessage.is_read && (
-                  <button
-                    type="button"
-                    onClick={handleMarkRead}
-                    disabled={markingRead}
-                    className="rounded border border-[#30363d] bg-[#21262d] px-2.5 py-1.5 text-[11px] text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-50"
-                  >
-                    {markingRead ? "Marking read…" : "Mark read"}
-                  </button>
-                )}
 
                 <div className="bg-[#0d1117] p-2.5 rounded border border-[#30363d] space-y-1 text-xs">
                   <div className="flex justify-between">
