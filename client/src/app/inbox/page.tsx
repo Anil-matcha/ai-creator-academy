@@ -15,6 +15,7 @@ import {
 import { api } from "@/lib/api";
 import { Agent, Message, MessageAttachment, OutboundAttachmentInput } from "@/lib/types";
 import { Dropdown } from "@/components/Dropdown";
+import { MessageSnippets } from "@/components/MessageSnippets";
 
 export default function InboxPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -660,6 +661,12 @@ export default function InboxPage() {
                     To: {selectedMessage.direction === "inbound" ? selectedMessage.sender : selectedMessage.recipient}
                   </span>
                 </div>
+                <MessageSnippets inboxEmail={selectedAgentEmail} value={replyText} onApply={(body) => {
+                  setReplyText(body);
+                  if (replyDraftKey) {
+                    try { window.localStorage.setItem(replyDraftKey, body); } catch { /* Draft remains available while this view is open. */ }
+                  }
+                }} />
                 <textarea
                   rows={3}
                   value={replyText}
@@ -749,6 +756,7 @@ export default function InboxPage() {
 
               <div>
                 <label className="text-[#8b949e] block mb-1">Body</label>
+                <MessageSnippets inboxEmail={selectedAgentEmail} value={composeBody} onApply={setComposeBody} />
                 <textarea
                   rows={4}
                   required
