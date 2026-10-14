@@ -28,6 +28,13 @@ HOST = os.environ.get("SMTP_HOST", "127.0.0.1")
 MAX_MESSAGE_BYTES = int(os.environ.get("SMTP_MAX_MESSAGE_BYTES", 20 * 1024 * 1024))
 MAX_ATTACHMENT_BYTES = int(os.environ.get("SMTP_MAX_ATTACHMENT_BYTES", 10 * 1024 * 1024))
 MAX_ATTACHMENTS = int(os.environ.get("SMTP_MAX_ATTACHMENTS", 10))
+READ_TIMEOUT_SECONDS = float(os.environ.get("SMTP_READ_TIMEOUT_SECONDS", 60))
+DATA_TIMEOUT_SECONDS = float(os.environ.get("SMTP_DATA_TIMEOUT_SECONDS", 300))
+MAX_CONNECTIONS = int(os.environ.get("SMTP_MAX_CONNECTIONS", 100))
+STREAM_LINE_LIMIT = int(os.environ.get("SMTP_LINE_LIMIT_BYTES", 16 * 1024))
+if min(READ_TIMEOUT_SECONDS, DATA_TIMEOUT_SECONDS, MAX_CONNECTIONS, STREAM_LINE_LIMIT) <= 0:
+    raise ValueError("SMTP timeouts, connection count, and line limit must be greater than zero")
+CONNECTIONS = asyncio.Semaphore(MAX_CONNECTIONS)
 
 def safe_attachment_name(filename: str) -> str:
     filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
@@ -59,9 +66,24 @@ class SmtpSession:
         data_mode = False
         data_buffer = bytearray()
         data_too_large = False
+        data_started_at = None
 
         while True:
-            line_bytes = await self.reader.readline()
+            timeout = READ_TIMEOUT_SECONDS
+            if data_mode and data_started_at is not None:
+                remaining = DATA_TIMEOUT_SECONDS - (asyncio.get_running_loop().time() - data_started_at)
+                if remaining <= 0:
+                    await self.send_response(421, "Message input timed out")
+                    break
+                timeout = min(timeout, remaining)
+            try:
+                line_bytes = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
+            except asyncio.TimeoutError:
+                try:
+                    await self.send_response(421, "SMTP connection timed out")
+                except (ConnectionError, OSError):
+                    pass
+                break
             if not line_bytes:
                 break
 
@@ -78,6 +100,7 @@ class SmtpSession:
                             await self.send_response(552, str(exc))
                     data_buffer.clear()
                     data_too_large = False
+                    data_started_at = None
                     self.mail_from = ""
                     self.rcpt_to = []
                 else:
@@ -116,6 +139,7 @@ class SmtpSession:
                     data_mode = True
                     data_buffer.clear()
                     data_too_large = False
+                    data_started_at = asyncio.get_running_loop().time()
                     await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
             elif cmd_upper == "QUIT":
                 await self.send_response(221, "Bye")
@@ -125,6 +149,7 @@ class SmtpSession:
                 self.rcpt_to = []
                 data_buffer.clear()
                 data_too_large = False
+                data_started_at = None
                 await self.send_response(250, "Reset OK")
             elif cmd_upper == "NOOP":
                 await self.send_response(250, "OK")
@@ -215,11 +240,42 @@ class SmtpSession:
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
 
+async def _handle_connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    if CONNECTIONS.locked():
+        writer.write(b"421 Too many SMTP connections; try again later\r\n")
+        try:
+            await asyncio.wait_for(writer.drain(), timeout=2)
+        except (asyncio.TimeoutError, ConnectionError, OSError):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionError, OSError):
+            pass
+        return
+
+    await CONNECTIONS.acquire()
+    try:
+        await SmtpSession(reader, writer).handle()
+    except (ConnectionError, OSError, ValueError) as exc:
+        logger.info(f"SMTP connection closed: {exc}")
+    except Exception:
+        logger.exception("Unhandled SMTP session error")
+    finally:
+        CONNECTIONS.release()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionError, OSError):
+            pass
+
+
 async def start_smtp_server(host: str = HOST, port: int = PORT):
     server = await asyncio.start_server(
-        lambda r, w: SmtpSession(r, w).handle(),
+        _handle_connection,
         host,
-        port
+        port,
+        limit=STREAM_LINE_LIMIT,
     )
     logger.info(f"Open Agent Email SMTP Receiver listening on {host}:{port}")
     return server
