@@ -125,3 +125,24 @@ async def test_read_only_key_cannot_send(client):
     ro, _ = await make_key(client, "a@agents.local", "read_only")
     assert (await client.post(MSGS, headers=ro, json=PAYLOAD)).status_code == 403
     assert await _count() == 0
+
+
+def test_ses_configuration_set_header_is_added_only_when_configured(monkeypatch):
+    import smtplib
+    from app.services.email_service import _send_smtp_sync
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def starttls(self): pass
+        def sendmail(self, frm, to, data):
+            sent.append(data)
+            return {}
+        def quit(self): pass
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    args = ("relay", 587, "", "", False, False, "a@x.com", "b@y.net", "s", "b")
+    assert _send_smtp_sync(*args, ses_configuration_set="oae-test")[0]
+    assert _send_smtp_sync(*args)[0]
+    assert "X-SES-CONFIGURATION-SET: oae-test" in sent[0]
+    assert "X-SES-CONFIGURATION-SET" not in sent[1]

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str = ""
     # Optional AWS SES feedback delivered through one trusted SNS topic.
     SES_FEEDBACK_TOPIC_ARN: str = ""
+    # Optional SES configuration set added to outbound mail (X-SES-CONFIGURATION-SET) so SES publishes
+    # delivery/bounce/complaint events through that set's SNS event destination.
+    SES_CONFIGURATION_SET: str = ""
     DEFAULT_SENSITIVITY: str = "medium"  # low, medium, high
     
     # Security & CORS

@@ -60,6 +60,7 @@ def _send_smtp_sync(
     unsubscribe_url: Optional[str] = None,
     feedback_correlation_id: Optional[str] = None,
     dkim_signing: Optional[Dict[str, str]] = None,
+    ses_configuration_set: Optional[str] = None,
 ) -> Tuple[bool, str]:
     submission_started = False
     try:
@@ -73,6 +74,8 @@ def _send_smtp_sync(
         msg["Message-ID"] = custom_msg_id or make_msgid()
         if feedback_correlation_id:
             msg["X-Open-Agent-Email-Message-ID"] = feedback_correlation_id
+        if ses_configuration_set:
+            msg["X-SES-CONFIGURATION-SET"] = ses_configuration_set
         if unsubscribe_url:
             msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
             msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
@@ -296,6 +299,7 @@ class EmailService:
             unsubscribe_url=unsubscribe_url,
             feedback_correlation_id=message.id if settings.SES_FEEDBACK_TOPIC_ARN.strip() else None,
             dkim_signing=dkim_signing,
+            ses_configuration_set=settings.SES_CONFIGURATION_SET.strip() or None,
             attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
                          for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )
