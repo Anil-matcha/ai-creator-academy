@@ -368,3 +368,20 @@ async def replay_delivery(delivery_id: str, principal: Principal = Depends(requi
         raise HTTPException(status_code=409, detail="Webhook delivery changed; retry")
     await db.commit()
     return {"id": delivery_id, "status": "pending", "replayed_at": now}
+
+
+# Declared after the static /deliveries routes so "/deliveries" is never captured as an id.
+@router.get("/{endpoint_id}")
+async def get_webhook(endpoint_id: str, db: AsyncSession = Depends(get_db)):
+    endpoint = await db.get(WebhookEndpoint, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+    return _endpoint_response(endpoint)
+
+
+@router.get("/{endpoint_id}/deliveries")
+async def list_webhook_deliveries(endpoint_id: str, status: Optional[str] = Query(None),
+                                  limit: int = Query(100, ge=1, le=200), db: AsyncSession = Depends(get_db)):
+    if not await db.get(WebhookEndpoint, endpoint_id):
+        raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+    return await list_deliveries(endpoint_id=endpoint_id, status=status, event_type=None, limit=limit, db=db)

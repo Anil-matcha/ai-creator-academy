@@ -6,6 +6,7 @@ from pathlib import Path
 _tmp = tempfile.mkdtemp(prefix="oae-tests-")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmp}/test.db"
 os.environ["ADMIN_API_KEY"] = "test-admin-key"
+os.environ["SMTP_CONFIG_ENCRYPTION_KEY"] = "Zm9yLXRlc3RzLW9ubHktZmVybmV0LWtleS0wMDAwMDA="
 os.environ["API_RATE_LIMIT_REQUESTS"] = "100000"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
