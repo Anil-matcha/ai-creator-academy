@@ -28,7 +28,7 @@ for await (const event of client.listen("support@agents.local")) {
 }
 ```
 
-Uses `globalThis.WebSocket` (Node 22+). On older Node pass one: `client.listen(inbox, { WebSocket: (await import("ws")).WebSocket as any })`. The stream reconnects with backoff; pass `signal` to stop it. The API key is sent as the `api_key` query parameter because WebSocket constructors cannot set headers, so use an HTTPS/WSS endpoint.
+Uses `globalThis.WebSocket` (Node 22+). On older Node pass one: `client.listen(inbox, { WebSocket: (await import("ws")).WebSocket as any })`. Transient disconnects reconnect with backoff; pass `signal` to stop the stream. A newer connection for the same inbox closes the older one with code `4000` and reason `replaced`; the older listener stops without reconnecting. Normal close (`1000`) and unknown application close codes (`4000`–`4999`) also stop the listener. The API key is sent as the `api_key` query parameter because WebSocket constructors cannot set headers, so use an HTTPS/WSS endpoint.
 
 ## Webhooks
 

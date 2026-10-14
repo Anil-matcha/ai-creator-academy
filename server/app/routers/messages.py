@@ -48,7 +48,7 @@ async def _outbound_content(email: str, payload, db: AsyncSession, *, reply_subj
 
     if "template_data" in payload.model_fields_set:
         raise HTTPException(status_code=422, detail="template_data requires template_id")
-    if payload.subject is None or payload.body_text is None:
+    if (reply_subject is None and getattr(payload, "subject", None) is None) or payload.body_text is None:
         raise HTTPException(status_code=422, detail="subject and body_text are required without template_id")
     return reply_subject if reply_subject is not None else payload.subject, payload.body_text, payload.body_html
 
@@ -116,6 +116,7 @@ async def list_messages(
     direction: Optional[str] = Query(None, description="inbound or outbound"),
     status: Optional[str] = Query(None, description="delivered, accepted_by_relay, sending, delivery_unknown, pending_review, rejected, blocked, failed"),
     thread_id: Optional[str] = Query(None),
+    conversation_id: Optional[str] = Query(None, max_length=255),
     label: Optional[str] = Query(None, max_length=64, description="Only messages carrying this label"),
     trashed: bool = Query(False, description="List trashed messages instead of active ones"),
     limit: int = Query(50, ge=1, le=500),
@@ -128,6 +129,8 @@ async def list_messages(
         query = query.where(Message.status == status)
     if thread_id:
         query = query.where(Message.thread_id == thread_id)
+    if conversation_id:
+        query = query.where(Message.conversation_id == conversation_id)
     
     query = query.order_by(Message.created_at.desc())
     if label:
@@ -408,6 +411,7 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
         body_text=body_text,
         body_html=body_html,
         thread_id=req.thread_id,
+        conversation_id=req.conversation_id,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),
         idempotency_key=request.headers.get("Idempotency-Key"),
         send_at=req.send_at,
@@ -443,6 +447,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, r
         body_text=body_text,
         body_html=body_html,
         thread_id=original_msg.thread_id,
+        conversation_id=req.conversation_id if req.conversation_id is not None else original_msg.conversation_id,
         in_reply_to=in_reply_to,
         references=references,
         attachments=decode_attachment_inputs([item.model_dump() for item in req.attachments] if req.attachments else None),

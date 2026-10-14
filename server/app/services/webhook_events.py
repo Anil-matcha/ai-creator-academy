@@ -50,6 +50,7 @@ async def enqueue_email_webhook_event(
     review_id: str,
     status: str,
     created_at: datetime.datetime,
+    conversation_id: str | None = None,
 ) -> None:
     """Add one durable delivery per enabled endpoint in the message inbox.
 
@@ -68,6 +69,7 @@ async def enqueue_email_webhook_event(
             "direction": direction,
             "review_id": review_id,
             "status": status,
+            "conversation_id": conversation_id,
             "created_at": timestamp,
         })
         db.add(WebhookDelivery(
@@ -93,6 +95,7 @@ async def enqueue_email_received_webhook_event(
     status: str,
     message_id: str,
     created_at: datetime.datetime,
+    conversation_id: str | None = None,
 ) -> None:
     """Queue the existing inbound receipt contract for an inbox release."""
     endpoints = await _subscribed_endpoints(db, agent_email, "email.received")
@@ -112,6 +115,7 @@ async def enqueue_email_received_webhook_event(
                 "recipient": recipient,
                 "status": status,
                 "thread_id": thread_id,
+                "conversation_id": conversation_id,
                 "created_at": created_at.isoformat(),
             }),
             status="pending",
@@ -130,6 +134,7 @@ async def enqueue_outbound_status_webhook_event(
     recipient: str,
     status: str,
     created_at: datetime.datetime,
+    conversation_id: str | None = None,
 ) -> None:
     """Queue metadata-only outbound lifecycle events for this inbox."""
     endpoints = await _subscribed_endpoints(db, agent_email, event_type)
@@ -148,6 +153,7 @@ async def enqueue_outbound_status_webhook_event(
                 "agent_email": agent_email,
                 "recipient": recipient,
                 "status": status,
+                "conversation_id": conversation_id,
                 "created_at": created_at.isoformat(),
             }, data_exclude=("status",)),
             status="pending",
@@ -168,6 +174,7 @@ async def enqueue_inbound_security_webhook_event(
     threat_category: str,
     threat_severity: str,
     threat_score: float,
+    conversation_id: str | None = None,
 ) -> None:
     """Queue a bounded security signal without scanner explanations/content."""
     categories = {"prompt_injection", "data_exfiltration", "hidden_payload", "encoded_payload"}
@@ -189,6 +196,7 @@ async def enqueue_inbound_security_webhook_event(
                 "agent_email": agent_email,
                 "direction": "inbound",
                 "status": status,
+                "conversation_id": conversation_id,
                 "created_at": created_at.isoformat(),
                 "threat_category": category,
                 "threat_severity": severity,

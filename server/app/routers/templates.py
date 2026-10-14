@@ -19,6 +19,8 @@ from app.schemas import (
     EmailTemplateRenderData, EmailTemplateUpdate,
 )
 from app.security import require_agent_access, require_write
+from app.services.cursors import decode_cursor, encode_cursor
+from sqlalchemy import and_, or_
 
 
 router = APIRouter(
@@ -139,6 +141,26 @@ async def list_templates(
         .order_by(EmailTemplate.updated_at.desc(), EmailTemplate.id).limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/page")
+async def list_templates_page(email: str, limit: int = Query(50, ge=1, le=200),
+                              cursor: str | None = Query(None, max_length=2048), db: AsyncSession = Depends(get_db)):
+    await _ensure_agent(email, db)
+    scope = f"/v1/agents/{email}/templates"
+    query = select(EmailTemplate).where(EmailTemplate.agent_email == email).order_by(EmailTemplate.updated_at.desc(), EmailTemplate.id).limit(limit + 1)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            updated_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(EmailTemplate.updated_at < updated_at, and_(EmailTemplate.updated_at == updated_at, EmailTemplate.id > item_id)))
+    rows = list((await db.execute(query)).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].updated_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [EmailTemplateResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 
 @router.post("", response_model=EmailTemplateResponse, status_code=201, dependencies=[Depends(require_write)])

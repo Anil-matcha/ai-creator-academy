@@ -2,10 +2,10 @@
 export interface WebSocketLike {
   onopen: ((ev: unknown) => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
-  onclose: ((ev: unknown) => void) | null;
+  onclose: ((ev: { code?: number; reason?: string }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   send(data: string): void;
-  close(): void;
+  close(code?: number, reason?: string): void;
 }
 export type WebSocketCtor = new (url: string) => WebSocketLike;
 
@@ -52,6 +52,7 @@ export async function* listen(opts: ListenOptions): AsyncGenerator<InboxEvent, v
   while (!opts.signal?.aborted) {
     const queue: InboxEvent[] = [];
     let closed: string | null = null;
+    let terminal = false;
     let wake: (() => void) | null = null;
     const notify = () => { wake?.(); wake = null; };
 
@@ -71,7 +72,13 @@ export async function* listen(opts: ListenOptions): AsyncGenerator<InboxEvent, v
         }
       } catch { /* ignore non-JSON frames */ }
     };
-    socket.onclose = () => { closed ??= "closed"; notify(); };
+    socket.onclose = (ev) => {
+      if (ev.code === 4000 && ev.reason === "replaced") { closed ??= "replaced"; terminal = true; }
+      else if (typeof ev.code === "number" && ev.code >= 4000 && ev.code <= 4999) { closed ??= `terminal:${ev.code}`; terminal = true; }
+      else if (ev.code === 1000) { closed ??= "normal"; terminal = true; }
+      else closed ??= "closed";
+      notify();
+    };
     socket.onerror = () => { closed ??= "error"; notify(); };
     const onAbort = () => { closed ??= "aborted"; try { socket.close(); } catch { /* already closed */ } notify(); };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
@@ -90,6 +97,7 @@ export async function* listen(opts: ListenOptions): AsyncGenerator<InboxEvent, v
     }
     if (opts.signal?.aborted) return;
     opts.onDisconnect?.(closed ?? "closed");
+    if (terminal) return;
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, delay);
       opts.signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });

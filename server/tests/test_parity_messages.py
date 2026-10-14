@@ -104,6 +104,44 @@ async def test_lifecycle_and_conversations(client):
     assert (await client.get(f"{BASE}/conversations/nope", headers=ADMIN)).status_code == 404
 
 
+async def test_conversation_pages_are_stable_and_reject_invalid_cursor(client):
+    await _agent(client)
+    await client.post(f"{BASE}/messages", headers=ADMIN, json=PAYLOAD)
+    await client.post(f"{BASE}/messages", headers=ADMIN, json=PAYLOAD)
+    first = await client.get(f"{BASE}/conversations/page?limit=1", headers=ADMIN)
+    assert first.status_code == 200 and len(first.json()["items"]) == 1 and first.json()["next_cursor"]
+    second = await client.get(f"{BASE}/conversations/page?limit=1&cursor=" + first.json()["next_cursor"], headers=ADMIN)
+    assert len(second.json()["items"]) == 1 and second.json()["next_cursor"] is None
+    assert (await client.get(f"{BASE}/conversations/page?cursor=bad", headers=ADMIN)).json()["detail"]["code"] == "invalid_cursor"
+
+
+async def test_caller_conversation_id_is_separate_filterable_and_inherited_on_reply(client):
+    await _agent(client)
+    created = await client.post(f"{BASE}/messages", headers=ADMIN, json={
+        **PAYLOAD, "conversation_id": "ticket-42",
+    })
+    assert created.status_code == 201
+    first = created.json()
+    assert first["conversation_id"] == "ticket-42"
+    assert first["thread_id"] != "ticket-42"
+
+    reply = await client.post(f"{BASE}/messages/{first['id']}/reply", headers=ADMIN, json={"body_text": "reply"})
+    assert reply.status_code == 201
+    assert reply.json()["conversation_id"] == "ticket-42"
+    assert reply.json()["thread_id"] == first["thread_id"]
+
+    override = await client.post(f"{BASE}/messages/{first['id']}/reply", headers=ADMIN, json={
+        "body_text": "another reply", "conversation_id": "external-99",
+    })
+    assert override.status_code == 201 and override.json()["conversation_id"] == "external-99"
+    assert [m["conversation_id"] for m in (await client.get(
+        f"{BASE}/messages?conversation_id=ticket-42", headers=ADMIN,
+    )).json()] == ["ticket-42", "ticket-42"]
+    assert (await client.post(f"{BASE}/messages", headers=ADMIN, json={
+        **PAYLOAD, "conversation_id": "",
+    })).status_code == 422
+
+
 async def test_conversations_are_inbox_scoped(client):
     await _agent(client)
     await make_agent(client, "b@agents.local")

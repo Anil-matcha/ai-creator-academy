@@ -2,7 +2,7 @@ import uuid
 import datetime
 import asyncio
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,6 +13,8 @@ from app.security import require_admin
 from app.services import domain_dns
 from app.services.smtp_secrets import encrypt_secret
 from app.services.webhook_events import enqueue_domain_webhook_event
+from app.services.cursors import decode_cursor, encode_cursor
+from sqlalchemy import and_, or_
 
 router = APIRouter(prefix="/v1/domains", tags=["Domains"], dependencies=[Depends(require_admin)])
 
@@ -20,6 +22,27 @@ router = APIRouter(prefix="/v1/domains", tags=["Domains"], dependencies=[Depends
 async def list_domains(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Domain).order_by(Domain.created_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/page")
+async def list_domains_page(
+    limit: int = Query(50, ge=1, le=200), cursor: str | None = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = "/v1/domains"
+    query = select(Domain).order_by(Domain.created_at.desc(), Domain.id.desc())
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(Domain.created_at < created_at, and_(Domain.created_at == created_at, Domain.id < item_id)))
+    rows = list((await db.execute(query.limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [DomainResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 @router.post("", response_model=DomainResponse, status_code=201)
 async def create_domain(payload: DomainCreate, db: AsyncSession = Depends(get_db)):

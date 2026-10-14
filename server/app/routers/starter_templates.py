@@ -3,7 +3,7 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from app.routers.templates import _preview, _validate_sources
 from app.schemas import EmailTemplatePreviewRequest, EmailTemplateResponse
 from app.security import Principal, require_agent_access, require_read, require_write
 from app.services.starter_templates import STARTER_TEMPLATES, get_starter
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(tags=["Templates"])
 
@@ -40,6 +41,30 @@ async def validate_template(payload: EmailTemplatePreviewRequest):
 @router.get("/v1/starter-templates", dependencies=[Depends(require_read)])
 async def list_starter_templates():
     return {"items": [_public(item, include_body=False) for item in STARTER_TEMPLATES]}
+
+
+@router.get("/v1/starter-templates/page", dependencies=[Depends(require_read)])
+async def list_starter_templates_page(
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None, max_length=2048),
+):
+    scope = "/v1/starter-templates"
+    start = 0
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            start = int(key)
+            if start < 0 or start >= len(STARTER_TEMPLATES) or STARTER_TEMPLATES[start]["alias"] != item_id:
+                raise ValueError
+        except (ValueError, TypeError):
+            decode_cursor("invalid", scope=scope)
+        start += 1
+    chunk = STARTER_TEMPLATES[start:start + limit + 1]
+    has_more = len(chunk) > limit
+    chunk = chunk[:limit]
+    next_cursor = encode_cursor(scope=scope, key=str(start + len(chunk) - 1),
+                                item_id=chunk[-1]["alias"]) if has_more and chunk else None
+    return {"items": [_public(item, include_body=False) for item in chunk], "next_cursor": next_cursor}
 
 
 @router.get("/v1/starter-templates/{alias}", dependencies=[Depends(require_read)])

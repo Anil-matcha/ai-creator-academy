@@ -275,6 +275,8 @@ The helper checks the timestamp window and compares HMAC-SHA256 signatures in co
 
 ## Local install
 
+`oae listen` reconnects after transient disconnects. If another client connects for the same inbox, the older stream closes with code `4000` and reason `replaced`; the CLI stops instead of reconnecting and taking over again. Normal close (`1000`) and unknown application close codes (`4000`–`4999`) are terminal.
+
 From the repository root:
 
 ```bash

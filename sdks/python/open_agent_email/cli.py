@@ -214,16 +214,17 @@ def cmd_messages(args: argparse.Namespace) -> int:
     if action == "list":
         data = client.list_messages(
             agent, direction=args.direction, status=args.status, limit=args.limit,
-            label=args.label, trashed=args.trashed,
+            conversation_id=args.conversation_id, label=args.label, trashed=args.trashed,
         )
         emit(args, data, lambda d: render_table(d, MESSAGE_COLS))
     elif action == "get":
         data = client.get_message(agent, args.id)
-        emit(args, data, lambda d: render_record(d, [*MESSAGE_COLS, "thread_id", "labels", "spf_status",
+        emit(args, data, lambda d: render_record(d, [*MESSAGE_COLS, "thread_id", "conversation_id", "labels", "spf_status",
                                                       "dkim_status", "dmarc_status"]) + "\n\n" + d.get("body_text", ""))
     elif action in {"send", "reply"}:
         body, data_json = _body(args), _json_arg(args.data_json, "--data-json")
-        common: dict[str, Any] = {"idempotency_key": args.idempotency_key, "send_at": args.send_at}
+        common: dict[str, Any] = {"idempotency_key": args.idempotency_key, "send_at": args.send_at,
+                                  "conversation_id": args.conversation_id}
         if args.template:
             content: dict[str, Any] = {"template_id": args.template, "template_data": data_json or {}}
             if body is not None or getattr(args, "subject", None):
@@ -243,7 +244,7 @@ def cmd_messages(args: argparse.Namespace) -> int:
             if not args.template and body is None:
                 raise UsageError("reply needs --body/--body-file (or --template)")
             data = client.reply_message(agent, args.id, **content, **common)
-        emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "scheduled_for"]))
+        emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "conversation_id", "scheduled_for"]))
     elif action == "forward":
         data = client.forward_message(agent, args.id, recipient=args.to, note=args.note)
         emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject"]))
@@ -447,13 +448,24 @@ async def listen_loop(
                     handled += 1
                     if max_events is not None and handled >= max_events:
                         return EXIT_OK
+                close_code = getattr(socket, "close_code", None)
+                close_reason = getattr(socket, "close_reason", None)
+                if close_code == 1000:
+                    return EXIT_OK
+                if close_code == 4000 and close_reason == "replaced":
+                    raise FatalListenError("connection replaced by a newer client")
+                if isinstance(close_code, int) and 4000 <= close_code <= 4999:
+                    raise FatalListenError(f"server closed the connection with terminal code {close_code}")
         except FatalListenError:
             raise
         except Exception as exc:  # connection dropped or refused
             code = getattr(getattr(exc, "rcvd", None), "code", None) or getattr(exc, "code", None)
             status = getattr(getattr(exc, "response", None), "status_code", None) or getattr(exc, "status_code", None)
-            if code == 1008 or status in {401, 403, 404}:
-                raise FatalListenError("server rejected the credential or inbox") from None
+            reason = getattr(getattr(exc, "rcvd", None), "reason", None) or getattr(exc, "reason", None)
+            if code == 4000 and reason == "replaced":
+                raise FatalListenError("connection replaced by a newer client") from None
+            if (isinstance(code, int) and 4000 <= code <= 4999) or code == 1008 or status in {401, 403, 404}:
+                raise FatalListenError("server closed the connection with a terminal code or rejected the credential/inbox") from None
             log(f"disconnected ({type(exc).__name__}); retrying in {delay:.0f}s")
             await sleep(delay + random.uniform(0, delay / 4))
             delay = min(delay * 2, MAX_BACKOFF_SECONDS)
@@ -523,11 +535,13 @@ def build_parser() -> argparse.ArgumentParser:
             action_parser.add_argument("id", help="message id")
     acts["list"].add_argument("--direction", choices=["inbound", "outbound"])
     acts["list"].add_argument("--status")
+    acts["list"].add_argument("--conversation-id")
     acts["list"].add_argument("--label")
     acts["list"].add_argument("--trashed", action="store_true")
     acts["list"].add_argument("--limit", type=int, default=20)
     for name in ("send", "reply"):
         p = acts[name]
+        p.add_argument("--conversation-id", help="caller-owned conversation identifier")
         p.add_argument("--body")
         p.add_argument("--body-file", help="read body from a file, or - for stdin")
         p.add_argument("--template", help="saved template id")

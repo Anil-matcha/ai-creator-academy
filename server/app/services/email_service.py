@@ -230,6 +230,7 @@ class EmailService:
                 "subject": message.subject,
                 "status": "delivered",
                 "thread_id": message.thread_id,
+                "conversation_id": message.conversation_id,
                 "created_at": message.created_at.isoformat()
             })
             return "delivered", "Delivered locally to agent inbox (loopback)"
@@ -471,6 +472,7 @@ class EmailService:
                 "recipient": agent.email,
                 "status": status,
                 "thread_id": thread_id,
+                "conversation_id": message.conversation_id,
                 "created_at": message.created_at.isoformat(),
             }
             for endpoint in endpoints:
@@ -496,6 +498,7 @@ class EmailService:
                 review_id=review_item.id,
                 status=message.status,
                 created_at=message.created_at,
+                conversation_id=message.conversation_id,
             )
         if scan_result.detected_threats:
             threat = scan_result.detected_threats[0]
@@ -506,6 +509,7 @@ class EmailService:
                 agent_email=agent.email,
                 status=message.status,
                 created_at=message.created_at,
+                conversation_id=message.conversation_id,
                 threat_category=threat.threat_type,
                 threat_severity=threat.severity,
                 threat_score=scan_result.threat_score,
@@ -519,6 +523,7 @@ class EmailService:
                 agent_email=agent.email,
                 status=message.status,
                 created_at=message.created_at,
+                conversation_id=message.conversation_id,
                 threat_category=threat.threat_type if threat else "other",
                 threat_severity=threat.severity if threat else "unknown",
                 threat_score=scan_result.threat_score,
@@ -549,6 +554,7 @@ class EmailService:
             "status": message.status,
             "threat_score": message.threat_score,
             "thread_id": message.thread_id,
+            "conversation_id": message.conversation_id,
             "created_at": message.created_at.isoformat()
         }
 
@@ -588,6 +594,7 @@ class EmailService:
         body_text: str,
         body_html: Optional[str] = None,
         thread_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
@@ -615,6 +622,7 @@ class EmailService:
                 "body_text": body_text,
                 "body_html": body_html,
                 "thread_id": thread_id,
+                "conversation_id": conversation_id,
                 "in_reply_to": in_reply_to,
                 "references": references,
                 **({"send_at": send_at.isoformat()} if send_at else {}),
@@ -682,6 +690,7 @@ class EmailService:
             body_text=body_text,
             body_html=body_html,
             thread_id=tid,
+            conversation_id=conversation_id,
             in_reply_to=in_reply_to,
             references=references or in_reply_to,
             rfc_message_id=rfc_id,
@@ -766,6 +775,7 @@ class EmailService:
             "subject": message.subject,
             "status": message.status,
             "thread_id": message.thread_id,
+            "conversation_id": message.conversation_id,
             "created_at": message.created_at.isoformat()
         }
 

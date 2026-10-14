@@ -20,9 +20,15 @@ class ConnectionManager:
 
     async def connect_agent(self, email: str, websocket: WebSocket):
         await websocket.accept()
-        if email not in self.agent_connections:
-            self.agent_connections[email] = set()
-        self.agent_connections[email].add(websocket)
+        # One live socket per inbox. A replacement is terminal for the older
+        # client so its reconnect loop cannot steal the connection back.
+        previous = self.agent_connections.pop(email, set())
+        self.agent_connections[email] = {websocket}
+        for old in previous:
+            try:
+                await old.close(code=4000, reason="replaced")
+            except Exception as exc:
+                logger.debug("Could not close replaced WebSocket for %s: %s", email, exc)
         logger.info(f"WebSocket connected for agent: {email}")
 
     def disconnect_agent(self, email: str, websocket: WebSocket):

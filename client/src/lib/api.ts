@@ -159,12 +159,13 @@ export const api = {
   // Messages
   getMessages: (
     agentEmail: string,
-    filters?: { direction?: string; status?: string; thread_id?: string; limit?: number | string }
+    filters?: { direction?: string; status?: string; thread_id?: string; conversation_id?: string; limit?: number | string }
   ) => {
     const params = new URLSearchParams();
     if (filters?.direction) params.append("direction", filters.direction);
     if (filters?.status) params.append("status", filters.status);
     if (filters?.thread_id) params.append("thread_id", filters.thread_id);
+    if (filters?.conversation_id) params.append("conversation_id", filters.conversation_id);
     if (filters?.limit) params.append("limit", String(filters.limit));
     const qs = params.toString() ? `?${params.toString()}` : "";
     return request<Message[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages${qs}`);
@@ -197,7 +198,7 @@ export const api = {
 
   sendMessage: (
     agentEmail: string,
-    data: { recipient: string; thread_id?: string; attachments?: OutboundAttachmentInput[] } & (
+    data: { recipient: string; thread_id?: string; conversation_id?: string; attachments?: OutboundAttachmentInput[] } & (
       { subject: string; body_text: string; body_html?: string; template_id?: never; template_data?: never } |
       { template_id: string; template_data?: Record<string, unknown>; subject?: never; body_text?: never; body_html?: never }
     ),
@@ -212,7 +213,7 @@ export const api = {
   replyMessage: (
     agentEmail: string,
     messageId: string,
-    data: { attachments?: OutboundAttachmentInput[] } & (
+    data: { conversation_id?: string; attachments?: OutboundAttachmentInput[] } & (
       { body_text: string; body_html?: string; template_id?: never; template_data?: never } |
       { template_id: string; template_data?: Record<string, unknown>; body_text?: never; body_html?: never }
     ),

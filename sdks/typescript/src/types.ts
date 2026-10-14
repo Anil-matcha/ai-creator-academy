@@ -8,7 +8,7 @@ export interface Attachment { filename: string; content_type: string; content_ba
 export interface Message {
   id: string; agent_email: string; direction: "inbound" | "outbound"; is_read: boolean;
   sender: string; recipient: string; subject: string; body_text: string; body_html: string | null;
-  thread_id: string; rfc_message_id: string; in_reply_to: string | null; references: string | null;
+  thread_id: string; conversation_id?: string | null; rfc_message_id: string; in_reply_to: string | null; references: string | null;
   spf_status: string; dkim_status: string; dmarc_status: string; verified_domain: string | null;
   auth_evidence?: Record<string, unknown> | null;
   status: MessageStatus; provider_delivery_status?: string | null; provider_delivery_error?: string | null;
@@ -20,19 +20,19 @@ export interface OtpResult { found: boolean; code?: string; message_id?: string;
 
 export interface SendOptions {
   recipient: string; subject?: string; body_text?: string; body_html?: string;
-  template_id?: string; template_data?: Record<string, unknown>; thread_id?: string;
+  template_id?: string; template_data?: Record<string, unknown>; thread_id?: string; conversation_id?: string;
   attachments?: Attachment[];
   /** Defer submission (ISO string or Date, UTC, at most 90 days ahead). */
   send_at?: string | Date;
 }
 export interface ReplyOptions {
   body_text?: string; body_html?: string; template_id?: string; template_data?: Record<string, unknown>;
-  attachments?: Attachment[]; send_at?: string | Date;
+  conversation_id?: string; attachments?: Attachment[]; send_at?: string | Date;
 }
 export interface RequestOptions { idempotencyKey?: string; signal?: AbortSignal }
 
 export interface MessageListParams {
-  direction?: "inbound" | "outbound"; status?: MessageStatus; thread_id?: string; label?: string;
+  direction?: "inbound" | "outbound"; status?: MessageStatus; thread_id?: string; conversation_id?: string; label?: string;
   trashed?: boolean; limit?: number;
 }
 export interface MessagePageParams {

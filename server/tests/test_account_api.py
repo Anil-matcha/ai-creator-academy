@@ -44,6 +44,25 @@ async def test_account_suppressions_aggregate_and_remove(client):
     assert (await client.delete("/v1/account/suppressions/bad@example.com", headers=ADMIN)).status_code == 404
 
 
+async def test_account_collection_pages_and_filter_bound_cursors(client):
+    await make_agent(client, A)
+    await make_agent(client, B)
+    for address in ("one@example.com", "two@example.com"):
+        await _suppress(client, A, address)
+    page = await client.get("/v1/account/suppressions/page?limit=1", headers=ADMIN)
+    assert page.status_code == 200 and len(page.json()["items"]) == 1 and page.json()["next_cursor"]
+    next_page = await client.get("/v1/account/suppressions/page?limit=1&cursor=" + page.json()["next_cursor"], headers=ADMIN)
+    assert len(next_page.json()["items"]) == 1 and next_page.json()["next_cursor"] is None
+    assert (await client.get("/v1/account/suppressions/page?address=one%40example.com&cursor=" + page.json()["next_cursor"], headers=ADMIN)).status_code == 400
+
+    for inbox, address in ((A, "a@example.com"), (B, "b@example.com")):
+        await _contact(client, inbox, address)
+    contacts = await client.get("/v1/contacts/page?limit=1", headers=ADMIN)
+    assert contacts.status_code == 200 and len(contacts.json()["items"]) == 1 and contacts.json()["next_cursor"]
+    following = await client.get("/v1/contacts/page?limit=1&cursor=" + contacts.json()["next_cursor"], headers=ADMIN)
+    assert len(following.json()["items"]) == 1 and following.json()["next_cursor"] is None
+
+
 async def test_cross_inbox_contacts(client):
     await make_agent(client, A)
     await make_agent(client, B)

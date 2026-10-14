@@ -69,6 +69,21 @@ test("reconnects after a drop and reports the disconnect", async () => {
   await iterator.next();
 });
 
+test("does not reconnect after a newer socket replaces this connection", async () => {
+  FakeSocket.instances = [];
+  const reasons: string[] = [];
+  const iterator = listen({
+    baseUrl: "http://h", apiKey: "k", agentEmail: "a@x.com", WebSocket: FakeSocket,
+    pingIntervalMs: 0, onDisconnect: (reason) => reasons.push(reason),
+  });
+  const pending = iterator.next();
+  await tick();
+  FakeSocket.instances[0]!.onclose?.({ code: 4000, reason: "replaced" });
+  assert.equal((await pending).done, true);
+  assert.equal(FakeSocket.instances.length, 1);
+  assert.deepEqual(reasons, ["replaced"]);
+});
+
 test("sends keep-alive pings while connected", async () => {
   FakeSocket.instances = [];
   const ac = new AbortController();

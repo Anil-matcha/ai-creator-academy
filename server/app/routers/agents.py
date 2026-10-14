@@ -3,7 +3,7 @@ import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 
 from app.database import get_db
 from app.models import Agent
@@ -12,6 +12,7 @@ from app.services.ws_manager import ws_manager
 from app.security import require_admin
 from app.security import authenticate_token
 from app.database import AsyncSessionLocal
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/v1/agents", tags=["Agents"], dependencies=[Depends(require_admin)])
 
@@ -23,6 +24,30 @@ async def list_agents(include_deleted: bool = Query(False, description="Also lis
         query = query.where(Agent.deleted_at.is_(None))
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/page")
+async def list_agents_page(
+    include_deleted: bool = Query(False, description="Also list soft-deleted inboxes"),
+    limit: int = Query(50, ge=1, le=200), cursor: str | None = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = f"/v1/agents|include_deleted={include_deleted}"
+    query = select(Agent).order_by(Agent.created_at.desc(), Agent.id.desc())
+    if not include_deleted:
+        query = query.where(Agent.deleted_at.is_(None))
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(Agent.created_at < created_at, and_(Agent.created_at == created_at, Agent.id < item_id)))
+    rows = list((await db.execute(query.limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [AgentResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(agent_in: AgentCreate, db: AsyncSession = Depends(get_db)):

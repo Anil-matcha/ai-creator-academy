@@ -20,6 +20,7 @@ from app.security import Principal, require_admin
 from app.services.smtp_secrets import encrypt_secret
 from app.services.webhook_delivery import validate_webhook_url
 from app.services.webhook_events import build_payload
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/v1/webhooks", tags=["Webhooks"], dependencies=[Depends(require_admin)])
 MAX_ENDPOINTS_PER_INBOX = 50
@@ -181,6 +182,32 @@ async def list_webhooks(agent_email: Optional[str] = Query(None, max_length=255)
         query = query.where(WebhookEndpoint.agent_email == agent_email.strip().lower())
     endpoints = (await db.execute(query.order_by(WebhookEndpoint.created_at.desc()).limit(limit))).scalars().all()
     return [_endpoint_response(item) for item in endpoints]
+
+
+@router.get("/page")
+async def list_webhooks_page(agent_email: Optional[str] = Query(None, max_length=255),
+                             limit: int = Query(50, ge=1, le=200),
+                             cursor: Optional[str] = Query(None, max_length=2048),
+                             db: AsyncSession = Depends(get_db)):
+    normalized_email = agent_email.strip().lower() if agent_email else None
+    scope = f"/v1/webhooks|agent_email={normalized_email or ''}"
+    query = select(WebhookEndpoint)
+    if normalized_email:
+        query = query.where(WebhookEndpoint.agent_email == normalized_email)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(WebhookEndpoint.created_at < created_at,
+                                and_(WebhookEndpoint.created_at == created_at, WebhookEndpoint.id < item_id)))
+    rows = list((await db.execute(query.order_by(WebhookEndpoint.created_at.desc(), WebhookEndpoint.id.desc())
+                                   .limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [_endpoint_response(item) for item in rows], "next_cursor": next_cursor}
 
 
 @router.patch("/{endpoint_id}", response_model=WebhookResponse)

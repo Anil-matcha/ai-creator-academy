@@ -212,6 +212,7 @@ async def _apply_feedback(db: AsyncSession, event: dict) -> None:
             recipient=recipient,
             status=status,
             created_at=datetime.datetime.utcnow(),
+            conversation_id=message.conversation_id,
         )
         # Only permanent bounces and complaints are terminal opt-outs.
         should_suppress = event_type == "Complaint" or (event_type == "Bounce" and bounce_type == "permanent")

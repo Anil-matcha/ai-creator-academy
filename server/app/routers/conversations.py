@@ -1,15 +1,17 @@
 """Conversation (RFC thread) views derived from stored messages."""
 
+import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Message
 from app.schemas import MessageResponse
 from app.security import require_agent_access
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(
     prefix="/v1/agents/{email}/conversations",
@@ -58,6 +60,43 @@ async def list_conversations(email: str, limit: int = Query(50, ge=1, le=200), d
     items = [_summary(tid, msgs) for tid, msgs in grouped.items()]
     items.sort(key=lambda item: item["last_message_at"], reverse=True)
     return {"items": items}
+
+
+@router.get("/page")
+async def list_conversations_page(
+    email: str,
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = f"/v1/agents/{email}/conversations"
+    latest = (select(Message.thread_id.label("thread_id"), func.max(Message.created_at).label("latest"))
+              .where(Message.agent_email == email, Message.deleted_at.is_(None))
+              .group_by(Message.thread_id).subquery())
+    query = select(latest.c.thread_id, latest.c.latest)
+    if cursor:
+        key, thread_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(latest.c.latest < created_at,
+                                and_(latest.c.latest == created_at, latest.c.thread_id < thread_id)))
+    page_rows = list((await db.execute(query.order_by(latest.c.latest.desc(), latest.c.thread_id.desc())
+                                        .limit(limit + 1))).all())
+    has_more = len(page_rows) > limit
+    page_rows = page_rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=page_rows[-1].latest.isoformat(),
+                                item_id=page_rows[-1].thread_id) if has_more and page_rows else None
+    thread_ids = [row.thread_id for row in page_rows]
+    messages = (await db.execute(select(Message).where(
+        Message.agent_email == email, Message.thread_id.in_(thread_ids), Message.deleted_at.is_(None)
+    ))).scalars().all() if thread_ids else []
+    grouped: dict[str, List[Message]] = {}
+    for message in messages:
+        grouped.setdefault(message.thread_id, []).append(message)
+    items = [_summary(thread_id, grouped[thread_id]) for thread_id in thread_ids]
+    return {"items": items, "next_cursor": next_cursor}
 
 
 @router.get("/{conversation_id}")

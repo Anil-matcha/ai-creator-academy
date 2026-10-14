@@ -166,6 +166,8 @@ class Message(Base):
     
     # RFC Threading
     thread_id = Column(String(64), index=True, nullable=False)
+    # Caller-owned grouping identifier; independent from RFC-derived thread_id.
+    conversation_id = Column(String(255), index=True, nullable=True)
     raw_message_id = Column(String(998), nullable=True, index=True)
     in_reply_to = Column(String(255), nullable=True)
     references = Column(Text, nullable=True)
@@ -176,6 +178,20 @@ class Message(Base):
     dkim_status = Column(String(32), default="unverified")
     dmarc_status = Column(String(32), default="unverified")
     auth_evidence = Column(JSON, nullable=True)
+
+    @property
+    def authentication(self):
+        """Structured SPF, per-signature DKIM, and DMARC evidence for API clients."""
+        evidence = self.auth_evidence or {}
+        if "authentication" in evidence:
+            return evidence["authentication"]
+        # Older stored evidence used an aggregate DKIM result. Keep it readable
+        # while clearly representing that individual signature data is absent.
+        return {
+            "spf": evidence.get("spf", {"status": self.spf_status}),
+            "dkim": [],
+            "dmarc": evidence.get("dmarc", {"status": self.dmarc_status}),
+        }
     verified_domain = Column(String(255), nullable=True)
     delivery_error = Column(Text, nullable=True)
     provider_delivery_status = Column(String(32), nullable=True, index=True)

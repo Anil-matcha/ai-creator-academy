@@ -63,6 +63,7 @@ async def _dispatch_one() -> bool:
                         recipient=message.recipient,
                         status=message.status,
                         created_at=message.created_at,
+                        conversation_id=message.conversation_id,
                     )
                 await db.commit()
                 logger.error("Outbound message %s has unknown delivery; automatic retry stopped", stale_message_id)
@@ -76,6 +77,7 @@ async def _dispatch_one() -> bool:
                         "subject": message.subject,
                         "status": "delivery_unknown",
                         "thread_id": message.thread_id,
+                        "conversation_id": message.conversation_id,
                         "created_at": message.created_at.isoformat(),
                         "delivery_error": message.delivery_error,
                     }
@@ -196,6 +198,7 @@ async def _dispatch_one() -> bool:
                     recipient=message.recipient,
                     status=message.status,
                     created_at=message.created_at,
+                    conversation_id=message.conversation_id,
                 )
         await db.commit()
 
@@ -209,6 +212,7 @@ async def _dispatch_one() -> bool:
                 "subject": message.subject,
                 "status": status,
                 "thread_id": message.thread_id,
+                "conversation_id": message.conversation_id,
                 "created_at": message.created_at.isoformat(),
                 "delivery_error": message.delivery_error,
             }

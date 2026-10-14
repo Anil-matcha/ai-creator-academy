@@ -75,6 +75,7 @@ MCP_TOOLS = [
                 "recipient": {"type": "string"},
                 "subject": {"type": "string"},
                 "body_text": {"type": "string"},
+                "conversation_id": {"type": "string", "minLength": 1, "maxLength": 255},
                 "attachments": {"type": "array", "items": {"type": "object", "properties": {
                     "filename": {"type": "string", "maxLength": 255},
                     "content_type": {"type": "string", "maxLength": 255},
@@ -94,6 +95,7 @@ MCP_TOOLS = [
                 "agent_email": {"type": "string"},
                 "message_id": {"type": "string"},
                 "body_text": {"type": "string"},
+                "conversation_id": {"type": "string", "minLength": 1, "maxLength": 255},
                 "attachments": {"type": "array", "items": {"type": "object", "properties": {
                     "filename": {"type": "string", "maxLength": 255},
                     "content_type": {"type": "string", "maxLength": 255},
@@ -325,6 +327,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "raw_message_id": msg.raw_message_id,
             "in_reply_to": msg.in_reply_to,
             "references": msg.references,
+            "thread_id": msg.thread_id,
+            "conversation_id": msg.conversation_id,
             "spf": msg.spf_status,
             "dkim": msg.dkim_status,
             "dmarc": msg.dmarc_status,
@@ -358,6 +362,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             recipient=args["recipient"],
             subject=args["subject"],
             body_text=args["body_text"],
+            conversation_id=args.get("conversation_id"),
             attachments=decode_attachment_inputs(args.get("attachments")),
             idempotency_key=args.get("idempotency_key"),
             send_at=_parse_send_at(args.get("send_at")),
@@ -366,6 +371,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "status": msg.status,
             "scheduled_for": msg.scheduled_for.isoformat() if msg.scheduled_for else None,
             "message_id": msg.id,
+            "conversation_id": msg.conversation_id,
             "rfc_id": msg.rfc_message_id,
             "delivery_error": msg.delivery_error,
         })
@@ -391,6 +397,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             body_text=args["body_text"],
             attachments=decode_attachment_inputs(args.get("attachments")),
             thread_id=orig.thread_id,
+            conversation_id=args.get("conversation_id", orig.conversation_id),
             in_reply_to=in_reply_to,
             references=references,
             idempotency_key=args.get("idempotency_key"),
@@ -400,6 +407,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "status": reply_msg.status,
             "message_id": reply_msg.id,
             "thread_id": reply_msg.thread_id,
+            "conversation_id": reply_msg.conversation_id,
             "delivery_error": reply_msg.delivery_error,
         })
 

@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,8 @@ from app.models import ReviewItem
 from app.schemas import ReviewItemResponse, ReviewDecisionRequest
 from app.services.hitl_service import HitlService
 from app.security import Principal, require_reviewer
+from app.services.cursors import decode_cursor, encode_cursor
+from sqlalchemy import and_, or_
 
 router = APIRouter(prefix="/v1/reviews", tags=["HITL Reviews"])
 
@@ -35,6 +38,35 @@ async def list_reviews(
     query = query.order_by(ReviewItem.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/page")
+async def list_reviews_page(
+    status: Optional[str] = Query(None, pattern="^(pending|approved|rejected)$"),
+    agent_email: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200),
+    cursor: Optional[str] = Query(None, max_length=2048),
+    principal: Principal = Depends(require_reviewer), db: AsyncSession = Depends(get_db),
+):
+    scope = f"/v1/reviews|status={status or ''}|agent_email={agent_email or ''}|principal={principal.agent_email or 'admin'}"
+    query = select(ReviewItem).options(selectinload(ReviewItem.message))
+    if status:
+        query = query.where(ReviewItem.status == status)
+    if agent_email:
+        query = query.where(ReviewItem.agent_email == agent_email)
+    if not principal.is_admin:
+        query = query.where(ReviewItem.agent_email == principal.agent_email)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(ReviewItem.created_at < created_at, and_(ReviewItem.created_at == created_at, ReviewItem.id < item_id)))
+    rows = list((await db.execute(query.order_by(ReviewItem.created_at.desc(), ReviewItem.id.desc()).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [ReviewItemResponse.model_validate(row) for row in rows], "next_cursor": next_cursor}
 
 @router.get("/{review_id}", response_model=ReviewItemResponse)
 async def get_review(review_id: str, principal: Principal = Depends(require_reviewer), db: AsyncSession = Depends(get_db)):

@@ -43,42 +43,55 @@ def _check_spf(peer_ip: str | None, mail_from: str, helo_domain: str) -> str:
         return "unverified"
 
 
-def _check_dkim(raw_message: bytes) -> tuple[str, list[str]]:
+def _check_dkim(raw_message: bytes) -> tuple[str, list[str], list[dict[str, str]]]:
     message = email.message_from_bytes(raw_message, policy=policy.default)
-    signature_count = len(message.get_all("DKIM-Signature", []))
+    signatures = message.get_all("DKIM-Signature", [])
+    signature_count = len(signatures)
     if signature_count == 0:
-        return "none", []
+        return "none", [], []
+
+    evidence: list[dict[str, str]] = []
+    for signature in signatures[:MAX_DKIM_SIGNATURES]:
+        match = re.search(r"(?:^|;)\s*d\s*=\s*([^;\s]+)", str(signature), re.IGNORECASE)
+        evidence.append({"status": "unverified", **({"domain": match.group(1).strip().rstrip(".").lower()} if match else {})})
 
     try:
         verifier = dkim.DKIM(raw_message, timeout=DKIM_QUERY_TIMEOUT_SECONDS)
     except dkim.DKIMException:
-        return "fail", []
+        return "fail", [], [{**item, "status": "fail"} for item in evidence]
     except Exception:
         logger.exception("Could not initialize DKIM verification")
-        return "unverified", []
+        return "unverified", [], evidence
 
     passing_domains = []
     for index in range(min(signature_count, MAX_DKIM_SIGNATURES)):
         try:
             if verifier.verify(idx=index):
-                signing_domain = verifier.signature_fields.get(b"d", b"").decode("ascii", errors="ignore").strip().rstrip(".").lower()
+                evidence[index]["status"] = "pass"
+                signing_domain = evidence[index].get("domain")
                 if signing_domain:
                     passing_domains.append(signing_domain)
+            else:
+                evidence[index]["status"] = "fail"
         except dns.exception.Timeout:
-            return "temperror", passing_domains
+            evidence[index]["status"] = "temperror"
+            return "temperror", passing_domains, evidence
         except dns.resolver.NoNameservers:
-            return "temperror", passing_domains
+            evidence[index]["status"] = "temperror"
+            return "temperror", passing_domains, evidence
         except dkim.DKIMException:
             # A malformed signature or invalid key fails this signature.
             logger.info("DKIM signature %d did not verify", index)
+            evidence[index]["status"] = "fail"
         except Exception:
             logger.exception("Unexpected error during DKIM verification")
-            return "unverified", passing_domains
+            evidence[index]["status"] = "unverified"
+            return "unverified", passing_domains, evidence
 
     # If signatures remain unchecked, a valid signature may be among them.
     if passing_domains:
-        return "pass", passing_domains
-    return ("unverified", []) if signature_count > MAX_DKIM_SIGNATURES else ("fail", [])
+        return "pass", passing_domains, evidence
+    return ("unverified", [], evidence) if signature_count > MAX_DKIM_SIGNATURES else ("fail", [], evidence)
 
 
 def _get_record_tags(record: str, domain: str) -> dict[str, str]:
@@ -162,7 +175,9 @@ def _organizational_domain(domain: str, records: list[tuple[str, str, dict[str, 
     return min((location for location, _record, _tags in records), key=lambda name: len(name.split(".")))
 
 
-def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_status: str, dkim_status: str, dkim_domains: list[str]) -> str:
+def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_status: str, dkim_status: str, dkim_domains: list[str], details: dict | None = None) -> str:
+    if details is not None:
+        details.update({"policy": None, "alignment": {"spf": None, "dkim": []}})
     message = email.message_from_bytes(raw_message, policy=policy.default)
     from_headers = message.get_all("From", [])
     addresses = getaddresses([str(value) for value in from_headers])
@@ -189,6 +204,12 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
             policy_tags = policy_record[2]
         else:
             return "none"
+
+        if details is not None:
+            details["policy"] = {
+                "domain": exact_record[0] if exact_record else (policy_record[0] if author_tree and policy_record else None),
+                **{tag: policy_tags[tag] for tag in ("p", "sp", "np", "adkim", "aspf", "psd") if tag in policy_tags},
+            }
 
         try:
             spf_domain = _normalize_domain(mail_from.rsplit("@", 1)[-1] if mail_from else helo_domain)
@@ -217,16 +238,28 @@ def _check_dmarc(raw_message: bytes, mail_from: str, helo_domain: str, spf_statu
                 uncertain_alignment = True
                 continue
             if identity_domain == author_domain:
+                if details is not None:
+                    if mechanism == "spf":
+                        details["alignment"]["spf"] = True
+                    else:
+                        details["alignment"]["dkim"].append({"domain": identity_domain, "aligned": True})
                 return "pass"
             alignment_mode = spf_align_mode if mechanism == "spf" else dkim_align_mode
             if alignment_mode == "s":
-                continue
-            if identity_domain not in trees:
-                trees[identity_domain] = _dmarc_tree(identity_domain, deadline)
-            identity_org = _organizational_domain(identity_domain, trees[identity_domain])
-            if identity_org == author_org:
+                aligned = False
+            else:
+                if identity_domain not in trees:
+                    trees[identity_domain] = _dmarc_tree(identity_domain, deadline)
+                identity_org = _organizational_domain(identity_domain, trees[identity_domain])
+                aligned = identity_org == author_org
+            if details is not None:
+                if mechanism == "spf":
+                    details["alignment"]["spf"] = aligned
+                else:
+                    details["alignment"]["dkim"].append({"domain": identity_domain, "aligned": aligned})
+            if aligned:
                 return "pass"
-            if not trees[identity_domain] or not author_tree:
+            if alignment_mode != "s" and (not trees[identity_domain] or not author_tree):
                 uncertain_alignment = True
 
         if uncertain_alignment:
@@ -264,20 +297,27 @@ async def evaluate_inbound_authentication(
         asyncio.to_thread(_check_spf, peer_ip, mail_from, helo_domain),
         asyncio.to_thread(_check_dkim, raw_message),
     )
-    dkim_status, dkim_domains = dkim_result
+    dkim_status, dkim_domains, dkim_signatures = dkim_result
+    dmarc_details: dict = {}
     dmarc_result = await asyncio.to_thread(
-        _check_dmarc, raw_message, mail_from, helo_domain, spf_result, dkim_status, dkim_domains
+        _check_dmarc, raw_message, mail_from, helo_domain, spf_result, dkim_status, dkim_domains, dmarc_details
     )
     message = email.message_from_bytes(raw_message, policy=policy.default)
     from_values = [str(value) for value in message.get_all("From", [])]
+    authentication = {
+        "spf": {"status": spf_result, "identity": (mail_from or (f"postmaster@{helo_domain}" if helo_domain else ""))[:320] or None},
+        "dkim": dkim_signatures,
+        "dmarc": {"status": dmarc_result, **dmarc_details},
+    }
     evidence = {
         "evaluated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "peer_ip": peer_ip[:64] if peer_ip else None,
         "smtp_mail_from": mail_from[:320],
         "helo_domain": helo_domain[:253],
         "from_header": [value[:512] for value in from_values[:1]],
-        "spf": {"status": spf_result, "identity": (mail_from or (f"postmaster@{helo_domain}" if helo_domain else ""))[:320] or None},
+        "spf": authentication["spf"],
         "dkim": {"status": dkim_status, "passing_domains": dkim_domains[:MAX_DKIM_SIGNATURES]},
-        "dmarc": {"status": dmarc_result},
+        "dmarc": {"status": dmarc_result, **dmarc_details},
+        "authentication": authentication,
     }
     return spf_result, dkim_status, dmarc_result, evidence

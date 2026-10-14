@@ -372,6 +372,7 @@ class MessageSendRequest(BaseModel):
     template_id: Optional[str] = Field(None, min_length=1, max_length=64)
     template_data: Dict[str, Any] = Field(default_factory=dict)
     thread_id: Optional[str] = None
+    conversation_id: Optional[str] = Field(None, min_length=1, max_length=255)
     attachments: Optional[List[MessageAttachmentInput]] = None
     send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
 
@@ -385,6 +386,7 @@ class MessageReplyRequest(BaseModel):
     body_html: Optional[str] = None
     template_id: Optional[str] = Field(None, min_length=1, max_length=64)
     template_data: Dict[str, Any] = Field(default_factory=dict)
+    conversation_id: Optional[str] = Field(None, min_length=1, max_length=255)
     attachments: Optional[List[MessageAttachmentInput]] = None
     send_at: Optional[datetime] = Field(None, description="Defer submission until this UTC time (at most 90 days ahead)")
 
@@ -408,6 +410,7 @@ class MessageResponse(BaseModel):
     body_text: str
     body_html: Optional[str]
     thread_id: str
+    conversation_id: Optional[str] = None
     raw_message_id: Optional[str] = None
     in_reply_to: Optional[str]
     references: Optional[str]
@@ -416,6 +419,7 @@ class MessageResponse(BaseModel):
     dkim_status: str
     dmarc_status: str
     auth_evidence: Optional[Dict[str, Any]] = None
+    authentication: Optional[Dict[str, Any]] = None
     verified_domain: Optional[str]
     delivery_error: Optional[str] = None
     provider_delivery_status: Optional[str] = None

@@ -201,6 +201,24 @@ def test_listen_stops_on_policy_close_code(client, server):
     assert len(calls) == 1  # no retry after a rejected credential
 
 
+def test_listen_stops_on_replaced_connection(client, server):
+    calls = []
+    replaced = FatalCode(4000)
+    replaced.reason = "replaced"
+    with pytest.raises(FatalListenError, match="replaced"):
+        run_loop(client, server, scripted_connect([replaced, FakeSocket([])], calls),
+                 forward_to="http://127.0.0.1:1/x")
+    assert len(calls) == 1
+
+
+def test_listen_stops_on_unknown_application_close_code(client, server):
+    calls = []
+    with pytest.raises(FatalListenError):
+        run_loop(client, server, scripted_connect([FatalCode(4001), FakeSocket([])], calls),
+                 forward_to="http://127.0.0.1:1/x")
+    assert len(calls) == 1
+
+
 def test_listen_survives_handler_failure_and_continues(client, server):
     frames = [{"type": "email.received", "data": {"id": "m1"}}, {"type": "email.received", "data": {"id": "m1"}}]
     code, _, lines, logs = run_loop(client, server, scripted_connect([FakeSocket(frames)], []),

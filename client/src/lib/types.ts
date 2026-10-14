@@ -115,6 +115,7 @@ export interface Message {
   body_text: string;
   body_html?: string;
   thread_id: string;
+  conversation_id?: string | null;
   raw_message_id?: string | null;
   in_reply_to?: string;
   references?: string;

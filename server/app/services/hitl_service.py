@@ -63,6 +63,7 @@ class HitlService:
                 review_id=review.id,
                 status=message.status,
                 created_at=message.created_at,
+                conversation_id=message.conversation_id,
             )
             if action == "approve" and message.direction == "inbound":
                 await enqueue_email_received_webhook_event(
@@ -71,6 +72,7 @@ class HitlService:
                     sender=message.sender,
                     recipient=message.recipient,
                     thread_id=message.thread_id,
+                    conversation_id=message.conversation_id,
                     status=message.status,
                     message_id=message.id,
                     created_at=message.created_at,

@@ -40,6 +40,14 @@ async def test_catalog_lists_every_starter_without_bodies(client):
     assert (await client.get("/v1/starter-templates")).status_code == 401
 
 
+async def test_starter_template_pages_match_catalog_and_reject_foreign_cursor(client):
+    first = await client.get("/v1/starter-templates/page?limit=2", headers=ADMIN)
+    assert first.status_code == 200 and len(first.json()["items"]) == 2 and first.json()["next_cursor"]
+    second = await client.get("/v1/starter-templates/page?limit=2&cursor=" + first.json()["next_cursor"], headers=ADMIN)
+    assert [item["alias"] for item in first.json()["items"] + second.json()["items"]] == [item["alias"] for item in STARTER_TEMPLATES[:4]]
+    assert (await client.get("/v1/starter-templates/page?cursor=bad", headers=ADMIN)).status_code == 400
+
+
 @pytest.mark.parametrize("alias", [t["alias"] for t in STARTER_TEMPLATES])
 async def test_every_starter_renders_with_its_sample_data(client, alias):
     r = await client.get(f"/v1/starter-templates/{alias}", headers=ADMIN)

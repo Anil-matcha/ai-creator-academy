@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.routers.contacts import _ensure_unique_email
 from app.routers.webhooks import _endpoint_response
 from app.schemas import ContactCreate, ContactResponse, ContactUpdate
 from app.security import require_admin
+from app.services.cursors import decode_cursor, encode_cursor
 
 router = APIRouter(tags=["Account"], dependencies=[Depends(require_admin)])
 
@@ -50,6 +51,35 @@ async def list_account_suppressions(
     rows = (await db.execute(query.order_by(RecipientSuppression.created_at.desc(),
                                             RecipientSuppression.id).limit(limit))).scalars().all()
     return {"items": [_suppression_row(r) for r in rows]}
+
+
+@router.get("/v1/account/suppressions/page")
+async def list_account_suppressions_page(
+    address: Optional[str] = Query(None, max_length=320),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: Optional[str] = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    normalized = _normalize_address(address) if address else None
+    scope = f"/v1/account/suppressions?address={normalized or ''}"
+    query = select(RecipientSuppression)
+    if normalized:
+        query = query.where(RecipientSuppression.email == normalized)
+    if cursor:
+        key, item_id = decode_cursor(cursor, scope=scope)
+        try:
+            created_at = datetime.datetime.fromisoformat(key)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(RecipientSuppression.created_at < created_at,
+                                and_(RecipientSuppression.created_at == created_at,
+                                     RecipientSuppression.id > item_id)))
+    rows = list((await db.execute(query.order_by(RecipientSuppression.created_at.desc(),
+                                                 RecipientSuppression.id).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=rows[-1].created_at.isoformat(), item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [_suppression_row(r) for r in rows], "next_cursor": next_cursor}
 
 
 @router.delete("/v1/account/suppressions/{address}")
@@ -117,6 +147,40 @@ async def list_account_contacts(
         )
     rows = (await db.execute(query.order_by(Contact.agent_email, Contact.email).limit(limit))).scalars().all()
     return {"items": [ContactResponse.model_validate(r).model_dump(mode="json") for r in rows]}
+
+
+@router.get("/v1/contacts/page")
+async def list_account_contacts_page(
+    agent_email: Optional[str] = Query(None, max_length=255),
+    q: Optional[str] = Query(None, max_length=200, description="Match address, name or company"),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: Optional[str] = Query(None, max_length=2048),
+    db: AsyncSession = Depends(get_db),
+):
+    normalized_agent = agent_email.strip().lower() if agent_email else None
+    normalized_q = q.strip().lower() if q and q.strip() else None
+    scope = f"/v1/contacts?agent_email={normalized_agent or ''}&q={normalized_q or ''}"
+    query = select(Contact)
+    if normalized_agent:
+        query = query.where(Contact.agent_email == normalized_agent)
+    if normalized_q:
+        pattern = "%" + normalized_q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.where(func.lower(Contact.email).like(pattern, escape="\\")
+                            | func.lower(Contact.name).like(pattern, escape="\\")
+                            | func.lower(Contact.company).like(pattern, escape="\\"))
+    if cursor:
+        key, _ = decode_cursor(cursor, scope=scope)
+        try:
+            agent_key, email_key = key.split("\0", 1)
+        except ValueError:
+            decode_cursor("invalid", scope=scope)
+        query = query.where(or_(Contact.agent_email > agent_key,
+                                and_(Contact.agent_email == agent_key, Contact.email > email_key)))
+    rows = list((await db.execute(query.order_by(Contact.agent_email, Contact.email).limit(limit + 1))).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(scope=scope, key=f"{rows[-1].agent_email}\0{rows[-1].email}", item_id=rows[-1].id) if has_more and rows else None
+    return {"items": [ContactResponse.model_validate(r).model_dump(mode="json") for r in rows], "next_cursor": next_cursor}
 
 
 @router.post("/v1/contacts", response_model=ContactResponse, status_code=201)

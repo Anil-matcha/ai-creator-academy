@@ -29,6 +29,7 @@ class Message(TypedDict, total=False):
     body_text: str
     body_html: str | None
     thread_id: str
+    conversation_id: str | None
     status: str
     created_at: str
 
@@ -300,6 +301,7 @@ class AgentEmailClient:
         direction: str | None = None,
         status: str | None = None,
         thread_id: str | None = None,
+        conversation_id: str | None = None,
         limit: int = 50,
         label: str | None = None,
         trashed: bool = False,
@@ -308,7 +310,7 @@ class AgentEmailClient:
         if not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
         query: dict[str, str | int | float] = {"limit": limit}
-        for key, value in (("direction", direction), ("status", status), ("thread_id", thread_id)):
+        for key, value in (("direction", direction), ("status", status), ("thread_id", thread_id), ("conversation_id", conversation_id)):
             if value is not None:
                 query[key] = value
         if label is not None:
@@ -732,6 +734,7 @@ class AgentEmailClient:
         template_id: str | None = None,
         template_data: dict[str, Any] | None = None,
         thread_id: str | None = None,
+        conversation_id: str | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
         send_at: datetime.datetime | str | None = None,
@@ -759,6 +762,8 @@ class AgentEmailClient:
                 payload["body_html"] = body_html
         if thread_id is not None:
             payload["thread_id"] = thread_id
+        if conversation_id is not None:
+            payload["conversation_id"] = conversation_id
         if attachments:
             payload["attachments"] = attachments
         return self._request(
@@ -775,6 +780,7 @@ class AgentEmailClient:
         body_html: str | None = None,
         template_id: str | None = None,
         template_data: dict[str, Any] | None = None,
+        conversation_id: str | None = None,
         attachments: list[Attachment] | None = None,
         idempotency_key: str | None = None,
         send_at: datetime.datetime | str | None = None,
@@ -783,6 +789,8 @@ class AgentEmailClient:
         payload: dict[str, Any] = {}
         if send_at is not None:
             payload["send_at"] = _format_send_at(send_at)
+        if conversation_id is not None:
+            payload["conversation_id"] = conversation_id
         if template_id is not None:
             payload["template_id"] = template_id
             if template_data is not None:
