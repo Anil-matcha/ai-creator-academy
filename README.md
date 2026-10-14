@@ -161,6 +161,8 @@ Inbound MIME attachments are stored with their message and appear in the inbox w
 
 `/health` reports process liveness. `/ready` returns HTTP 200 only when the database, inbound SMTP listener, and outbound worker are available; it also reports the number of pending outbox jobs. Use `/ready` for deployment readiness checks.
 
+Administrators can inspect recent outbox jobs at `GET /v1/outbox` (filter with `status` and bound `limit` to 200) and retry a terminally failed job with `POST /v1/outbox/{job_id}/retry`. Retries record the administrator identity and time.
+
 REST and MCP requests are limited to 120 per socket peer IP per rolling minute by default. Configure `API_RATE_LIMIT_REQUESTS`, `API_RATE_LIMIT_WINDOW_SECONDS`, and `API_RATE_LIMIT_MAX_CLIENTS` for the single-process in-memory limiter. It uses the direct socket peer address and does not trust `X-Forwarded-For`; deployments behind a proxy should enforce client-aware limits at that proxy as well.
 
 The HTTP server binds to `127.0.0.1:8000` by default; Docker Compose sets `HOST=0.0.0.0` inside the container so the published port and dashboard can reach it. The SMTP listener also defaults to loopback locally; Compose sets `SMTP_HOST=0.0.0.0` and publishes port `2525`. Configure `HOST`, `PORT`, `SMTP_HOST`, and `SMTP_PORT` for other deployments. Uvicorn caps concurrent connections/tasks at 200 and closes idle keepalive connections after 5 seconds by default; set `HTTP_MAX_CONCURRENCY` and `HTTP_KEEPALIVE_TIMEOUT_SECONDS` to adjust those bounds. Requests over the concurrency cap receive HTTP 503.

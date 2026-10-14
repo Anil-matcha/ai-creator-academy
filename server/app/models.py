@@ -88,6 +88,8 @@ class OutboundJob(Base):
     available_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
     locked_at = Column(DateTime, nullable=True, index=True)
     last_error = Column(Text, nullable=True)
+    retried_by = Column(String(128), nullable=True)
+    retried_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 

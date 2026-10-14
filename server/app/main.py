@@ -8,7 +8,7 @@ import asyncio
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
-from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats
+from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 
@@ -43,6 +43,11 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN request_hash VARCHAR(64)"))
             if "auth_evidence" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN auth_evidence JSON"))
+            outbox_columns = {column["name"] for column in inspector.get_columns("outbound_jobs")}
+            if "retried_by" not in outbox_columns:
+                sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_by VARCHAR(128)"))
+            if "retried_at" not in outbox_columns:
+                sync_conn.execute(text("ALTER TABLE outbound_jobs ADD COLUMN retried_at DATETIME"))
             message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
             if "ix_messages_raw_message_id" not in message_indexes:
                 sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
@@ -135,6 +140,7 @@ async def live_dashboard_websocket(websocket: WebSocket):
 
 # Routers
 app.include_router(stats.router)
+app.include_router(outbox.router)
 app.include_router(agents.router)
 app.include_router(messages.router)
 app.include_router(reviews.router)

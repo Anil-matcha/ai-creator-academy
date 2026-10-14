@@ -132,6 +132,22 @@ class ReviewItemResponse(BaseModel):
         from_attributes = True
 
 
+class OutboundJobResponse(BaseModel):
+    id: str
+    message_id: str
+    status: str
+    attempts: int
+    available_at: datetime
+    locked_at: Optional[datetime]
+    last_error: Optional[str]
+    retried_by: Optional[str]
+    retried_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- Domain Schemas ---
 class DomainCreate(BaseModel):
     domain: str = Field(..., example="agents.mycompany.com")
