@@ -263,6 +263,9 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             "subject": msg.subject,
             "body_text": msg.body_text,
             "status": msg.status,
+            "raw_message_id": msg.raw_message_id,
+            "in_reply_to": msg.in_reply_to,
+            "references": msg.references,
             "spf": msg.spf_status,
             "dkim": msg.dkim_status,
             "dmarc": msg.dmarc_status,
@@ -300,6 +303,7 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
         
         reply_recipient = orig.sender if orig.direction == "inbound" else orig.recipient
         subj = f"Re: {orig.subject}" if not orig.subject.lower().startswith("re:") else orig.subject
+        in_reply_to, references = EmailService.reply_headers(orig)
         reply_msg = await EmailService.send_outbound(
             db=db,
             agent=ag,
@@ -307,7 +311,8 @@ async def execute_mcp_tool(db: AsyncSession, name: str, args: dict, principal: P
             subject=subj,
             body_text=args["body_text"],
             thread_id=orig.thread_id,
-            in_reply_to=orig.rfc_message_id
+            in_reply_to=in_reply_to,
+            references=references,
         )
         return json.dumps({
             "status": reply_msg.status,

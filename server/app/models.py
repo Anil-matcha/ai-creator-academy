@@ -36,6 +36,7 @@ class Message(Base):
     
     # RFC Threading
     thread_id = Column(String(64), index=True, nullable=False)
+    raw_message_id = Column(String(998), nullable=True, index=True)
     in_reply_to = Column(String(255), nullable=True)
     references = Column(Text, nullable=True)
     rfc_message_id = Column(String(255), unique=True, index=True, nullable=False)

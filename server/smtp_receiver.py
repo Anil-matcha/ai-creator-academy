@@ -7,6 +7,7 @@ from external mail transfer agents (MTAs) such as Gmail, Outlook, or test script
 import asyncio
 import email
 from email import policy
+from email.utils import parseaddr
 import logging
 import sys
 import os
@@ -103,8 +104,12 @@ class SmtpSession:
 
     async def process_email(self, raw_bytes: bytes):
         msg = email.message_from_bytes(raw_bytes, policy=policy.default)
-        sender = msg.get("From", self.mail_from or "unknown@sender.com")
+        sender_header = str(msg.get("From", self.mail_from or "unknown@sender.com"))
+        sender = parseaddr(sender_header)[1] or sender_header
         subject = msg.get("Subject", "(No Subject)")
+        raw_message_id = str(msg.get("Message-ID", "")).strip() or None
+        in_reply_to = str(msg.get("In-Reply-To", "")).strip() or None
+        references = str(msg.get("References", "")).strip() or None
 
         # Extract text and html
         body_text = ""
@@ -145,7 +150,10 @@ class SmtpSession:
                     body_html=body_html,
                     spf_status="unverified",
                     dkim_status="unverified",
-                    dmarc_status="unverified"
+                    dmarc_status="unverified",
+                    raw_message_id=raw_message_id,
+                    in_reply_to=in_reply_to,
+                    references=references,
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
             else:

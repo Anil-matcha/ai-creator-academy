@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
                 sync_conn.execute(text("ALTER TABLE api_keys ADD COLUMN agent_email VARCHAR(255)"))
             if "delivery_error" not in message_columns:
                 sync_conn.execute(text("ALTER TABLE messages ADD COLUMN delivery_error TEXT"))
+            if "raw_message_id" not in message_columns:
+                sync_conn.execute(text("ALTER TABLE messages ADD COLUMN raw_message_id VARCHAR(998)"))
+            message_indexes = {index["name"] for index in inspector.get_indexes("messages")}
+            if "ix_messages_raw_message_id" not in message_indexes:
+                sync_conn.execute(text("CREATE INDEX ix_messages_raw_message_id ON messages (raw_message_id)"))
         await conn.run_sync(apply_additive_schema_updates)
     logger.info("Database schema ready.")
 

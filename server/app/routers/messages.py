@@ -77,6 +77,7 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, d
     subject = original_msg.subject
     if not subject.lower().startswith("re:"):
         subject = f"Re: {subject}"
+    in_reply_to, references = EmailService.reply_headers(original_msg)
 
     reply_msg = await EmailService.send_outbound(
         db=db,
@@ -86,8 +87,8 @@ async def reply_message(email: str, message_id: str, req: MessageReplyRequest, d
         body_text=req.body_text,
         body_html=req.body_html,
         thread_id=original_msg.thread_id,
-        in_reply_to=original_msg.rfc_message_id,
-        references=f"{original_msg.references or ''} {original_msg.rfc_message_id}".strip()
+        in_reply_to=in_reply_to,
+        references=references,
     )
     return reply_msg
 

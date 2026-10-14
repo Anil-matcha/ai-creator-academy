@@ -22,7 +22,7 @@ Give autonomous AI agents real two-way email inboxes, incoming SMTP reception, u
 - **📬 Real Inbound SMTP Daemon**: Binds TCP port `2525` (dev) or `25` (production) to accept incoming emails directly from standard Mail Transfer Agents (MTAs) and external servers.
 - **⚡ Upstream Outbound SMTP Relay**: Agents send real emails over the internet through upstream providers (AWS SES, Resend, SendGrid, Postmark, or Gmail SMTP with App Passwords).
 - **🌐 Domains & DNS Record Verification**: Configure custom domains (e.g. `agents.yourdomain.com`) with auto-generated **MX**, **SPF**, **DKIM** (RSA), and **DMARC** records and real-time DNS status checks.
-- **🧵 Standards-Compliant RFC Threading**: Automatically preserves RFC `Message-ID`, `In-Reply-To`, and `References` headers so agents participate seamlessly in long Gmail or Outlook conversation threads.
+- **🧵 Standards-Compliant RFC Threading**: Preserves inbound `Message-ID`, `In-Reply-To`, and `References` headers, matches human replies to existing conversations, and sends standards-based threaded replies.
 - **🛡️ Inbound Threat & Prompt-Injection Screening**: Built-in heuristic detector intercepts indirect prompt injections, hidden CSS / zero-point font tricks, ChatML delimiters (`<|im_start|>`), and Markdown data exfiltration.
 - **👤 Human-in-the-Loop (HITL) Approval Queue**: Configurable policy holds sensitive or suspicious inbound and outbound emails in `pending_review` until an operator approves or quarantines them.
 - **🤖 Model Context Protocol (MCP) Gateway**: Out-of-the-box MCP endpoint (`http://localhost:8000/mcp/rpc`) enables coding agents in **Cursor**, **Claude Code**, **Claude Desktop**, and **Windsurf** to read inboxes, reply, and send emails autonomously.

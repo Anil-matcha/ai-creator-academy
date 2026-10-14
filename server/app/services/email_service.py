@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.models import Agent, Message, ReviewItem, SecurityEvent, SmtpConfig
 from app.schemas import ThreatScanResult
@@ -79,6 +79,23 @@ class EmailService:
     @staticmethod
     def generate_message_id(domain: str = "agents.local") -> str:
         return f"<msg_{uuid.uuid4().hex[:16]}@{domain}>"
+
+    @staticmethod
+    def reply_headers(original: Message) -> Tuple[str, Optional[str]]:
+        parent_id = original.raw_message_id or original.rfc_message_id
+        refs = []
+        for source in (original.references or "", parent_id):
+            for token in source.split():
+                if token not in refs:
+                    refs.append(token)
+        # Keep the newest IDs when the RFC header would exceed the stored header limit.
+        selected = []
+        for token in reversed(refs):
+            candidate = [token, *selected]
+            if len(" ".join(candidate)) > 255:
+                break
+            selected = candidate
+        return parent_id, " ".join(selected) or None
 
     @classmethod
     async def dispatch_to_upstream(
@@ -152,7 +169,10 @@ class EmailService:
         spf_status: str = "unverified",
         dkim_status: str = "unverified",
         dmarc_status: str = "unverified",
-        verified_domain: Optional[str] = None
+        verified_domain: Optional[str] = None,
+        raw_message_id: Optional[str] = None,
+        in_reply_to: Optional[str] = None,
+        references: Optional[str] = None,
     ) -> Tuple[Message, ThreatScanResult, Optional[ReviewItem]]:
         """
         Processes inbound email:
@@ -168,9 +188,45 @@ class EmailService:
             sensitivity=agent.threat_sensitivity
         )
 
+        raw_message_id = " ".join((raw_message_id or "").split())[:998] or None
+        in_reply_to = " ".join((in_reply_to or "").split())[:255] or None
+        references = " ".join((references or "").split())[:255] or None
+
+        if raw_message_id:
+            duplicate = await db.execute(
+                select(Message).where(
+                    Message.agent_email == agent.email,
+                    Message.raw_message_id == raw_message_id,
+                )
+            )
+            existing_message = duplicate.scalar_one_or_none()
+            if existing_message:
+                review_result = await db.execute(
+                    select(ReviewItem).where(ReviewItem.message_id == existing_message.id)
+                )
+                return existing_message, scan_result, review_result.scalar_one_or_none()
+
         msg_id = f"msg_{uuid.uuid4().hex[:12]}"
         rfc_id = cls.generate_message_id(agent.email.split("@")[-1])
-        thread_id = f"th_{uuid.uuid4().hex[:12]}"
+        reference_ids = [token for token in (references or "").split() if token]
+        if in_reply_to:
+            reference_ids.append(in_reply_to)
+        parent_query = None
+        if reference_ids:
+            parent_query = await db.execute(
+                select(Message)
+                .where(
+                    Message.agent_email == agent.email,
+                    or_(
+                        Message.rfc_message_id.in_(reference_ids),
+                        Message.raw_message_id.in_(reference_ids),
+                    ),
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+        parent_message = parent_query.scalar_one_or_none() if parent_query else None
+        thread_id = parent_message.thread_id if parent_message else f"th_{uuid.uuid4().hex[:12]}"
 
         review_item = None
         if scan_result.verdict == "block":
@@ -192,6 +248,9 @@ class EmailService:
             body_text=body_text,
             body_html=body_html,
             thread_id=thread_id,
+            raw_message_id=raw_message_id,
+            in_reply_to=in_reply_to,
+            references=references,
             rfc_message_id=rfc_id,
             spf_status=spf_status,
             dkim_status=dkim_status,

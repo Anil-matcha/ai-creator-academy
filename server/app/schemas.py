@@ -79,6 +79,7 @@ class MessageResponse(BaseModel):
     body_text: str
     body_html: Optional[str]
     thread_id: str
+    raw_message_id: Optional[str] = None
     in_reply_to: Optional[str]
     references: Optional[str]
     rfc_message_id: str
