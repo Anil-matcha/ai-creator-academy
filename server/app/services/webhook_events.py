@@ -132,3 +132,50 @@ async def enqueue_outbound_status_webhook_event(
             available_at=created_at,
             created_at=created_at,
         ))
+
+
+async def enqueue_inbound_security_webhook_event(
+    db: AsyncSession,
+    *,
+    event_type: str,
+    message_id: str,
+    agent_email: str,
+    status: str,
+    created_at: datetime.datetime,
+    threat_category: str,
+    threat_severity: str,
+    threat_score: float,
+) -> None:
+    """Queue a bounded security signal without scanner explanations/content."""
+    categories = {"prompt_injection", "data_exfiltration", "hidden_payload", "encoded_payload"}
+    severities = {"low", "medium", "high", "critical"}
+    category = threat_category[:64] if threat_category in categories else "other"
+    severity = threat_severity[:16] if threat_severity in severities else "unknown"
+    score = round(min(1.0, max(0.0, float(threat_score))), 2)
+    endpoints = (await db.execute(select(WebhookEndpoint).where(
+        WebhookEndpoint.agent_email == agent_email,
+        WebhookEndpoint.enabled.is_(True),
+    ))).scalars().all()
+    for endpoint in endpoints:
+        event_id = f"evt_{uuid.uuid4().hex}"
+        db.add(WebhookDelivery(
+            id=event_id,
+            endpoint_id=endpoint.id,
+            agent_email=agent_email,
+            event_type=event_type,
+            payload={
+                "id": event_id,
+                "message_id": message_id,
+                "agent_email": agent_email,
+                "direction": "inbound",
+                "status": status,
+                "created_at": created_at.isoformat(),
+                "threat_category": category,
+                "threat_severity": severity,
+                "threat_score": score,
+            },
+            status="pending",
+            attempts=0,
+            available_at=created_at,
+            created_at=created_at,
+        ))

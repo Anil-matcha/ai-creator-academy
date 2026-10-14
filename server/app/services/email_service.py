@@ -23,7 +23,10 @@ from app.services.smtp_secrets import decrypt_password
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
-from app.services.webhook_events import enqueue_email_webhook_event
+from app.services.webhook_events import (
+    enqueue_email_webhook_event,
+    enqueue_inbound_security_webhook_event,
+)
 
 logger = logging.getLogger("email_service")
 SMTP_ACCEPTANCE_UNKNOWN = "SMTP relay connection ended during message submission; relay acceptance is unknown"
@@ -395,6 +398,32 @@ class EmailService:
                 review_id=review_item.id,
                 status=message.status,
                 created_at=message.created_at,
+            )
+        if scan_result.detected_threats:
+            threat = scan_result.detected_threats[0]
+            await enqueue_inbound_security_webhook_event(
+                db,
+                event_type="email.flagged",
+                message_id=message.id,
+                agent_email=agent.email,
+                status=message.status,
+                created_at=message.created_at,
+                threat_category=threat.threat_type,
+                threat_severity=threat.severity,
+                threat_score=scan_result.threat_score,
+            )
+        if scan_result.verdict == "block":
+            threat = scan_result.detected_threats[0] if scan_result.detected_threats else None
+            await enqueue_inbound_security_webhook_event(
+                db,
+                event_type="email.blocked",
+                message_id=message.id,
+                agent_email=agent.email,
+                status=message.status,
+                created_at=message.created_at,
+                threat_category=threat.threat_type if threat else "other",
+                threat_severity=threat.severity if threat else "unknown",
+                threat_score=scan_result.threat_score,
             )
         try:
             await db.commit()
