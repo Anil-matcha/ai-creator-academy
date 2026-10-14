@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, Index, Integer, LargeBinary
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -57,6 +57,21 @@ class Message(Base):
 
     agent = relationship("Agent", back_populates="messages")
     review_item = relationship("ReviewItem", back_populates="message", uselist=False, cascade="all, delete-orphan")
+    attachments = relationship("MessageAttachment", back_populates="message", cascade="all, delete-orphan")
+
+
+class MessageAttachment(Base):
+    __tablename__ = "message_attachments"
+
+    id = Column(String(64), primary_key=True, index=True)
+    message_id = Column(String(64), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(255), nullable=False, default="application/octet-stream")
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    message = relationship("Message", back_populates="attachments")
 
 
 class ReviewItem(Base):

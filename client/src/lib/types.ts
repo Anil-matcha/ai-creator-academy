@@ -52,6 +52,15 @@ export interface Message {
   created_at: string;
 }
 
+export interface MessageAttachment {
+  id: string;
+  message_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export interface ReviewItem {
   id: string;
   message_id: string;

@@ -4,14 +4,18 @@ import datetime
 import smtplib
 import asyncio
 import logging
+import os
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from email.utils import formatdate, make_msgid
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
-from app.models import Agent, Message, ReviewItem, SecurityEvent, SmtpConfig
+from app.models import Agent, Message, MessageAttachment, ReviewItem, SecurityEvent, SmtpConfig
 from app.schemas import ThreatScanResult
 from app.services.threat_scanner import ThreatScanner
 from app.services.ws_manager import ws_manager
@@ -33,10 +37,11 @@ def _send_smtp_sync(
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
     reply_to: Optional[str] = None,
-    custom_msg_id: Optional[str] = None
+    custom_msg_id: Optional[str] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[bool, str]:
     try:
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed") if attachments else MIMEMultipart("alternative")
         msg["From"] = from_addr
         msg["To"] = to_addr
         msg["Subject"] = subject
@@ -49,12 +54,27 @@ def _send_smtp_sync(
         if references:
             msg["References"] = references
 
+        body = MIMEMultipart("alternative") if attachments else msg
         part1 = MIMEText(body_text, "plain", "utf-8")
-        msg.attach(part1)
+        body.attach(part1)
 
         if body_html:
             part2 = MIMEText(body_html, "html", "utf-8")
-            msg.attach(part2)
+            body.attach(part2)
+        if attachments:
+            msg.attach(body)
+            for attachment in attachments:
+                content_type = attachment.get("content_type") or "application/octet-stream"
+                maintype, _, subtype = content_type.partition("/")
+                if not subtype or not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+", maintype + subtype):
+                    maintype, subtype = "application", "octet-stream"
+                part = MIMEBase(maintype, subtype)
+                part.set_payload(attachment["content"])
+                encoders.encode_base64(part)
+                filename = os.path.basename(attachment.get("filename") or "attachment")
+                filename = re.sub(r"[\r\n\x00-\x1f\x7f]", "_", filename)[:255] or "attachment"
+                part.add_header("Content-Disposition", "attachment", filename=filename)
+                msg.attach(part)
 
         if use_ssl or port == 465:
             server = smtplib.SMTP_SSL(host, port, timeout=15)
@@ -153,7 +173,9 @@ class EmailService:
             in_reply_to=message.in_reply_to,
             references=message.references,
             reply_to=agent.email,
-            custom_msg_id=message.rfc_message_id
+            custom_msg_id=message.rfc_message_id,
+            attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
+                         for a in (await db.execute(select(MessageAttachment).where(MessageAttachment.message_id == message.id))).scalars().all()]
         )
         return success, info
 
@@ -173,6 +195,7 @@ class EmailService:
         raw_message_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[Message, ThreatScanResult, Optional[ReviewItem]]:
         """
         Processes inbound email:
@@ -262,6 +285,12 @@ class EmailService:
             created_at=datetime.datetime.utcnow()
         )
         db.add(message)
+        for attachment in attachments or []:
+            db.add(MessageAttachment(
+                id=f"att_{uuid.uuid4().hex[:16]}", message_id=msg_id,
+                filename=attachment["filename"], content_type=attachment["content_type"],
+                size_bytes=len(attachment["content"]), content=attachment["content"],
+            ))
 
         if scan_result.detected_threats:
             sec_event = SecurityEvent(
@@ -339,7 +368,8 @@ class EmailService:
         body_html: Optional[str] = None,
         thread_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
-        references: Optional[str] = None
+        references: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> Message:
         """
         Sends an outbound email as the agent.
@@ -379,6 +409,13 @@ class EmailService:
             created_at=datetime.datetime.utcnow()
         )
         db.add(message)
+
+        for attachment in attachments or []:
+            db.add(MessageAttachment(
+                id=f"att_{uuid.uuid4().hex[:16]}", message_id=msg_id,
+                filename=attachment["filename"], content_type=attachment["content_type"],
+                size_bytes=len(attachment["content"]), content=attachment["content"],
+            ))
 
         review_item = None
         if status == "pending_review":
@@ -463,10 +500,15 @@ class EmailService:
             original.body_text,
         ])
         subject = original.subject if original.subject.lower().startswith("fwd:") else f"Fwd: {original.subject}"
+        attachment_rows = (await db.execute(
+            select(MessageAttachment).where(MessageAttachment.message_id == original.id)
+        )).scalars().all()
         return await cls.send_outbound(
             db=db,
             agent=agent,
             recipient=recipient,
             subject=subject,
             body_text="\n".join(body_parts),
+            attachments=[{"filename": a.filename, "content_type": a.content_type, "content": a.content}
+                         for a in attachment_rows],
         )

@@ -1,11 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from app.database import get_db
-from app.models import Agent, Message
-from app.schemas import MessageResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest
+from app.models import Agent, Message, MessageAttachment
+from app.schemas import MessageResponse, MessageAttachmentResponse, MessageSendRequest, MessageReplyRequest, MessageForwardRequest
 from app.services.email_service import EmailService
 from app.security import require_agent_access, require_write
 
@@ -39,6 +39,35 @@ async def get_message(email: str, message_id: str, db: AsyncSession = Depends(ge
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
     return msg
+
+@router.get("/{message_id}/attachments", response_model=List[MessageAttachmentResponse])
+async def list_message_attachments(email: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    message_result = await db.execute(
+        select(Message.id).where(and_(Message.id == message_id, Message.agent_email == email))
+    )
+    if not message_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Message not found")
+    result = await db.execute(
+        select(MessageAttachment).where(MessageAttachment.message_id == message_id).order_by(MessageAttachment.created_at)
+    )
+    return result.scalars().all()
+
+@router.get("/{message_id}/attachments/{attachment_id}")
+async def download_message_attachment(email: str, message_id: str, attachment_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(MessageAttachment)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(and_(Message.id == message_id, Message.agent_email == email, MessageAttachment.id == attachment_id))
+    )
+    attachment = result.scalar_one_or_none()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    filename = attachment.filename.replace('"', "_").replace("\\", "_").replace("\r", "_").replace("\n", "_")
+    return Response(
+        content=attachment.content,
+        media_type=attachment.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "X-Content-Type-Options": "nosniff"},
+    )
 
 @router.post("", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
 async def send_message(email: str, req: MessageSendRequest, db: AsyncSession = Depends(get_db)):

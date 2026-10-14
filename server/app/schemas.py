@@ -97,6 +97,18 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class MessageAttachmentResponse(BaseModel):
+    id: str
+    message_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- Review / HITL Schemas ---
 class ReviewDecisionRequest(BaseModel):
     action: str = Field(..., example="approve")  # approve, reject

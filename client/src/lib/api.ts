@@ -1,6 +1,7 @@
 import {
   Agent,
   Message,
+  MessageAttachment,
   ReviewItem,
   Stats,
   Domain,
@@ -64,6 +65,9 @@ export const api = {
 
   getMessage: (agentEmail: string, messageId: string) =>
     request<Message>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}`),
+
+  getMessageAttachments: (agentEmail: string, messageId: string) =>
+    request<MessageAttachment[]>(`/v1/agents/${encodeURIComponent(agentEmail)}/messages/${messageId}/attachments`),
 
   sendMessage: (
     agentEmail: string,

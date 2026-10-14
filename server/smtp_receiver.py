@@ -25,6 +25,20 @@ logger = logging.getLogger("smtp_receiver")
 
 PORT = int(os.environ.get("SMTP_PORT", 2525))
 HOST = os.environ.get("SMTP_HOST", "127.0.0.1")
+MAX_MESSAGE_BYTES = int(os.environ.get("SMTP_MAX_MESSAGE_BYTES", 20 * 1024 * 1024))
+MAX_ATTACHMENT_BYTES = int(os.environ.get("SMTP_MAX_ATTACHMENT_BYTES", 10 * 1024 * 1024))
+MAX_ATTACHMENTS = int(os.environ.get("SMTP_MAX_ATTACHMENTS", 10))
+
+def safe_attachment_name(filename: str) -> str:
+    filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    filename = "".join(ch if ch >= " " and ch not in "\x7f" else "_" for ch in filename)
+    return filename[:255] or "attachment"
+
+def safe_content_type(content_type: str) -> str:
+    import re
+    if re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", content_type or ""):
+        return content_type
+    return "application/octet-stream"
 
 class SmtpSession:
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -44,6 +58,7 @@ class SmtpSession:
 
         data_mode = False
         data_buffer = bytearray()
+        data_too_large = False
 
         while True:
             line_bytes = await self.reader.readline()
@@ -53,13 +68,24 @@ class SmtpSession:
             if data_mode:
                 if line_bytes.strip() == b".":
                     data_mode = False
-                    await self.process_email(bytes(data_buffer))
-                    await self.send_response(250, "Message accepted for agent delivery")
+                    if data_too_large:
+                        await self.send_response(552, "Message exceeds configured size limit")
+                    else:
+                        try:
+                            await self.process_email(bytes(data_buffer))
+                            await self.send_response(250, "Message accepted for agent delivery")
+                        except ValueError as exc:
+                            await self.send_response(552, str(exc))
                     data_buffer.clear()
+                    data_too_large = False
                     self.mail_from = ""
                     self.rcpt_to = []
                 else:
-                    data_buffer.extend(line_bytes)
+                    if len(data_buffer) + len(line_bytes) > MAX_MESSAGE_BYTES:
+                        data_too_large = True
+                        data_buffer.clear()
+                    elif not data_too_large:
+                        data_buffer.extend(line_bytes)
                 continue
 
             line = line_bytes.decode("utf-8", errors="ignore").strip()
@@ -85,6 +111,8 @@ class SmtpSession:
                     await self.send_response(550, "No active agent inbox for recipient")
             elif cmd_upper == "DATA":
                 data_mode = True
+                data_buffer.clear()
+                data_too_large = False
                 await self.send_response(354, "Start mail input; end with <CRLF>.<CRLF>")
             elif cmd_upper == "QUIT":
                 await self.send_response(221, "Bye")
@@ -93,6 +121,7 @@ class SmtpSession:
                 self.mail_from = ""
                 self.rcpt_to = []
                 data_buffer.clear()
+                data_too_large = False
                 await self.send_response(250, "Reset OK")
             elif cmd_upper == "NOOP":
                 await self.send_response(250, "OK")
@@ -114,17 +143,44 @@ class SmtpSession:
         # Extract text and html
         body_text = ""
         body_html = None
+        attachments = []
+        attachment_total = 0
 
         if msg.is_multipart():
             for part in msg.walk():
+                if part.is_multipart():
+                    continue
                 ctype = part.get_content_type()
-                if ctype == "text/plain" and not body_text:
-                    body_text = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                filename = part.get_filename()
+                disposition = part.get_content_disposition()
+                if filename or disposition == "attachment":
+                    payload = part.get_payload(decode=True) or b""
+                    if len(attachments) >= MAX_ATTACHMENTS:
+                        raise ValueError(f"Message contains more than {MAX_ATTACHMENTS} attachments")
+                    if len(payload) > MAX_ATTACHMENT_BYTES:
+                        raise ValueError(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
+                    attachment_total += len(payload)
+                    if attachment_total > MAX_MESSAGE_BYTES:
+                        raise ValueError("Attachments exceed configured total size limit")
+                    attachments.append({"filename": safe_attachment_name(filename or "attachment"), "content_type": safe_content_type(ctype), "content": payload})
+                elif ctype == "text/plain" and not body_text:
+                    payload = part.get_payload(decode=True)
+                    body_text = payload.decode("utf-8", errors="ignore") if payload else ""
                 elif ctype == "text/html" and not body_html:
-                    body_html = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                    payload = part.get_payload(decode=True)
+                    body_html = payload.decode("utf-8", errors="ignore") if payload else ""
         else:
             payload = msg.get_payload(decode=True)
-            body_text = payload.decode("utf-8", errors="ignore") if payload else ""
+            filename = msg.get_filename()
+            if filename or msg.get_content_disposition() == "attachment":
+                payload = payload or b""
+                if len(payload) > MAX_ATTACHMENT_BYTES:
+                    raise ValueError(f"Attachment exceeds {MAX_ATTACHMENT_BYTES} byte limit")
+                if len(attachments) >= MAX_ATTACHMENTS:
+                    raise ValueError(f"Message contains more than {MAX_ATTACHMENTS} attachments")
+                attachments.append({"filename": safe_attachment_name(filename or "attachment"), "content_type": safe_content_type(msg.get_content_type()), "content": payload})
+            else:
+                body_text = payload.decode("utf-8", errors="ignore") if payload else ""
 
         if not body_text and body_html:
             body_text = body_html
@@ -154,6 +210,7 @@ class SmtpSession:
                     raw_message_id=raw_message_id,
                     in_reply_to=in_reply_to,
                     references=references,
+                    attachments=attachments,
                 )
                 logger.info(f"Delivered message {message.id} to agent {agent.email}. Verdict: {scan_result.verdict}")
             else:

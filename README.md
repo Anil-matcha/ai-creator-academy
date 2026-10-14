@@ -149,6 +149,8 @@ When an agent has `hitl_enabled: true` or when the Threat Scanner detects suspic
 ### 4. Human Handoff (`/inbox`)
 Open an inbound message and use **Hand off to a person** to forward the original email and an optional note to a teammate. The agent's outbound approval policy applies. A send is shown as failed when no outbound SMTP relay is configured or the relay rejects it.
 
+Inbound MIME attachments are stored with their message and appear in the inbox with authenticated download links. Human handoff forwards those files along with the original message. The SMTP receiver defaults to a 20 MiB raw-message limit, 10 MiB per attachment, and 10 attachments per message; set `SMTP_MAX_MESSAGE_BYTES`, `SMTP_MAX_ATTACHMENT_BYTES`, and `SMTP_MAX_ATTACHMENTS` to adjust these bounds.
+
 ---
 
 ## 🤖 Coding Agent Integration (MCP)

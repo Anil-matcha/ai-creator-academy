@@ -13,7 +13,7 @@ import {
   Bot
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Agent, Message } from "@/lib/types";
+import { Agent, Message, MessageAttachment } from "@/lib/types";
 import { Dropdown } from "@/components/Dropdown";
 
 export default function InboxPage() {
@@ -21,6 +21,7 @@ export default function InboxPage() {
   const [selectedAgentEmail, setSelectedAgentEmail] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [filterDirection, setFilterDirection] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -79,6 +80,17 @@ export default function InboxPage() {
   useEffect(() => {
     loadMessages();
   }, [selectedAgentEmail, filterDirection]);
+
+  useEffect(() => {
+    let active = true;
+    setAttachments([]);
+    if (selectedMessage && selectedAgentEmail) {
+      api.getMessageAttachments(selectedAgentEmail, selectedMessage.id)
+        .then((items) => { if (active) setAttachments(items); })
+        .catch((err) => console.error("Failed to load attachments:", err));
+    }
+    return () => { active = false; };
+  }, [selectedAgentEmail, selectedMessage?.id]);
 
   // Handle Send Reply
   const handleSendReply = async () => {
@@ -355,6 +367,23 @@ export default function InboxPage() {
               {/* Message Body */}
               <div className="p-4 flex-1 overflow-y-auto text-xs text-[#e6edf3] whitespace-pre-wrap leading-relaxed font-sans">
                 {selectedMessage.body_text}
+                {attachments.length > 0 && (
+                  <div className="mt-5 border-t border-[#30363d] pt-3">
+                    <div className="mb-2 text-[11px] font-semibold text-[#8b949e]">Attachments ({attachments.length})</div>
+                    <div className="space-y-1.5">
+                      {attachments.map((attachment) => (
+                        <a
+                          key={attachment.id}
+                          href={`/api/backend/v1/agents/${encodeURIComponent(selectedAgentEmail)}/messages/${selectedMessage.id}/attachments/${attachment.id}`}
+                          className="flex items-center justify-between gap-3 rounded border border-[#30363d] px-3 py-2 text-xs text-[#58a6ff] hover:bg-[#161b22]"
+                        >
+                          <span className="truncate">{attachment.filename}</span>
+                          <span className="shrink-0 text-[#8b949e]">{(attachment.size_bytes / 1024).toFixed(1)} KB</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {selectedMessage.delivery_error && (
                   <div className="mt-4 rounded border border-[#f85149]/30 bg-[#f85149]/10 p-3 text-[#f85149]">
                     Delivery failed: {selectedMessage.delivery_error}
