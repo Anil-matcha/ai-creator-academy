@@ -346,6 +346,17 @@ Operations (migrations, backup/restore, key rotation): see [docs/operations.md](
 - **Template validation** – `POST /v1/templates/validate` checks placeholder syntax and renders with sample data without saving anything.
 - **Starter templates** – `GET /v1/starter-templates` and `/{alias}` provide eight ready-made templates (verification code, password reset, welcome, receipt, support acknowledgement, meeting follow-up, outreach introduction, weekly digest). `POST /v1/agents/{email}/templates/from-starter/{alias}` copies one into an inbox as an independent, editable template. The outreach template is for recipients who have agreed to hear from you.
 
+## ✉️ Email approval links and review expiry
+
+When an inbox holds outbound mail for approval, the operator can be emailed two links instead of having to open the dashboard.
+
+- **Configure (admin only):** `PUT /v1/agents/{email}/protection` accepts optional `review_notify_email`, `review_expiry_hours` (1–720) and `review_expiry_action` (`approve` | `reject`). Only fields present in the request change; an explicit `null` clears one. `GET /v1/agents/{email}/protection/review` reads them back (admin only, so agent keys never see the reviewer's address).
+- **Links:** each held outbound message sends `approve` and `reject` links to `PUBLIC_BASE_URL/review-link/{token}`. Tokens are random, stored only as SHA-256 hashes, valid for at most 72 hours (and never longer than the inbox's expiry window), and single-use.
+- **Safe to prefetch:** opening a link (`GET`) only shows the sender, recipient, subject and an escaped body preview; nothing changes until the reviewer presses the confirmation button (`POST`). Link scanners therefore cannot approve or reject mail.
+- **Exactly once:** the token claim and the decision commit together through the same compare-and-set used by the dashboard, so double clicks, the sibling link, or a concurrent dashboard decision resolve the review once and enqueue at most one send. The decision is recorded as `magic_link:<email>`.
+- **Requirements:** a public `https` `PUBLIC_BASE_URL` and an enabled upstream SMTP relay. If either is missing the notification is skipped and logged; the review stays pending in the dashboard and API as usual.
+- **Expiry:** with `review_expiry_hours` set, a background sweeper resolves pending reviews older than that window as `system:expiry`, emitting the normal review webhooks. The default action is **reject**; messages are auto-approved only if you set `review_expiry_action` to `approve` explicitly.
+
 ## 🧪 Tests
 
 ```bash

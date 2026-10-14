@@ -67,3 +67,16 @@ async def test_baseline_matches_models_no_drift(db_path):
     with engine.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
     assert diff == [], f"models drifted from migrations: {diff[:3]}"
+
+
+async def test_review_link_migration_is_safe_when_table_already_exists(db_path):
+    """Startup create_all can create the new table before migration 0003 runs on a legacy database."""
+    await migrate.asyncio.to_thread(migrate.command.upgrade, migrate._config(), "0002")
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.tables["review_link_tokens"].create(engine)
+    engine.dispose()
+    await migrate.asyncio.to_thread(migrate.command.upgrade, migrate._config(), "head")
+    inspector = inspect(create_engine(f"sqlite:///{db_path}"))
+    assert "review_link_tokens" in inspector.get_table_names()
+    assert {"review_notify_email", "review_expiry_hours", "review_expiry_action"} <= {
+        c["name"] for c in inspector.get_columns("agents")}

@@ -16,6 +16,9 @@ class Agent(Base):
     auto_reply_enabled = Column(Boolean, default=False)
     auto_reply_prompt = Column(Text, default="You are an autonomous AI assistant replying concisely via email.")
     deleted_at = Column(DateTime, nullable=True, index=True)  # soft delete; restorable
+    review_notify_email = Column(String(100), nullable=True)  # receives approve/reject links for held outbound mail
+    review_expiry_hours = Column(Integer, nullable=True)  # pending reviews older than this are auto-resolved
+    review_expiry_action = Column(String(16), nullable=True)  # approve | reject; NULL means reject
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -128,6 +131,19 @@ class UnsubscribeToken(Base):
     agent_email = Column(String(255), ForeignKey("agents.email", ondelete="CASCADE"), nullable=False, index=True)
     recipient = Column(String(255), nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+
+
+class ReviewLinkToken(Base):
+    """Hashed, single-use, expiring capability to approve or reject one held message by email link."""
+    __tablename__ = "review_link_tokens"
+
+    token_hash = Column(String(64), primary_key=True)
+    review_id = Column(String(64), ForeignKey("review_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    action = Column(String(16), nullable=False)  # approve, reject
+    reviewer_email = Column(String(100), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
     used_at = Column(DateTime, nullable=True)
 
 

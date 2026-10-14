@@ -1,7 +1,9 @@
 """Service discovery, caller identity, per-inbox metrics and protection policy."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from typing import Literal, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +70,19 @@ async def agent_metrics(email: str, db: AsyncSession = Depends(get_db)):
 class ProtectionUpdate(BaseModel):
     threat_sensitivity: str = Field(..., pattern="^(off|low|medium|high)$")
     hitl_enabled: bool
+    # Optional review workflow settings: only fields present in the request are changed;
+    # an explicit null clears review_notify_email / review_expiry_hours / review_expiry_action.
+    review_notify_email: Optional[EmailStr] = Field(None, max_length=100)
+    review_expiry_hours: Optional[int] = Field(None, ge=1, le=720)
+    review_expiry_action: Optional[Literal["approve", "reject"]] = None
+
+
+def _review_settings(agent: Agent) -> dict:
+    return {
+        "review_notify_email": agent.review_notify_email,
+        "review_expiry_hours": agent.review_expiry_hours,
+        "review_expiry_action": agent.review_expiry_action or "reject",
+    }
 
 
 @router.get("/v1/agents/{email}/protection", dependencies=[Depends(require_agent_access)])
@@ -86,5 +101,20 @@ async def update_protection(email: str, body: ProtectionUpdate, db: AsyncSession
         raise HTTPException(status_code=404, detail="Agent not found")
     agent.threat_sensitivity = body.threat_sensitivity
     agent.hitl_enabled = body.hitl_enabled
+    if "review_notify_email" in body.model_fields_set:
+        agent.review_notify_email = str(body.review_notify_email).lower() if body.review_notify_email else None
+    if "review_expiry_hours" in body.model_fields_set:
+        agent.review_expiry_hours = body.review_expiry_hours
+    if "review_expiry_action" in body.model_fields_set:
+        agent.review_expiry_action = body.review_expiry_action
     await db.commit()
     return {"threat_sensitivity": agent.threat_sensitivity, "hitl_enabled": agent.hitl_enabled}
+
+
+@router.get("/v1/agents/{email}/protection/review", dependencies=[Depends(require_admin)])
+async def get_review_settings(email: str, db: AsyncSession = Depends(get_db)):
+    """Administrator-only: the reviewer's address is not exposed to agent keys."""
+    agent = await db.scalar(select(Agent).where(Agent.email == email))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return _review_settings(agent)

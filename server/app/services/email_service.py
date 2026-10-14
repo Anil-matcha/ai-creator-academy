@@ -738,6 +738,9 @@ class EmailService:
                 "message": event_data,
                 "reason": f"Outbound approval gate active for {agent.display_name}"
             })
+            if review_item and agent.review_notify_email:
+                from app.services.review_notifications import schedule_review_notification
+                schedule_review_notification(review_item.id)
         else:
             await ws_manager.send_agent_message(agent.email, "email.queued", event_data)
             await ws_manager.broadcast_event("email.queued", event_data)

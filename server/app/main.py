@@ -10,6 +10,7 @@ from app.database import engine, Base, AsyncSessionLocal
 from app.services.ws_manager import ws_manager
 from app.routers import agents, messages, reviews, domains, settings_router, api_keys, mcp, stats, outbox, webhooks, contacts, suppressions, public_unsubscribe, templates, ses_feedback, engagements, conversations, meta, events
 from app.routers import account as account_router, starter_templates as starter_templates_router
+from app.routers import public_review
 from app.security import authenticate_token
 from app.rate_limit import ApiRateLimitMiddleware
 from app.request_limits import RequestBodyLimitMiddleware
@@ -156,6 +157,9 @@ async def lifespan(app: FastAPI):
     app.state.webhook_worker_task = webhook_task
     contact_due_task = asyncio.create_task(run_contact_due_sweeper(), name="contact-due-webhook-sweeper")
     app.state.contact_due_worker_task = contact_due_task
+    from app.services.review_expiry import run_review_expiry_sweeper
+    review_expiry_task = asyncio.create_task(run_review_expiry_sweeper(), name="review-expiry-sweeper")
+    app.state.review_expiry_task = review_expiry_task
 
     # 2. Start inbound SMTP server daemon on port 2525
     smtp_server = None
@@ -190,6 +194,12 @@ async def lifespan(app: FastAPI):
     contact_due_task.cancel()
     try:
         await contact_due_task
+    except asyncio.CancelledError:
+        pass
+
+    review_expiry_task.cancel()
+    try:
+        await review_expiry_task
     except asyncio.CancelledError:
         pass
 
@@ -261,6 +271,7 @@ app.include_router(contacts.router)
 app.include_router(engagements.router)
 app.include_router(suppressions.router)
 app.include_router(public_unsubscribe.router)
+app.include_router(public_review.router)
 app.include_router(ses_feedback.router)
 app.include_router(templates.router)
 app.include_router(messages.router)
