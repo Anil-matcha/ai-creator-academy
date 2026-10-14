@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Agent } from "@/lib/types";
@@ -26,6 +26,10 @@ export default function WebhooksPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
   const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const deliveryRequestId = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -56,19 +60,38 @@ export default function WebhooksPage() {
     }
   }, [agentFilter, createAgent]);
 
-  const loadDeliveries = useCallback(async () => {
+  const loadDeliveries = useCallback(async (cursor?: string, append = false) => {
+    const requestId = ++deliveryRequestId.current;
+    if (append) setLoadingOlder(true);
+    else {
+      setDeliveryLoading(true);
+      setNextCursor(null);
+    }
+    setActionError("");
     try {
-      setDeliveries(await api.getWebhookDeliveries({ endpoint_id: endpointFilter || undefined, status: statusFilter || undefined, limit: 200 }));
+      const page = await api.getWebhookDeliveryPage({ endpoint_id: endpointFilter || undefined, status: statusFilter || undefined, limit: 100, cursor });
+      if (requestId !== deliveryRequestId.current) return;
+      setDeliveries((current) => {
+        if (!append) return page.items;
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...page.items.filter((item) => !seen.has(item.id))];
+      });
+      setNextCursor(page.next_cursor);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not load webhook deliveries.");
+      if (requestId === deliveryRequestId.current) setActionError(err instanceof Error ? err.message : "Could not load webhook deliveries.");
+    } finally {
+      if (requestId === deliveryRequestId.current) {
+        setDeliveryLoading(false);
+        setLoadingOlder(false);
+      }
     }
   }, [endpointFilter, statusFilter]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    await loadEndpoints();
+    await Promise.all([loadEndpoints(), loadDeliveries()]);
     setLoading(false);
-  }, [loadEndpoints]);
+  }, [loadEndpoints, loadDeliveries]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { void loadDeliveries(); }, [loadDeliveries]);
@@ -207,9 +230,10 @@ export default function WebhooksPage() {
           <div><h3 className="text-xs font-semibold text-[#e6edf3]">Delivery history <span className="font-mono text-[#8b949e]">({deliveries.length})</span></h3><p className="mt-0.5 text-[11px] text-[#8b949e]">Event payloads contain message metadata only, without body or attachments.</p></div>
           <div className="flex gap-2"><select className={`${inputClass} sm:w-52`} value={endpointFilter} onChange={(event) => setEndpointFilter(event.target.value)}><option value="">All endpoints</option>{endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.agent_email} · {endpoint.id.slice(-8)}</option>)}</select><select className={`${inputClass} sm:w-36`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as WebhookDeliveryStatus | "")}><option value="">All statuses</option>{statuses.filter(Boolean).map((status) => <option key={status} value={status}>{status}</option>)}</select></div>
         </div>
-        {!deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">No delivery events match these filters.</div> : <div className="divide-y divide-[#30363d]">
+        {deliveryLoading && !deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">Loading delivery history…</div> : !deliveries.length ? <div className="p-8 text-center text-xs text-[#8b949e]">No delivery events match these filters.</div> : <div className="divide-y divide-[#30363d]">
           {deliveries.map((delivery) => <DeliveryRow key={delivery.id} delivery={delivery} endpoint={endpointById.get(delivery.endpoint_id)} replaying={replayingId === delivery.id} onReplay={() => void replay(delivery)} />)}
         </div>}
+        {deliveries.length > 0 && nextCursor && <div className="border-t border-[#30363d] p-3 text-center"><button className={buttonClass} disabled={loadingOlder} onClick={() => void loadDeliveries(nextCursor, true)}><RefreshCw className={`h-3.5 w-3.5 ${loadingOlder ? "animate-spin" : ""}`} />{loadingOlder ? "Loading…" : "Load older"}</button></div>}
       </section>
 
       {createOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createEndpoint} className="w-full max-w-lg space-y-4 rounded-lg border border-[#30363d] bg-[#161b22] p-5 shadow-xl">

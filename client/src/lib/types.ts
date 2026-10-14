@@ -192,6 +192,11 @@ export interface WebhookDelivery {
   replay_count: number;
 }
 
+export interface WebhookDeliveryPage {
+  items: WebhookDelivery[];
+  next_cursor: string | null;
+}
+
 export interface Stats {
   total_agents: number;
   total_messages: number;

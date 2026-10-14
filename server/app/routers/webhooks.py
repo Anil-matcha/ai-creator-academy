@@ -1,6 +1,9 @@
 """Administrator-managed, inbox-scoped webhook endpoints and delivery history."""
 
+import base64
+import binascii
 import datetime
+import json
 import secrets
 import uuid
 from typing import Optional
@@ -8,7 +11,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -19,6 +22,41 @@ from app.services.webhook_delivery import validate_webhook_url
 
 router = APIRouter(prefix="/v1/webhooks", tags=["Webhooks"], dependencies=[Depends(require_admin)])
 MAX_ENDPOINTS_PER_INBOX = 50
+DELIVERY_STATUSES = {"pending", "processing", "delivered", "failed"}
+
+
+def _encode_delivery_cursor(item: WebhookDelivery, endpoint_id: Optional[str], status: Optional[str]) -> str:
+    payload = {
+        "created_at": item.created_at.isoformat(),
+        "id": item.id,
+        "endpoint_id": endpoint_id,
+        "status": status,
+    }
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_delivery_cursor(cursor: str, endpoint_id: Optional[str], status: Optional[str]):
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        raw = base64.b64decode(padded.encode("ascii"), altchars=b"-_", validate=True)
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict) or set(payload) != {"created_at", "id", "endpoint_id", "status"}:
+            raise ValueError
+        if payload["endpoint_id"] != endpoint_id or payload["status"] != status:
+            raise ValueError("filter mismatch")
+        if not isinstance(payload["id"], str) or not payload["id"] or len(payload["id"]) > 64:
+            raise ValueError
+        if payload["endpoint_id"] is not None and not isinstance(payload["endpoint_id"], str):
+            raise ValueError
+        if payload["status"] is not None and not isinstance(payload["status"], str):
+            raise ValueError
+        created_at = datetime.datetime.fromisoformat(payload["created_at"])
+        if created_at.tzinfo is not None:
+            raise ValueError
+        return created_at, payload["id"]
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid or incompatible delivery cursor") from exc
 
 
 class WebhookCreate(BaseModel):
@@ -137,6 +175,42 @@ async def list_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64
              "attempts": item.attempts, "last_error": item.last_error, "created_at": item.created_at,
              "delivered_at": item.delivered_at, "replayed_by": item.replayed_by,
              "replayed_at": item.replayed_at, "replay_count": item.replay_count} for item in items]
+
+
+@router.get("/deliveries/page")
+async def page_deliveries(endpoint_id: Optional[str] = Query(None, max_length=64),
+                          status: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=100),
+                          cursor: Optional[str] = Query(None, max_length=2048),
+                          db: AsyncSession = Depends(get_db)):
+    if status and status not in DELIVERY_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid webhook delivery status")
+
+    query = select(WebhookDelivery)
+    if endpoint_id:
+        query = query.where(WebhookDelivery.endpoint_id == endpoint_id)
+    if status:
+        query = query.where(WebhookDelivery.status == status)
+    if cursor is not None:
+        created_at, delivery_id = _decode_delivery_cursor(cursor, endpoint_id, status)
+        query = query.where(or_(
+            WebhookDelivery.created_at < created_at,
+            and_(WebhookDelivery.created_at == created_at, WebhookDelivery.id < delivery_id),
+        ))
+
+    rows = (await db.execute(query.order_by(
+        WebhookDelivery.created_at.desc(), WebhookDelivery.id.desc(),
+    ).limit(limit + 1))).scalars().all()
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = _encode_delivery_cursor(items[-1], endpoint_id, status) if has_more and items else None
+    return {
+        "items": [{"id": item.id, "endpoint_id": item.endpoint_id, "agent_email": item.agent_email,
+                   "event_type": item.event_type, "payload": item.payload, "status": item.status,
+                   "attempts": item.attempts, "last_error": item.last_error, "created_at": item.created_at,
+                   "delivered_at": item.delivered_at, "replayed_by": item.replayed_by,
+                   "replayed_at": item.replayed_at, "replay_count": item.replay_count} for item in items],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.post("/deliveries/{delivery_id}/replay")

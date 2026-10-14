@@ -16,7 +16,8 @@ import {
   WebhookEndpoint,
   WebhookEndpointCreated,
   WebhookDelivery,
-  WebhookDeliveryStatus
+  WebhookDeliveryStatus,
+  WebhookDeliveryPage
 } from "./types";
 
 const API_BASE = "/api/backend";
@@ -213,6 +214,13 @@ export const api = {
     if (filters?.endpoint_id) params.set("endpoint_id", filters.endpoint_id);
     if (filters?.status) params.set("status", filters.status);
     return request<WebhookDelivery[]>(`/v1/webhooks/deliveries?${params.toString()}`);
+  },
+  getWebhookDeliveryPage: (filters?: { endpoint_id?: string; status?: WebhookDeliveryStatus; limit?: number; cursor?: string }) => {
+    const params = new URLSearchParams({ limit: String(Math.min(Math.max(filters?.limit ?? 100, 1), 200)) });
+    if (filters?.endpoint_id) params.set("endpoint_id", filters.endpoint_id);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.cursor) params.set("cursor", filters.cursor);
+    return request<WebhookDeliveryPage>(`/v1/webhooks/deliveries/page?${params.toString()}`);
   },
   replayWebhookDelivery: (deliveryId: string) =>
     request<{ id: string; status: "pending"; replayed_at: string }>(`/v1/webhooks/deliveries/${encodeURIComponent(deliveryId)}/replay`, { method: "POST" }),
