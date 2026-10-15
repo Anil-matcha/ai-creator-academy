@@ -35,11 +35,11 @@ cd client && npm install && npm run dev   # http://localhost:3000, sign in with 
 Prefer Docker?
 
 ```bash
-export ADMIN_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 docker compose up -d --build
+docker compose logs server | grep "Admin key"   # printed once on first start
 ```
 
-The dashboard is on port 3000, the API on 8000, and the mail listener on 2525 (map it to 25 to receive mail from the internet).
+Secrets are generated on first start and kept in a Docker volume (see the [quickstart](docs/quickstart.md) for backing it up). The dashboard is on port 3000, the API on 8000, and the mail listener on 2525 (map it to 25 to receive mail from the internet).
 
 ## Use it from code
 
