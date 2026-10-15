@@ -71,6 +71,23 @@ curl -s -X POST $OAE_URL/v1/agents/hello@agents.example.com/messages \
   -d '{"recipient":"you@yourdomain.com","subject":"Hello","body_text":"First message"}'
 ```
 
+### Send between two local inboxes
+
+Mail between two inboxes on the same server needs no relay. It is stored in the recipient's inbox like any other inbound message, goes through the same threat screening and review rules, and is marked as locally delivered rather than DNS-authenticated.
+
+```bash
+curl -s -X POST $OAE_URL/v1/agents \
+  -H "Authorization: Bearer $OAE_ADMIN_KEY" -H 'content-type: application/json' \
+  -d '{"email":"friend@agents.example.com","hitl_enabled":false}'
+
+curl -s -X POST $OAE_URL/v1/agents/hello@agents.example.com/messages \
+  -H "Authorization: Bearer $OAE_API_KEY" -H 'content-type: application/json' \
+  -d '{"recipient":"friend@agents.example.com","subject":"Hello","body_text":"First message"}'
+
+curl -s $OAE_URL/v1/agents/friend@agents.example.com/messages \
+  -H "Authorization: Bearer $OAE_ADMIN_KEY"
+```
+
 ## The same thing from code
 
 Python (`pip install ./sdks/python`):

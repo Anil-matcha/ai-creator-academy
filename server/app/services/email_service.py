@@ -237,20 +237,40 @@ class EmailService:
         recip_agent_res = await db.execute(select(Agent).where(Agent.email == message.recipient))
         recip_agent = None if platform_originated else recip_agent_res.scalar_one_or_none()
         if recip_agent:
-            logger.info(f"Local loopback delivery to agent {recip_agent.email}")
-            await ws_manager.send_agent_message(recip_agent.email, "email.received", {
-                "id": message.id,
-                "agent_email": recip_agent.email,
-                "direction": "inbound",
-                "sender": message.sender,
-                "recipient": message.recipient,
-                "subject": message.subject,
-                "status": "delivered",
-                "thread_id": message.thread_id,
-                "conversation_id": message.conversation_id,
-                "created_at": message.created_at.isoformat()
-            })
-            return "delivered", "Delivered locally to agent inbox (loopback)"
+            logger.info(f"Local delivery to agent {recip_agent.email}")
+            attachment_rows = (await db.execute(
+                select(MessageAttachment).where(MessageAttachment.message_id == message.id)
+            )).scalars().all()
+            # The sender's Message-ID is the dedup key, so an outbox retry that
+            # reaches this point again returns the stored copy instead of adding one.
+            inbound, _scan, review = await cls.process_inbound(
+                db,
+                recip_agent,
+                sender=message.sender,
+                subject=message.subject,
+                body_text=message.body_text,
+                body_html=message.body_html,
+                auth_evidence={
+                    "local_delivery": True,
+                    "authentication": {
+                        "spf": {"status": "unverified"},
+                        "dkim": [],
+                        "dmarc": {"status": "unverified"},
+                    },
+                },
+                raw_message_id=message.rfc_message_id,
+                in_reply_to=message.in_reply_to,
+                references=message.references,
+                attachments=[
+                    {"filename": a.filename, "content_type": a.content_type, "content": a.content}
+                    for a in attachment_rows
+                ],
+            )
+            if inbound.status == "pending_review":
+                return "delivered", "Delivered locally; held for review in the recipient inbox"
+            if inbound.status == "blocked":
+                return "delivered", "Delivered locally; blocked by the recipient inbox threat screening"
+            return "delivered", "Delivered locally to agent inbox"
 
         # 2. Upstream SMTP relay check
         smtp_res = await db.execute(select(SmtpConfig).where(SmtpConfig.id == "default"))
