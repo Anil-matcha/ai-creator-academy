@@ -22,7 +22,7 @@ def normalize_send_at(value):
 # --- Agent Schemas ---
 class AgentCreate(BaseModel):
     email: str = Field(..., example="support@agents.local")
-    display_name: str = Field(..., example="Support AI Agent")
+    display_name: Optional[str] = Field(None, example="Support AI Agent")  # defaults to the address local part
     description: Optional[str] = "Tier-1 Autonomous Email Support"
     threat_sensitivity: str = Field("medium", example="medium")  # off, low, medium, high
     hitl_enabled: bool = True

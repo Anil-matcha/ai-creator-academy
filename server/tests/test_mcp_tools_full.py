@@ -436,7 +436,8 @@ async def test_agent_admin_tools(client):
     assert (await ok(client, ADMIN, "delete_agent", agent_email="new@agents.local", purge=True))["purged"] is True
     await fails(client, ADMIN, "get_agent", agent_email="new@agents.local")
     await fails(client, ADMIN, "delete_agent", agent_email="new@agents.local", purge="yes")
-    await fails(client, ADMIN, "create_agent", email="x@agents.local")          # display_name required
+    assert (await ok(client, ADMIN, "create_agent", email="x@agents.local"))["display_name"] == "x"  # defaults to local part
+    await fails(client, ADMIN, "create_agent")                                   # email required
 
 
 async def test_account_metrics_and_outbox_tools(client):

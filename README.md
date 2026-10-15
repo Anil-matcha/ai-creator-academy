@@ -61,6 +61,8 @@ Give autonomous AI agents real two-way email inboxes, incoming SMTP reception, u
 
 ## 🚀 Quickstart
 
+Short on time? Run `./scripts/dev.sh` and follow [docs/quickstart.md](docs/quickstart.md) for a first inbox, a received and a sent email, SDK snippets and MCP setup. The manual steps follow.
+
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+ & npm

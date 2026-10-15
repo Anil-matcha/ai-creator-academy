@@ -1082,13 +1082,15 @@ class AgentEmailClient:
         return self._request("GET", "/v1/agents", query=query)
 
     def create_agent(
-        self, email: str, display_name: str, *, description: str | None = None,
+        self, email: str, display_name: str | None = None, *, description: str | None = None,
         threat_sensitivity: str = "medium", hitl_enabled: bool = True,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "email": email, "display_name": display_name,
+            "email": email,
             "threat_sensitivity": threat_sensitivity, "hitl_enabled": hitl_enabled,
         }
+        if display_name is not None:
+            payload["display_name"] = display_name
         if description is not None:
             payload["description"] = description
         return self._request("POST", "/v1/agents", payload=payload)

@@ -66,7 +66,7 @@ export interface WebhookCreated extends Webhook { signing_secret: string }
 export interface WebhookDelivery { id: string; endpoint_id: string; agent_email: string; event_type: string; payload: Record<string, unknown>; status: string; attempts: number; last_error: string | null; created_at: string; delivered_at: string | null; replayed_by?: string | null; replayed_at?: string | null; replay_count?: number }
 export interface Agent { id: string; email: string; display_name: string; description: string; status: string; threat_sensitivity: string; hitl_enabled: boolean; auto_reply_enabled: boolean; auto_reply_prompt: string; created_at: string; updated_at: string }
 export interface AgentTestSendResult { status: "accepted" | "pending_review"; message_id: string }
-export interface AgentInput { email: string; display_name: string; description?: string; threat_sensitivity?: string; hitl_enabled?: boolean; auto_reply_enabled?: boolean; auto_reply_prompt?: string }
+export interface AgentInput { email: string; display_name?: string; description?: string; threat_sensitivity?: string; hitl_enabled?: boolean; auto_reply_enabled?: boolean; auto_reply_prompt?: string }
 export interface ApiKey { id: string; name: string; prefix: string; scope: Scope; agent_email: string; created_at: string; expires_at: string | null }
 export interface ApiKeyCreated extends ApiKey { key: string }
 export interface AccountApiKey { id: string; name: string; key_prefix: string; scope: AccountKeyScope; agent_email: string | null; created_at: string; expires_at: string | null }

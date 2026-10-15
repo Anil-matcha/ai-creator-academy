@@ -270,9 +270,16 @@
             "title": "Description"
           },
           "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "example": "Support AI Agent",
-            "title": "Display Name",
-            "type": "string"
+            "title": "Display Name"
           },
           "email": {
             "example": "support@agents.local",
@@ -292,8 +299,7 @@
           }
         },
         "required": [
-          "email",
-          "display_name"
+          "email"
         ],
         "title": "AgentCreate",
         "type": "object"
