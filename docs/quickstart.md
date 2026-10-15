@@ -19,6 +19,19 @@ export OAE_ADMIN_KEY="$(grep '^ADMIN_API_KEY=' server/.env | cut -d= -f2-)"
 export OAE_URL=http://127.0.0.1:8000
 ```
 
+### Or start with Docker
+
+```bash
+docker compose up -d --build
+docker compose logs server | grep "Admin key"
+```
+
+No variables need to be set. On first start the server generates an admin key and an encryption key, stores both in the `oae-data` volume (never regenerated), and prints the admin key once in its log. Open the dashboard at `http://localhost:3000`, sign in with that key, and the first-run guide walks you through creating an inbox and its API key. Values you provide yourself (`ADMIN_API_KEY`, `SMTP_CONFIG_ENCRYPTION_KEY`) are used as given and are not written to the volume.
+
+Back up the `oae-data` volume: it holds the database and the encryption key that protects stored credentials. If you ran an earlier version that kept the database in `./server/open_agent_email.db`, copy that file into the volume before upgrading, or the stack will start with an empty database.
+
+For the steps below, use `http://127.0.0.1:8000` and that admin key (`export OAE_ADMIN_KEY=...`).
+
 ## 2. Create an inbox and an API key
 
 `display_name` is optional and defaults to the part before the `@`. Local examples use `agents.example.com`; addresses under reserved names such as `.local` are rejected as recipients.

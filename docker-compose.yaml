@@ -11,11 +11,13 @@ services:
       - PORT=8000
       - SMTP_HOST=0.0.0.0
       - SMTP_PORT=2525
-      - DATABASE_URL=sqlite+aiosqlite:///./open_agent_email.db
+      - DATA_DIR=/data
+      - DATABASE_URL=sqlite+aiosqlite:////data/open_agent_email.db
       - SHARED_DOMAIN=agents.local
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - SES_FEEDBACK_TOPIC_ARN=${SES_FEEDBACK_TOPIC_ARN:-}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:?Set ADMIN_API_KEY before starting the stack}
+      # Generated once into the data volume when not provided here.
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
       - SMTP_CONFIG_ENCRYPTION_KEY=${SMTP_CONFIG_ENCRYPTION_KEY:-}
       - SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS=${SMTP_CONFIG_ENCRYPTION_KEY_PREVIOUS:-}
       - WEBHOOK_DELIVERY_RETENTION_DAYS=${WEBHOOK_DELIVERY_RETENTION_DAYS:-30}
@@ -27,7 +29,7 @@ services:
       - ATTACHMENT_SCAN_MAX_CONCURRENT=${ATTACHMENT_SCAN_MAX_CONCURRENT:-4}
       - ATTACHMENT_SCAN_CHUNK_BYTES=${ATTACHMENT_SCAN_CHUNK_BYTES:-65536}
     volumes:
-      - ./server/open_agent_email.db:/app/open_agent_email.db
+      - oae-data:/data
 
   clamav:
     image: clamav/clamav:1.4.3
@@ -56,4 +58,5 @@ services:
       - "8025:8025" # Web UI
 
 volumes:
+  oae-data:
   clamav-signatures:
