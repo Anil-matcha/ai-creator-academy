@@ -62,7 +62,7 @@ curl -s $OAE_URL/v1/agents/hello@agents.example.com/messages \
 
 ## 4. Send an email
 
-Sending to an outside address needs an upstream SMTP relay (see "Upstream relay" in the README); without one the message is recorded as `failed` with a clear reason.
+Sending to an outside address needs an upstream SMTP relay (see "Upstream SMTP Relay" in [reference.md](reference.md)); without one the message is recorded as `failed` with a clear reason.
 
 ```bash
 curl -s -X POST $OAE_URL/v1/agents/hello@agents.example.com/messages \
@@ -129,4 +129,4 @@ Cursor (`.cursor/mcp.json`):
 
 ## Next
 
-The dashboard (`cd client && npm install && npm run dev`, then sign in with the admin key), custom domains and DNS, webhooks and the review queue are covered in the README and `docs/operations.md`.
+The dashboard (`cd client && npm install && npm run dev`, then sign in with the admin key), custom domains and DNS, webhooks and the review queue are covered in [reference.md](reference.md) and [operations.md](operations.md).
