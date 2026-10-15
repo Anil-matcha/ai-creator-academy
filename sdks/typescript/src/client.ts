@@ -293,13 +293,70 @@ export class AgentEmailClient {
   };
 
   // ---- webhooks and events ---------------------------------------------
+  /**
+   * Resource-style access: `client.inboxes.messages.send(inbox, { to, subject, text })`. These are thin wrappers
+   * over `agents`, `messages` and `conversations`, which keep working unchanged.
+   */
+  readonly inboxes = {
+    list: (params: T.ShortPageParams & { include_deleted?: boolean } = {}) =>
+      this.agents.page({ include_deleted: params.include_deleted, limit: params.limit, cursor: params.pageToken }),
+    iterate: (params: { include_deleted?: boolean; limit?: number } = {}) => this.agents.iterate(params),
+    get: (inbox: string) => this.agents.get(inbox),
+    create: (input: Omit<T.AgentInput, "display_name"> & { displayName?: string; display_name?: string }) => {
+      const { displayName, display_name, ...rest } = input;
+      return this.agents.create({ ...rest, display_name: display_name ?? displayName });
+    },
+    messages: {
+      send: (inbox: string, opts: T.ShortSendOptions, ro?: T.RequestOptions) => {
+        const { to, text, html, ...rest } = opts;
+        return this.messages.send(inbox, { ...rest, recipient: to, body_text: text, body_html: html }, ro);
+      },
+      list: (inbox: string, params: T.ShortMessageListParams = {}) => {
+        const { pageToken, query, ...rest } = params;
+        return this.messages.page(inbox, { ...rest, q: query, cursor: pageToken });
+      },
+      iterate: (inbox: string, params: Omit<T.ShortMessageListParams, "pageToken"> = {}) => {
+        const { query, ...rest } = params;
+        return this.messages.iterate(inbox, { ...rest, q: query });
+      },
+      get: (inbox: string, id: string) => this.messages.get(inbox, id),
+      reply: (inbox: string, id: string, opts: T.ShortReplyOptions, ro?: T.RequestOptions) => {
+        const { text, html, replyAll, ...rest } = opts;
+        if (replyAll) throw new TypeError("replyAll is not supported: messages have a single recipient");
+        return this.messages.reply(inbox, id, { ...rest, body_text: text, body_html: html }, ro);
+      },
+      forward: (inbox: string, id: string, opts: { to: string; note?: string }) => this.messages.forward(inbox, id, opts.to, opts.note),
+      update: (inbox: string, id: string, changes: T.LabelChanges) => {
+        if (changes.labels !== undefined) {
+          if (changes.addLabels !== undefined || changes.removeLabels !== undefined) throw new TypeError("labels cannot be combined with addLabels or removeLabels");
+          return this.messages.setLabels(inbox, id, changes.labels);
+        }
+        if (changes.addLabels === undefined && changes.removeLabels === undefined) throw new TypeError("provide labels, or addLabels and/or removeLabels");
+        return this.request<T.Message>("PATCH", `/v1/agents/${seg(inbox)}/messages/${seg(id)}`, {
+          body: { add_labels: changes.addLabels, remove_labels: changes.removeLabels },
+        });
+      },
+      trash: (inbox: string, id: string) => this.messages.trash(inbox, id),
+      restore: (inbox: string, id: string) => this.messages.restore(inbox, id),
+      markRead: (inbox: string, id: string) => this.messages.markRead(inbox, id),
+    },
+    threads: {
+      list: (inbox: string, params: T.ShortPageParams = {}) => this.conversations.page(inbox, { limit: params.limit, cursor: params.pageToken }),
+      iterate: (inbox: string, params: { limit?: number } = {}) => this.conversations.iterate(inbox, params),
+      get: (inbox: string, id: string) => this.conversations.get(inbox, id),
+    },
+  };
+
   readonly webhooks = {
     list: (agentEmail?: string, limit?: number) => this.request<T.Webhook[]>("GET", "/v1/webhooks", { query: { agent_email: agentEmail, limit } }),
     page: (params: { agent_email?: string; limit?: number; cursor?: string } = {}) => this.request<T.Page<T.Webhook>>("GET", "/v1/webhooks/page", { query: { ...params } }),
     iterate: (params: Omit<{ agent_email?: string; limit?: number; cursor?: string }, "cursor"> = {}) => paginate<T.Webhook>((cursor) => this.webhooks.page({ ...params, cursor })),
     get: (id: string) => this.request<T.Webhook>("GET", `/v1/webhooks/${seg(id)}`),
-    create: (input: { agent_email: string; url: string; enabled?: boolean; events?: string[] }) =>
-      this.request<T.WebhookCreated>("POST", "/v1/webhooks", { body: input }),
+    /** `event_types` is accepted as an alias for `events`. */
+    create: (input: { agent_email: string; url: string; enabled?: boolean; events?: string[]; event_types?: string[] }) => {
+      const { event_types, ...rest } = input;
+      return this.request<T.WebhookCreated>("POST", "/v1/webhooks", { body: { ...rest, events: rest.events ?? event_types } });
+    },
     update: (id: string, patch: { url?: string; enabled?: boolean; events?: string[] }) =>
       this.request<T.Webhook>("PATCH", `/v1/webhooks/${seg(id)}`, { body: patch }),
     delete: (id: string) => this.request<void>("DELETE", `/v1/webhooks/${seg(id)}`),

@@ -393,6 +393,24 @@ class ThreatScanResult(BaseModel):
 
 
 # --- Message Schemas ---
+
+def _apply_input_aliases(data, aliases):
+    """Copy alias keys onto their canonical names; reject a conflicting pair."""
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    for alias, canonical in aliases.items():
+        if alias in data:
+            value = data.pop(alias)
+            if canonical in data and data[canonical] != value:
+                raise ValueError(f"{alias} and {canonical} must match when both are provided")
+            data.setdefault(canonical, value)
+    return data
+
+
+_SEND_ALIASES = {"to": "recipient", "text": "body_text", "html": "body_html"}
+_REPLY_ALIASES = {"text": "body_text", "html": "body_html"}
+
 class MessageAttachmentInput(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     content_type: str = Field("application/octet-stream", max_length=255)
@@ -412,6 +430,12 @@ class MessageSendRequest(BaseModel):
     attachments: Optional[List[MessageAttachmentInput]] = None
     scheduled_at: Optional[datetime] = Field(None, description="Defer submission until this offset-qualified time (at most 90 days ahead)")
     send_at: Optional[datetime] = Field(None, description="Deprecated alias for scheduled_at")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _input_aliases(cls, data):
+        """Also accepts `to`, `text` and `html` for `recipient`, `body_text` and `body_html`."""
+        return _apply_input_aliases(data, _SEND_ALIASES)
 
     @field_validator("scheduled_at", "send_at")
     @classmethod
@@ -435,6 +459,13 @@ class MessageReplyRequest(BaseModel):
     attachments: Optional[List[MessageAttachmentInput]] = None
     scheduled_at: Optional[datetime] = Field(None, description="Defer submission until this offset-qualified time (at most 90 days ahead)")
     send_at: Optional[datetime] = Field(None, description="Deprecated alias for scheduled_at")
+    reply_all: bool = Field(False, description="Accepted for client compatibility; messages have a single recipient, so true is rejected")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _input_aliases(cls, data):
+        """Also accepts `text` and `html` for `body_text` and `body_html`."""
+        return _apply_input_aliases(data, _REPLY_ALIASES)
 
     @field_validator("scheduled_at", "send_at")
     @classmethod
@@ -454,6 +485,12 @@ class MessageForwardRequest(BaseModel):
     body_text: Optional[str] = Field(None, max_length=100_000, description="Optional plain-text content for the forwarded email")
     body_html: Optional[str] = Field(None, description="Optional HTML content for the forwarded email")
     attachments: Optional[List[MessageAttachmentInput]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _input_aliases(cls, data):
+        """Also accepts `to`, `text` and `html` for `recipient`, `body_text` and `body_html`."""
+        return _apply_input_aliases(data, _SEND_ALIASES)
 
 class MessageResponse(BaseModel):
     id: str
@@ -494,11 +531,23 @@ class MessageResponse(BaseModel):
 
 
 class MessageLabelsUpdate(BaseModel):
-    labels: List[str] = Field(..., max_length=20)
+    labels: Optional[List[str]] = Field(None, max_length=20, description="Replace the whole label set")
+    add_labels: Optional[List[str]] = Field(None, max_length=20, description="Labels to add to the current set")
+    remove_labels: Optional[List[str]] = Field(None, max_length=20, description="Labels to remove from the current set")
 
-    @field_validator("labels")
+    @model_validator(mode="after")
+    def _one_form(self):
+        if self.labels is None and self.add_labels is None and self.remove_labels is None:
+            raise ValueError("Provide labels, or add_labels and/or remove_labels")
+        if self.labels is not None and (self.add_labels is not None or self.remove_labels is not None):
+            raise ValueError("labels cannot be combined with add_labels or remove_labels")
+        return self
+
+    @field_validator("labels", "add_labels", "remove_labels")
     @classmethod
     def _clean_labels(cls, value):
+        if value is None:
+            return None
         cleaned = []
         for label in value:
             label = label.strip()

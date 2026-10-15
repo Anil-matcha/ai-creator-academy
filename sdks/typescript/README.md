@@ -20,6 +20,15 @@ await client.messages.setLabels("support@agents.local", "msg_1", ["needs-human"]
 await client.messages.trash("support@agents.local", "msg_2");   // cancels an unsent scheduled message
 ```
 
+## Resource-style names
+
+```ts
+await client.inboxes.messages.send("hello@agents.example.com", { to: "person@example.com", subject: "Hi", text: "Hello" });
+await client.inboxes.messages.update("hello@agents.example.com", "msg_1", { addLabels: ["vip"] });
+```
+
+`client.messages`, `client.agents` and the rest are unchanged. See [docs/sdk-mapping.md](../../docs/sdk-mapping.md).
+
 ## Real-time inbox (no public URL)
 
 ```ts

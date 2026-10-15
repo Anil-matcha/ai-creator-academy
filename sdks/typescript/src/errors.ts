@@ -9,9 +9,13 @@ export class AgentEmailError extends Error {
   readonly details: unknown;
   /** Seconds to wait before retrying; set on rate limits from `Retry-After` / `error.details`. */
   readonly retryAfterSeconds: number | undefined;
+  /** Suggested next step, when the server provides one. */
+  readonly fix: string | undefined;
+  /** Link to the error's documentation, when the server provides one. */
+  readonly docs: string | undefined;
   constructor(
     message: string,
-    opts: { status?: number; detail?: unknown; code?: string; details?: unknown; retryAfterSeconds?: number } = {},
+    opts: { status?: number; detail?: unknown; code?: string; details?: unknown; retryAfterSeconds?: number; fix?: string; docs?: string } = {},
   ) {
     super(message);
     this.name = "AgentEmailError";
@@ -20,6 +24,8 @@ export class AgentEmailError extends Error {
     this.code = opts.code;
     this.details = opts.details;
     this.retryAfterSeconds = opts.retryAfterSeconds;
+    this.fix = opts.fix;
+    this.docs = opts.docs;
   }
 }
 
@@ -52,6 +58,8 @@ export function errorFromResponse(
   const detail = body && "detail" in body ? body.detail : data;
   const code = typeof structured?.code === "string" ? structured.code : undefined;
   const details = structured?.details ?? undefined;
+  const fix = typeof structured?.fix === "string" ? structured.fix : undefined;
+  const docs = typeof structured?.docs === "string" ? structured.docs : undefined;
 
   let retryAfterSeconds: number | undefined;
   const fromDetails =
@@ -63,7 +71,7 @@ export function errorFromResponse(
   const text =
     typeof detail === "string" ? detail : typeof structured?.message === "string" ? structured.message : JSON.stringify(detail);
   const message = `${prefix} failed with ${status}${code ? ` [${code}]` : ""}: ${text ?? "no detail"}`;
-  const opts = { status, detail, code, details, retryAfterSeconds };
+  const opts = { status, detail, code, details, retryAfterSeconds, fix, docs };
   if (code === "rate_limited" || status === 429) return new RateLimitError(message, opts);
   if (code === "idempotency_key_reuse") return new IdempotencyKeyReuseError(message, opts);
   return new AgentEmailError(message, opts);

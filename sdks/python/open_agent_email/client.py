@@ -340,6 +340,8 @@ class AgentEmailError(Exception):
         code: str | None = None,
         details: Any = None,
         retry_after_seconds: float | None = None,
+        fix: str | None = None,
+        docs: str | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -351,6 +353,10 @@ class AgentEmailError(Exception):
         self.details = details
         #: Seconds to wait before retrying, taken from ``error.details`` or ``Retry-After``.
         self.retry_after_seconds = retry_after_seconds
+        #: Suggested next step, when the server provides one.
+        self.fix = fix
+        #: Link to the error's documentation, when the server provides one.
+        self.docs = docs
 
 
 class RateLimitError(AgentEmailError):
@@ -380,7 +386,10 @@ def _error_from_http(status: int, body: Any, retry_after_header: str | None) -> 
         except ValueError:
             retry_after = None
 
-    kwargs = dict(status_code=status, detail=detail, code=code, details=details, retry_after_seconds=retry_after)
+    fix = structured.get("fix") if isinstance(structured.get("fix"), str) else None
+    docs = structured.get("docs") if isinstance(structured.get("docs"), str) else None
+    kwargs = dict(status_code=status, detail=detail, code=code, details=details, retry_after_seconds=retry_after,
+                  fix=fix, docs=docs)
     message = f"Open Agent Email API returned HTTP {status}"
     if code == "rate_limited" or status == 429:
         return RateLimitError(message, **kwargs)
@@ -427,6 +436,10 @@ class AgentEmailClient:
         self._api_key = api_key
         self.timeout = timeout
         self._opener = build_opener(_NoRedirect())
+        from .namespaces import ApiKeys, Inboxes, Webhooks
+        self.inboxes = Inboxes(self)
+        self.webhooks = Webhooks(self)
+        self.api_keys = ApiKeys(self)
 
     @staticmethod
     def _inbox_path(inbox: str) -> str:

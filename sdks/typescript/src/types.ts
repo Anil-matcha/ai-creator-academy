@@ -33,6 +33,13 @@ export interface ReplyOptions {
   conversation_id?: string; attachments?: Attachment[]; scheduled_at?: string | Date;
   /** @deprecated Use scheduled_at. */ send_at?: string | Date;
 }
+/** Short-name form of {@link SendOptions}: `to`, `text` and `html` instead of `recipient`, `body_text` and `body_html`. */
+export type ShortSendOptions = Omit<SendOptions, "recipient" | "body_text" | "body_html"> & { to: string; text?: string; html?: string };
+/** Short-name form of {@link ReplyOptions}. Messages have a single recipient, so `replyAll` is rejected. */
+export type ShortReplyOptions = Omit<ReplyOptions, "body_text" | "body_html"> & { text?: string; html?: string; replyAll?: boolean };
+export interface ShortPageParams { limit?: number; pageToken?: string }
+export type ShortMessageListParams = Omit<MessagePageParams, "cursor" | "limit" | "q"> & { limit?: number; pageToken?: string; query?: string };
+export interface LabelChanges { addLabels?: string[]; removeLabels?: string[]; labels?: string[] }
 export interface RequestOptions { idempotencyKey?: string; signal?: AbortSignal }
 
 export interface MessageListParams {

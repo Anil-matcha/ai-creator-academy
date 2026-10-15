@@ -1617,18 +1617,55 @@
       },
       "MessageLabelsUpdate": {
         "properties": {
+          "add_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Labels to add to the current set",
+            "title": "Add Labels"
+          },
           "labels": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 20,
-            "title": "Labels",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replace the whole label set",
+            "title": "Labels"
+          },
+          "remove_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Labels to remove from the current set",
+            "title": "Remove Labels"
           }
         },
-        "required": [
-          "labels"
-        ],
         "title": "MessageLabelsUpdate",
         "type": "object"
       },
@@ -1711,6 +1748,12 @@
               }
             ],
             "title": "Conversation Id"
+          },
+          "reply_all": {
+            "default": false,
+            "description": "Accepted for client compatibility; messages have a single recipient, so true is rejected",
+            "title": "Reply All",
+            "type": "boolean"
           },
           "scheduled_at": {
             "anyOf": [
@@ -5671,6 +5714,25 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "description": "Alias for cursor",
+            "in": "query",
+            "name": "page_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias for cursor",
+              "title": "Page Token"
+            }
           }
         ],
         "responses": {
@@ -5817,6 +5879,25 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "description": "Alias for cursor",
+            "in": "query",
+            "name": "page_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias for cursor",
+              "title": "Page Token"
             }
           }
         ],
@@ -5985,7 +6066,7 @@
         ]
       },
       "patch": {
-        "description": "Replace the message's labels (free-form triage tags such as `needs-human`).",
+        "description": "Replace the message's labels with `labels`, or adjust them with `add_labels` and `remove_labels` (free-form triage tags such as `needs-human`).",
         "operationId": "update_message_labels_v1_agents__email__messages__message_id__patch",
         "parameters": [
           {

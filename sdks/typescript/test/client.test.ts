@@ -314,3 +314,57 @@ test("downloadAttachment returns bytes and surfaces failures", async () => {
   const bad = new AgentEmailClient({ baseUrl: "http://x", apiKey: "k", fetch: async () => new Response("no", { status: 404 }) });
   await assert.rejects(bad.messages.downloadAttachment(INBOX, "m", "a"), (e: unknown) => (e as AgentEmailError).status === 404);
 });
+
+test("inboxes.messages.send maps short names to the canonical body", async () => {
+  const { client, calls } = mock({ json: { id: "m1" } });
+  await client.inboxes.messages.send(INBOX, { to: "p@example.com", subject: "Hi", text: "plain", html: "<p>x</p>" });
+  assert.equal(calls[0]!.method, "POST");
+  assert.equal(calls[0]!.url.pathname, `${base}/messages`);
+  assert.deepEqual(JSON.parse(calls[0]!.body!), { recipient: "p@example.com", subject: "Hi", body_text: "plain", body_html: "<p>x</p>" });
+});
+
+test("inboxes.messages.list passes pageToken as cursor and query as q", async () => {
+  const { client, calls } = mock({ json: { items: [], next_cursor: null } });
+  await client.inboxes.messages.list(INBOX, { limit: 5, pageToken: "tok", query: "inv", read_status: "unread" });
+  const q = calls[0]!.url.searchParams;
+  assert.equal(calls[0]!.url.pathname, `${base}/messages/page`);
+  assert.deepEqual([q.get("limit"), q.get("cursor"), q.get("q"), q.get("read_status")], ["5", "tok", "inv", "unread"]);
+});
+
+test("inboxes.messages.reply and forward use short names; replyAll is rejected", async () => {
+  const { client, calls } = mock({ json: { id: "m2" } });
+  await client.inboxes.messages.reply(INBOX, "m1", { text: "answer" });
+  assert.deepEqual(JSON.parse(calls[0]!.body!), { body_text: "answer" });
+  assert.throws(() => client.inboxes.messages.reply(INBOX, "m1", { text: "x", replyAll: true }), /replyAll/);
+  await client.inboxes.messages.forward(INBOX, "m1", { to: "lead@example.com", note: "fyi" });
+  assert.deepEqual(JSON.parse(calls[1]!.body!), { recipient: "lead@example.com", note: "fyi" });
+});
+
+test("inboxes.messages.update supports add/remove and replace", async () => {
+  const { client, calls } = mock({ json: { id: "m1" } });
+  await client.inboxes.messages.update(INBOX, "m1", { addLabels: ["a"], removeLabels: ["b"] });
+  assert.equal(calls[0]!.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0]!.body!), { add_labels: ["a"], remove_labels: ["b"] });
+  await client.inboxes.messages.update(INBOX, "m1", { labels: ["x"] });
+  assert.deepEqual(JSON.parse(calls[1]!.body!), { labels: ["x"] });
+  assert.throws(() => client.inboxes.messages.update(INBOX, "m1", {}), /provide labels/);
+  assert.throws(() => client.inboxes.messages.update(INBOX, "m1", { labels: ["x"], addLabels: ["y"] }), /cannot be combined/);
+});
+
+test("inboxes.create defaults display name server-side and threads/webhooks use aliases", async () => {
+  const { client, calls } = mock({ json: {} });
+  await client.inboxes.create({ email: INBOX });
+  assert.deepEqual(JSON.parse(calls[0]!.body!), { email: INBOX });
+  await client.inboxes.threads.list(INBOX, { limit: 3, pageToken: "t" });
+  assert.equal(calls[1]!.url.pathname, `${base}/conversations/page`);
+  assert.equal(calls[1]!.url.searchParams.get("cursor"), "t");
+  await client.webhooks.create({ agent_email: INBOX, url: "https://h.example.com/x", event_types: ["message.received"] });
+  assert.deepEqual(JSON.parse(calls[2]!.body!).events, ["message.received"]);
+});
+
+test("errors expose fix and docs when the server provides them", async () => {
+  const { client } = mock({ status: 403, json: { detail: "x", error: { code: "forbidden", message: "m", fix: "Use a full-access key", docs: "https://docs.example.com/e" } } });
+  await assert.rejects(client.whoami(), (err: unknown) => err instanceof AgentEmailError && err.fix === "Use a full-access key" && err.docs === "https://docs.example.com/e");
+  const plain = mock({ status: 500, json: { detail: "x" } });
+  await assert.rejects(plain.client.whoami(), (err: unknown) => err instanceof AgentEmailError && err.fix === undefined && err.docs === undefined);
+});

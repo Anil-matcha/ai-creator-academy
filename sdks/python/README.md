@@ -46,6 +46,18 @@ if result.get("found"):
 
 Use `mark_message_read(inbox, message_id)` to mark an inbound message read. It returns the updated message; the endpoint requires a full-access API key.
 
+
+## Resource-style names
+
+```python
+client.inboxes.create("support@agents.example.com")
+client.inboxes.messages.send("support@agents.example.com", to="person@example.com", subject="Hi", text="Hello")
+page = client.inboxes.messages.list("support@agents.example.com", limit=20)
+client.inboxes.messages.update("support@agents.example.com", page["items"][0]["id"], add_labels=["vip"])
+```
+
+The flat methods above are unchanged. See [docs/sdk-mapping.md](../../docs/sdk-mapping.md) for the full table.
+
 ## Inbox contacts
 
 Contacts are an address book scoped to one inbox. Listing is available with a read-only key; creating, updating, and deleting contacts requires a full-access key. Contact email addresses are normalized to lowercase, and duplicate addresses within the same inbox return HTTP 409.

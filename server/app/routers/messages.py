@@ -197,6 +197,14 @@ async def get_recent_otp(
     return match or {"found": False}
 
 
+def _merge_page_token(cursor: Optional[str], page_token: Optional[str]) -> Optional[str]:
+    if not isinstance(page_token, str):  # MCP calls the route function directly, leaving the Query default
+        return cursor
+    if cursor and page_token and cursor != page_token:
+        raise HTTPException(status_code=400, detail={"code": "invalid_cursor", "message": "cursor and page_token must match when both are provided"})
+    return cursor or page_token
+
+
 @router.get("/page", response_model=MessagePageResponse)
 async def page_messages(
     email: str,
@@ -210,8 +218,10 @@ async def page_messages(
     ),
     q: Optional[str] = Query(None, max_length=200, description="Search sender and subject"),
     cursor: Optional[str] = Query(None, max_length=512),
+    page_token: Optional[str] = Query(None, max_length=512, description="Alias for cursor"),
     db: AsyncSession = Depends(get_db),
 ):
+    cursor = _merge_page_token(cursor, page_token)
     query = select(Message).where(Message.agent_email == email, Message.deleted_at.is_(None))
     normalized_query = (q or "").strip()
     if direction:
@@ -294,9 +304,20 @@ async def _owned_message(db: AsyncSession, email: str, message_id: str) -> Messa
 
 @router.patch("/{message_id}", response_model=MessageResponse, dependencies=[Depends(require_write)])
 async def update_message_labels(email: str, message_id: str, req: MessageLabelsUpdate, db: AsyncSession = Depends(get_db)):
-    """Replace the message's labels (free-form triage tags such as `needs-human`)."""
+    """Replace the message's labels with `labels`, or adjust them with `add_labels` and `remove_labels` (free-form triage tags such as `needs-human`)."""
     message = await _owned_message(db, email, message_id)
-    message.labels = req.labels
+    if req.labels is not None:
+        message.labels = req.labels
+    else:
+        current = list(message.labels or [])
+        for label in req.add_labels or []:
+            if label not in current:
+                current.append(label)
+        removed = set(req.remove_labels or [])
+        current = [label for label in current if label not in removed]
+        if len(current) > 20:
+            raise HTTPException(status_code=422, detail="A message can have at most 20 labels")
+        message.labels = current
     await db.commit()
     await db.refresh(message)
     return message
@@ -512,6 +533,8 @@ async def send_message(email: str, req: MessageSendRequest, request: Request, db
 
 @router.post("/{message_id}/reply", response_model=MessageResponse, status_code=201, dependencies=[Depends(require_write)])
 async def reply_message(email: str, message_id: str, req: MessageReplyRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    if req.reply_all:
+        raise HTTPException(status_code=422, detail={"code": "reply_all_unsupported", "message": "Messages have a single recipient, so reply_all is not supported; reply to the sender instead"})
     # Verify agent exists
     ag_res = await db.execute(select(Agent).where(Agent.email == email))
     agent = ag_res.scalar_one_or_none()
@@ -599,8 +622,10 @@ async def get_thread_page(
     thread_id: str,
     limit: int = Query(100, ge=1, le=200),
     cursor: Optional[str] = Query(None, max_length=2048),
+    page_token: Optional[str] = Query(None, max_length=2048, description="Alias for cursor"),
     db: AsyncSession = Depends(get_db),
 ):
+    cursor = _merge_page_token(cursor, page_token)
     scope = f"/v1/agents/{email}/messages/thread/{thread_id}"
     query = select(Message).where(Message.agent_email == email, Message.thread_id == thread_id)
     if cursor:

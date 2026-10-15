@@ -92,3 +92,11 @@ def oae(server, capsys):
         return code, out.out, out.err
 
     return run
+
+
+@pytest.fixture(autouse=True)
+def no_real_keychain(monkeypatch):
+    """Tests never touch the real OS keychain; keychain tests install their own fake runner."""
+    from open_agent_email import cli
+
+    monkeypatch.setattr(cli, "keychain_available", lambda: False)

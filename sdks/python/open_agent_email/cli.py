@@ -14,6 +14,7 @@ import json
 import os
 import random
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -50,7 +51,7 @@ def load_config() -> dict[str, str]:
         data = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return {k: v for k, v in data.items() if k in {"base_url", "api_key"} and isinstance(v, str)} if isinstance(data, dict) else {}
+    return {k: v for k, v in data.items() if k in {"base_url", "api_key", "storage"} and isinstance(v, str)} if isinstance(data, dict) else {}
 
 
 def save_config(base_url: str, api_key: str) -> Path:
@@ -64,11 +65,92 @@ def save_config(base_url: str, api_key: str) -> Path:
     return path
 
 
-def resolve_credentials(args: argparse.Namespace) -> tuple[str, str]:
-    """Precedence: command-line flag, then environment, then config file."""
+# ---- OS keychain (macOS) ---------------------------------------------------------------
+
+KEYCHAIN_SERVICE = "oae"
+_run = subprocess.run  # replaced in tests with a fake runner
+
+
+def keychain_available() -> bool:
+    return sys.platform == "darwin" and shutil.which("security") is not None
+
+
+def _security_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def keychain_set(base_url: str, api_key: str) -> bool:
+    """Store the key in the login keychain. The secret goes over stdin, never on a command line."""
+    if not keychain_available():
+        return False
+    if any(ch in value for value in (base_url, api_key) for ch in '"\\\n\r \t'):
+        return False  # unusual characters cannot be quoted safely; the caller falls back to the file
+    command = (f"add-generic-password -U -s {KEYCHAIN_SERVICE} -a {_security_quote(base_url)} "
+               f"-w {_security_quote(api_key)}\n")
+    try:
+        result = _run(["security", "-i"], input=command, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and "error" not in (result.stderr or "").lower()
+
+
+def keychain_get(base_url: str) -> str | None:
+    if not keychain_available():
+        return None
+    try:
+        result = _run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", base_url, "-w"],
+            capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
+
+
+def keychain_delete(base_url: str) -> bool:
+    if not keychain_available():
+        return False
+    try:
+        result = _run(
+            ["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", base_url],
+            capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def save_keychain_pointer(base_url: str) -> Path:
+    """Write the config file without the key; it records only that the key lives in the keychain."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        json.dump({"base_url": base_url, "storage": "keychain"}, handle)
+    return path
+
+
+def credential_source(args: argparse.Namespace) -> tuple[str | None, str | None, str]:
+    """Return (base_url, api_key, source) with source in flag, env, keychain, file or none."""
     stored = load_config()
     base_url = getattr(args, "base_url", None) or os.environ.get("OAE_BASE_URL") or stored.get("base_url")
-    api_key = getattr(args, "api_key", None) or os.environ.get("OAE_API_KEY") or stored.get("api_key")
+    flag_key = getattr(args, "api_key", None)
+    if flag_key:
+        return base_url, flag_key, "flag"
+    if os.environ.get("OAE_API_KEY"):
+        return base_url, os.environ["OAE_API_KEY"], "env"
+    if base_url and stored.get("storage") == "keychain":
+        key = keychain_get(base_url)
+        if key:
+            return base_url, key, "keychain"
+    if stored.get("api_key"):
+        return base_url, stored["api_key"], "file"
+    return base_url, None, "none"
+
+
+def resolve_credentials(args: argparse.Namespace) -> tuple[str, str]:
+    """Precedence: command-line flag, then environment, then keychain or config file."""
+    base_url, api_key, _ = credential_source(args)
     if not base_url:
         raise UsageError("No server URL: pass --base-url, set OAE_BASE_URL, or run `oae login`")
     if not api_key:
@@ -160,22 +242,50 @@ def cmd_login(args: argparse.Namespace) -> int:
     except ValueError as exc:
         raise UsageError(str(exc)) from None
     who = client.whoami()  # verify before persisting anything
-    path = save_config(base_url, api_key)
-    emit(args, {"saved": str(path), "kind": who.get("kind"), "scope": who.get("scope"),
+    storage = "file"
+    if not getattr(args, "file", False) and keychain_set(base_url, api_key):
+        path, storage = save_keychain_pointer(base_url), "keychain"
+    else:
+        path = save_config(base_url, api_key)
+    emit(args, {"saved": str(path), "storage": storage, "kind": who.get("kind"), "scope": who.get("scope"),
                 "agent_email": who.get("agent_email")},
-         lambda d: f"Saved credentials to {d['saved']} ({d['kind']}, scope {d['scope']})")
+         lambda d: (f"Saved credentials ({d['kind']}, scope {d['scope']}): key in the macOS keychain, server URL in {d['saved']}"
+                    if d["storage"] == "keychain" else f"Saved credentials to {d['saved']} ({d['kind']}, scope {d['scope']})"))
     return EXIT_OK
 
 
 def cmd_logout(args: argparse.Namespace) -> int:
     path = config_path()
+    stored = load_config()
+    removed_keychain = bool(stored.get("base_url")) and stored.get("storage") == "keychain" and keychain_delete(stored["base_url"])
     try:
         path.unlink()
         removed = True
     except FileNotFoundError:
         removed = False
-    emit(args, {"removed": removed}, lambda d: "Removed saved credentials" if d["removed"] else "No saved credentials")
+    emit(args, {"removed": removed or removed_keychain},
+         lambda d: "Removed saved credentials" if d["removed"] else "No saved credentials")
     return EXIT_OK
+
+
+def cmd_auth(args: argparse.Namespace) -> int:
+    if args.action == "login":
+        return cmd_login(args)
+    if args.action == "logout":
+        return cmd_logout(args)
+    base_url, api_key, source = credential_source(args)
+    data: dict[str, Any] = {"base_url": base_url, "credential_source": source, "authenticated": False}
+    if base_url and api_key:
+        try:
+            who = AgentEmailClient(base_url, api_key, timeout=getattr(args, "timeout", None) or 15.0).whoami()
+            data.update({"authenticated": True, "kind": who.get("kind"), "scope": who.get("scope"),
+                         "agent_email": who.get("agent_email")})
+        except ValueError as exc:
+            data["error"] = str(exc)
+        except AgentEmailError as exc:
+            data["error"] = f"server returned HTTP {exc.status_code}"
+    emit(args, data, render_record)
+    return EXIT_OK if data["authenticated"] else EXIT_API
 
 
 def cmd_whoami(args: argparse.Namespace) -> int:
@@ -198,7 +308,7 @@ def cmd_agents(args: argparse.Namespace) -> int:
         emit(args, data, lambda d: render_table(d, ["email", "display_name", "status", "hitl_enabled", "threat_sensitivity"]))
     elif args.action == "create":
         data = client.create_agent(
-            args.email, args.name or args.email, description=args.description,
+            args.email, args.name, description=args.description,
             threat_sensitivity=args.threat_sensitivity, hitl_enabled=not args.no_review,
         )
         emit(args, data, render_record)
@@ -208,8 +318,35 @@ def cmd_agents(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _dry_run_client(args: argparse.Namespace) -> tuple[AgentEmailClient, list[dict[str, Any]]]:
+    """A client whose requests are recorded instead of sent; needs no server or real key."""
+    base_url = getattr(args, "base_url", None) or os.environ.get("OAE_BASE_URL") or load_config().get("base_url") or "http://127.0.0.1:8000"
+    try:
+        client = AgentEmailClient(base_url, "dry-run-no-key")
+    except ValueError as exc:
+        raise UsageError(str(exc)) from None
+    recorded: list[dict[str, Any]] = []
+
+    def record(method: str, path: str, *, payload: Any = None, query: Any = None, idempotency_key: str | None = None, **_: Any) -> dict[str, Any]:
+        recorded.append({"method": method, "url": base_url + path, "query": query, "idempotency_key": idempotency_key, "body": payload})
+        return {}
+
+    client._request = record  # type: ignore[method-assign]
+    return client, recorded
+
+
 def cmd_messages(args: argparse.Namespace) -> int:
-    client = make_client(args)
+    dry_run = getattr(args, "dry_run", False)
+    if dry_run:
+        client, recorded = _dry_run_client(args)
+        rc = _messages(args, client, dry_run=True)
+        for request in recorded:
+            print(json.dumps({"dry_run": True, **request}, indent=2, default=str))
+        return rc
+    return _messages(args, make_client(args), dry_run=False)
+
+
+def _messages(args: argparse.Namespace, client: AgentEmailClient, *, dry_run: bool) -> int:
     action, agent = args.action, args.agent
     if action == "list":
         data = client.list_messages(
@@ -244,7 +381,8 @@ def cmd_messages(args: argparse.Namespace) -> int:
             if not args.template and body is None:
                 raise UsageError("reply needs --body/--body-file (or --template)")
             data = client.reply_message(agent, args.id, **content, **common)
-        emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "conversation_id", "scheduled_at"]))
+        if not dry_run:
+            emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject", "thread_id", "conversation_id", "scheduled_at"]))
     elif action == "forward":
         data = client.forward_message(agent, args.id, recipient=args.to, note=args.note)
         emit(args, data, lambda d: render_record(d, ["id", "status", "recipient", "subject"]))
@@ -514,8 +652,11 @@ def build_parser() -> argparse.ArgumentParser:
         inner = p.add_subparsers(dest="action", required=True, metavar="ACTION")
         return {name: inner.add_parser(name, parents=[common]) for name in names}
 
-    add("login", cmd_login, "save server URL and API key (0600)")
+    p = add("login", cmd_login, "save server URL and API key (macOS keychain when available, else a 0600 file)")
+    p.add_argument("--file", action="store_true", help="store the key in the config file instead of the keychain")
     add("logout", cmd_logout, "delete saved credentials")
+    acts = actions(add("auth", cmd_auth, "log in, log out, or show where the credential comes from"), ["login", "status", "logout"])
+    acts["login"].add_argument("--file", action="store_true", help="store the key in the config file instead of the keychain")
     add("whoami", cmd_whoami, "show the credential's scope")
     add("info", cmd_info, "show server discovery info")
 
@@ -550,6 +691,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--scheduled-at", "--send-at", dest="scheduled_at", type=_send_at_arg,
                        help="defer until this timezone-qualified time (ISO-8601, <= 90 days)")
         p.add_argument("--idempotency-key")
+        p.add_argument("--dry-run", action="store_true", help="print the request that would be sent, without sending it")
     acts["send"].add_argument("--to", required=True)
     acts["send"].add_argument("--subject")
     acts["forward"].add_argument("--to", required=True)
